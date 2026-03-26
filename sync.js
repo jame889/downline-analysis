@@ -75,13 +75,13 @@ import fs from 'fs';
 
     try {
       const download = await downloadPromise;
-      const downloadPath = `/Users/zenitha/.gemini/antigravity/scratch/downline-analyzer/temp_report.xlsx`;
+      const downloadPath = `./temp_report.xlsx`;
       await download.saveAs(downloadPath);
       console.log(`Report downloaded successfully to temp file.`);
     } catch(e) {
       console.log("Timeout waiting for download! Saving page HTML to debug.html");
       const html = await page.content();
-      fs.writeFileSync('/Users/zenitha/.gemini/antigravity/scratch/downline-analyzer/debug.html', html);
+      fs.writeFileSync('./debug.html', html);
       return;
     }
 
@@ -132,7 +132,7 @@ import fs from 'fs';
     }
 
     const fileContent = `export const members = ${JSON.stringify(members, null, 2)};\n`;
-    fs.writeFileSync('/Users/zenitha/.gemini/antigravity/scratch/downline-analyzer/src/data.js', fileContent);
+    fs.writeFileSync('./src/data.js', fileContent);
     console.log(`✅ Automated Sync Complete! Successfully extracted and replaced ${members.length} records into the app.`);
     
     // Cleanup temp excel file
