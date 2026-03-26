@@ -2,11 +2,16 @@ name: Daily Sync and Push
 
 on:
   schedule:
-    - cron: '0 17 * * *' # 17:00 UTC is exactly 0:00 (Midnight) Thailand Time
-  workflow_dispatch: # Allow manual trigger from GitHub UI
+    - cron: '0 17 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
 
 jobs:
-  sync:
+  sync-and-deploy:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
@@ -35,3 +40,18 @@ jobs:
           git add src/data.js
           git commit -m "Auto-update downline data (Daily Sync)" || echo "No changes to commit"
           git push
+
+      - name: Build Web App
+        run: npm run build
+
+      - name: Setup Pages
+        uses: actions/configure-pages@v4
+
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: './dist'
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
