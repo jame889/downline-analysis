@@ -1,0 +1,37 @@
+name: Daily Sync and Push
+
+on:
+  schedule:
+    - cron: '0 17 * * *' # 17:00 UTC is exactly 0:00 (Midnight) Thailand Time
+  workflow_dispatch: # Allow manual trigger from GitHub UI
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 18
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Playwright Browsers
+        run: npx playwright install --with-deps chromium
+
+      - name: Run Downline Scraper
+        env:
+          FIRST_DIRECT_PASSWORD: ${{ secrets.FIRST_DIRECT_PASSWORD }}
+        run: node sync.js
+
+      - name: Commit updated data back to repository
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git add src/data.js
+          git commit -m "Auto-update downline data (Daily Sync)" || echo "No changes to commit"
+          git push

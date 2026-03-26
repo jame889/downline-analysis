@@ -1,0 +1,1173 @@
+<!DOCTYPE html><html lang="th" style="overflow-y: visible;"><head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="Author" content="First Thailand">
+    <meta name="keywords" content="First Thailand">
+    <meta name="apple-mobile-web-app-title" content="First Thailand">
+    <meta name="robots" content="index,nofollow">
+    <meta name="description" content="Official First Thailand website, product introduction and purchase information for BioMax Plus, etc.">
+    <meta name="format-detection" content="telephone=no">
+    <link rel="shortcut icon" href="../../../include/img/favicon/favicon-32x32.png" type="image/x-icon">
+    <link rel="apple-touch-icon" sizes="57x57" href="../../../include/img/favicon/apple-icon-57x57.png"> 
+    <link rel="apple-touch-icon" sizes="60x60" href="../../../include/img/favicon/apple-icon-60x60.png"> 
+    <link rel="apple-touch-icon" sizes="72x72" href="../../../include/img/favicon/android-icon-72x72.png"> 
+    <link rel="apple-touch-icon" sizes="76x76" href="../../../include/img/favicon/apple-icon-76x76.png"> 
+    <link rel="apple-touch-icon" sizes="114x114" href="../../../include/img/favicon/apple-icon-114x114.png"> 
+    <link rel="apple-touch-icon" sizes="120x120" href="../../../include/img/favicon/apple-icon-120x120.png"> 
+    <link rel="apple-touch-icon" sizes="144x144" href="../../../include/img/favicon/android-icon-144x144.png"> 
+    <link rel="apple-touch-icon" sizes="152x152" href="../../../include/img/favicon/apple-icon-152x152.png"> 
+    <link rel="apple-touch-icon" sizes="180x180" href="../../../include/img/favicon/apple-icon-180x180.png"> 
+    <link rel="icon" type="image/png" sizes="32x32" href="../../../include/img/favicon/favicon-32x32.png"> 
+    <link rel="icon" type="image/png" sizes="192x192" href="../../../include/img/favicon/android-icon-192x192.png"> 
+    <link rel="icon" type="image/png" sizes="16x16" href="../../../include/img/favicon/favicon-16x16.png">
+
+    <title>เข้าสู่ระบบ</title>
+
+    <!-- head Javascript, css -->
+    
+
+
+
+
+
+
+<script>
+    const globalVariable = {};
+    globalVariable.googleAnalytics = 'G-94KKSZ97S5';
+</script>
+
+<!-- 구글 통계 -->
+<!-- Google tag (gtag.js) -->
+<script async="" src="https://www.googletagmanager.com/gtag/js?id=G-94KKSZ97S5"></script>
+
+
+<link rel="stylesheet" href="/include/css/plugin/swiper.min.css">
+<link rel="stylesheet" href="/include/css/reset.css?reset=20231227_01">
+<link rel="stylesheet" href="/include/css/common.css?reset=20231227_01">
+<link rel="stylesheet" href="/include/css/customer.css?reset=20231227_01">
+<link rel="stylesheet" href="/include/css/shop.css?reset=20231227_01">
+<link rel="stylesheet" href="/include/css/plugin/datepicker.css?reset=20231227_01">
+
+<script src="/include/js/jquery-3.6.0.min.js"></script>
+<script src="/include/js/jquery.form.min.js"></script>
+<script src="/include/js/swiper.min.js"></script>
+<!-- 2022.11.16 추가 -->
+<script src="/include/js/jquery_library.js"></script>
+<script src="/include/js/datepicker.js"></script>
+<script src="/include/js/common.js?reset=20231227_01"></script>
+<script src="/include/js/commadmin.js?reset=20231227_01"></script>
+
+<link rel="stylesheet" href="/include/css/style.css">
+
+
+<link rel="stylesheet" href="/include/js/aos/aos.css">
+<script src="/include/js/aos/aos.js"></script>
+
+
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/swiper/swiper-bundle.min.css">
+<script src="https://cdn.jsdelivr.net/npm/swiper/swiper-bundle.min.js"></script>
+
+
+<!-- 오픈그래프 태그 -->
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="First Thailand">
+
+<meta http-equiv="Content-Security-Policy" content="upgrade-insecure-requests">
+
+
+    
+    
+        <meta property="og:title" content="First Thailand">
+        <meta property="og:url" content="">
+        <meta property="og:image" content="">
+        <meta property="og:description" content="Official First Thailand website, product introduction and purchase information for BioMax Plus, etc.">
+    
+
+
+</head>
+
+<body style="overflow-y: visible;">
+<div id="wrap" class="wrap">
+    
+
+
+
+<script>
+  window.onpageshow = () => {
+    $(".aside").removeClass("open");
+  }
+
+  $(document.body).ready(function () {
+    //장바구니 카운트
+    setCartCount("");
+
+    $("#itemsearch_name").on("keyup", function (e) {
+      if (e.keyCode == "13") {
+        $("#itemSearchButton").trigger("click");
+      }
+    });
+
+    //제품명 검색 버튼 클릭시..
+    $("#itemSearchButton").on("click", function () {
+      const itemsearch_name = $("#itemsearch_name").val();
+
+      if (itemsearch_name == "") {
+        alert('กรุณาป้อนข้อมูลสินค้าเพื่อค้นหา');
+        $("#itemsearch_name").focus();
+        return;
+      }
+
+      location.href = "/item/itemList.do?search_item_value=" + itemsearch_name;
+    });
+
+    // index 와 sub 의 헤더 로고 분기
+    let currentPath = window.location.pathname;
+    if (currentPath === "/common/main/index.do") {
+      $(".logo-img").attr("src", "/include/images/logo_wh.png");
+    } else {
+      $(".logo-img").attr("src", "/include/images/logo_col.png");
+    }
+
+    $("li.lang-wrap > div > ul > li").on("click", function(){
+      $('.box-countrymenu').hide()
+      const language = $(this).attr("class");
+
+      $.ajaxCall({
+        url: "/common/main/setChangeLanguage.json"
+        , type: "get"
+        , async: false
+        , data: {
+          "selectLanguage" : language
+        }
+        , success: function(data, textStatus, jqXHR){
+          if(data.result){
+            //location.href = location.href;
+            location.reload();
+          }
+        }
+        , error: function( jqXHR, textStatus, errorThrown) {
+          alert('เกิดข้อผิดพลาดระหว่างการประมวลผล');
+        }
+      });
+    });
+
+    $(".mobile-sub-back").on("click", function (e) {
+      history.back();
+    })
+  });
+
+  const setCartCount = (value) => {
+    const cartCount = Number(value)
+    const cartCountEl = $("#cartcount")
+
+    if (cartCount > 0 && cartCount) {
+      cartCountEl.text(cartCount)
+      cartCountEl.css('display', 'inline-block')
+    }
+  }
+
+  const moveHome = () => {
+    location.href = '/common/main/index.do'
+  }
+
+  const moveLogin = () => {
+    location.href = "/common/login/index.do?return_url=" + encodeURIComponent(location.href);
+  }
+
+  const toggleCountryMenu = () => {
+    $('.lang-list').removeClass('on');
+    $('.box-countrymenu').toggle();
+  }
+
+  document.addEventListener('DOMContentLoaded', function() {
+    const langBtn = document.querySelector('.lang-btn');
+    const langList = document.querySelector('.lang-list');
+
+    if (langBtn && langList) {
+      langBtn.addEventListener('click', function() {
+        $('.box-countrymenu').hide()
+        langList.classList.toggle('on');
+      });
+    } else {
+      console.error('langBtn or langList not found');
+    }
+  });
+
+</script>
+
+<style>
+  .country-select {
+    position: relative;
+  }
+
+  .box-countrymenu {
+    display: none;
+    position: absolute;
+    top: 100%;
+    right: 0;
+    background: #fff;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    min-width: 180px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    z-index: 1000;
+    padding: 8px 0;
+  }
+
+  .country-select > a {
+    position: relative;
+    display: inline-block;
+    padding-right: 15px;
+    padding-left: 28px;
+  }
+
+  .country-select > a::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 20px;
+    height: 15px;
+    background-image: url('/include/img/flag/flag_TH.svg');
+    background-size: contain;
+    background-repeat: no-repeat;
+    background-position: center;
+  }
+
+  .country-select > a::after {
+    content: '';
+    position: absolute;
+    right: 0;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 0;
+    height: 0;
+    border-left: 4px solid transparent;
+    border-right: 4px solid transparent;
+    border-top: 6px solid #666;
+  }
+
+  /* 더 높은 우선순위를 위한 구체적인 선택자 */
+  .wrap header .header_in .etc_menu .box-countrymenu ul {
+    list-style: none !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    display: flex !important;
+    flex-direction: column !important;
+  }
+
+  .wrap header .header_in .etc_menu .box-countrymenu li {
+    padding: 0 !important;
+    margin: 0 !important;
+    white-space: nowrap !important;
+  }
+
+  .wrap header .header_in .etc_menu .box-countrymenu li a {
+    display: block !important;
+    padding: 10px 16px !important;
+    color: #000 !important;
+    text-decoration: none !important;
+    transition: background-color 0.2s !important;
+    font-size: 14px !important;
+    font-weight: normal !important;
+  }
+
+  .wrap header .header_in .etc_menu .box-countrymenu li a:hover {
+    background-color: #f5f5f5 !important;
+  }
+
+  .wrap header .header_in .etc_menu .box-countrymenu li a::before {
+    content: '';
+    display: inline-block;
+    width: 20px;
+    height: 15px;
+    margin-right: 8px;
+    vertical-align: middle;
+    background-color: #ddd;
+    border: 1px solid #999;
+  }
+
+  /* South Korea 국기 */
+  .wrap header .header_in .etc_menu .box-countrymenu li a.country-item-kr::before {
+    background-image: url('/include/img/flag/flag_KR.svg');
+    background-size: contain;
+    background-repeat: no-repeat;
+    background-position: center;
+    border: none;
+  }
+
+  /* Thailand 국기 */
+  .wrap header .header_in .etc_menu .box-countrymenu li a.country-item-th::before {
+    background-image: url('/include/img/flag/flag_TH.svg');
+    background-size: contain;
+    background-repeat: no-repeat;
+    background-position: center;
+    border: none;
+  }
+</style>
+
+<header>
+  <div class="header_in">
+    <div class="mobile-sub-back">
+      <a href="javascript:void(0)"><img src="/include/img/common/mobile-arrow-left.png" alt=""></a>
+    </div>
+    <h1 onclick="moveHome()" style="cursor: pointer;">
+      <img src="/include/images/logo_col.png" alt="First korea" class="logo-img">
+    </h1>
+
+    <div class="menu">
+      <ul>
+        <li data-gnb="company" style="margin-left: -20rem;">
+          <a href="/company/greeting.do">แนะนำบริษัท</a>
+          <ul>
+            <li data-snb="greeting">
+              <a href="/company/greeting.do">สารจากท่านประธาน</a>
+            </li>
+            <li data-snb="introduce">
+              <a href="/company/introduce.do">ข้อมูลบริษัท</a>
+            </li>
+            <li data-snb="coreValues">
+              <a href="/company/core-values.do">ค่านิยมของบริษัท</a>
+            </li>
+          </ul>
+        </li>
+        <li data-gnb="item">
+          <a href="/item/itemList.do">ร้านค้า</a>
+        </li>
+        <li data-gnb="myoffice">
+          <a href="/myoffice/main/index.do">สำนักงานของฉัน</a>
+          <ul>
+            <li data-snb="myinfo">
+              <a href="/myoffice/mypage/confirmPassword.do?gubun=myinfo">หน้าของฉัน</a>
+            </li>
+            <li data-snb="orderList">
+              <a href="/myoffice/order/orderList.do">ประวัติการสั่งซื้อ</a>
+            </li>
+            <li data-snb="searchLeg">
+              <a href="/myoffice/performance/searchLeg.do">การจัดการประสิทธิภาพ</a>
+            </li>
+            <li data-snb="searchTypeE">
+              <a href="/myoffice/chart/orgChart.do?searchType=S">องค์กรของฉัน</a>
+            </li>
+          </ul>
+        </li>
+        <li data-gnb="about">
+          <a href="/board/boardList.do?gubun=300">การสนับสนุน</a>
+          <ul>
+            <li data-snb="notice">
+              <a href="/board/boardList.do?gubun=300">ประกาศ</a>
+            </li>
+            <li data-snb="faqList">
+              <a href="/faq/faqList.do">คำถามที่พบบ่อย</a>
+            </li>
+            <li data-snb="reference">
+              <a href="/board/boardList.do?gubun=400">ข้อมูลอ้างอิง</a>
+            </li>
+          </ul>
+        </li>
+      </ul>
+      <div class="bg_btm"></div>
+    </div>
+
+    <div class="etc_menu">
+      <ul>
+        <li class="country-select">
+          <a href="javascript: void(0)" onclick="toggleCountryMenu()">
+            Thailand
+          </a>
+          <div class="box-countrymenu">
+            <ul>
+              <li>
+                <a href="https://www.firstkor.co.kr/" class="country-item-kr">
+                  South Korea
+                </a>
+              </li>
+              <li>
+                <a href="https://www.firstthailand.co.th/" class="country-item-th">
+                  Thailand
+                </a>
+              </li>
+            </ul>
+          </div>
+        </li>
+        <li class="web">
+          
+            
+              <a href="#" onclick="moveLogin()">
+                เข้าสู่ระบบ
+              </a>
+            
+            
+          
+        </li>
+        <li>
+          <a href="/item/cartList.do" class="cart_a">
+            ตะกร้าสินค้า
+          </a>
+          <span id="cartcount" style="display: none;">5</span>
+        </li>
+        <li class="lang-wrap">
+          <div class="header-util-lang">
+            <button type="button" name="button" title="Click to display the related site list." class="lang-btn">
+              <p>ภาษา</p><p class="ico arrow_up">List</p>
+            </button>
+            <ul class="lang-list">
+              <li class="en"><a>English</a></li>
+              <li class="th"><a>Thailand</a></li>
+              <!-- <li class="ko"><a>Korean</a></li> -->
+            </ul>
+          </div>
+        </li>
+        <li class="btn-hamburger mobile">
+          <a href="javascript:openAside(true);" class="menu_a"></a>
+        </li>
+      </ul>
+    </div>
+  </div>
+</header>
+
+
+
+    <aside class="aside aside-collapse" id="moAsideHandle" onmouseover="hoverAside()" onmouseleave="outAside()">
+        
+
+
+
+<script>
+    $(document).ready(function() {
+        //언어변경 클릭시
+        $(".side-lang-wrap > .header-util-lang > ul > li").on("click", function(){
+            const language = $(this).attr("class");
+
+            $.ajaxCall({
+                url: "/common/main/setChangeLanguage.json"
+                , type: "get"
+                , async: false
+                , data: {
+                    "selectLanguage" : language
+                }
+                , success: function(data, textStatus, jqXHR){
+                    if(data.result){
+                        //location.href = location.href;
+                        location.reload();
+                    }
+                }
+                , error: function( jqXHR, textStatus, errorThrown) {
+                    alert('เกิดข้อผิดพลาดระหว่างการประมวลผล');
+                }
+            });
+        });
+    });
+    document.addEventListener('DOMContentLoaded', function() {
+        const langButton = document.querySelector('.side-lang-btn');
+        const langList = document.querySelector('.side-lang-list');
+
+        if (langButton) {
+            langButton.addEventListener('click', function(event) {
+                event.stopPropagation(); // 이벤트 전파 방지
+                if (langList) {
+                    langList.classList.toggle('show');
+                }
+            });
+        } else {
+            console.error('side-lang-btn element not found');
+        }
+
+        // 클릭 시 드롭다운 닫기
+        document.addEventListener('click', function(event) {
+            if (langList) {
+                const isClickInside = document.querySelector('.header-util-lang').contains(event.target);
+                if (!isClickInside) {
+                    langList.classList.remove('show');
+                }
+            }
+        });
+    });
+</script>
+
+<div class="aside_in">
+    <div class="m_top">
+        
+        
+            
+                <button type="button" class="clo" onclick="openAside(false);">ปิด</button>
+                <p class="txt">กรุณาเข้าสู่ระบบเพื่อใช้งานฟีเจอร์นี้</p>
+                <div class="btns">
+                    <ul>
+                        <li>
+                            <button type="button" class="btn_white" onclick="location.href = '/common/login/index.do?return_url=' + encodeURIComponent(location.href)">
+                                เข้าสู่ระบบ
+                            </button>
+                        </li>
+                        <li>
+                            <button type="button" class="btn_orange" onclick="location.href= '/member/register/registerStep01.do'">
+                                สมัครสมาชิก
+                            </button>
+                        </li>
+                    </ul>
+                </div>
+            
+            
+        
+    </div>
+
+
+    <div class="m_list">
+        <ul>
+            <li>
+                <a>
+                    <span>แนะนำบริษัท</span> <i class="arr"></i>
+                </a>
+                <ul>
+                    <li>
+                        <a href="/company/greeting.do">
+                            <span>สารจากท่านประธาน</span>
+                        </a>
+                    </li>
+                    <li>
+                        <a href="/company/introduce.do">
+                            <span>ข้อมูลบริษัท</span>
+                        </a>
+                    </li>
+                    <li>
+                        <a href="/company/core-values.do">
+                            <span>ค่านิยมของบริษัท</span>
+                        </a>
+                    </li>
+                </ul>
+            </li>
+            <li>
+                <a href="/item/itemList.do">
+                    <span>ร้านค้า</span>
+                </a>
+            </li>
+            <li>
+                <a>
+                    <span>สำนักงานของฉัน</span> <i class="arr"></i>
+                </a>
+
+                
+
+
+    
+    <ul class="mo-aside-ul moAsideUl">
+        <li class="mo-aside-li">
+            <button onclick="location.href='/myoffice/main/index.do'" type="button" class="mo-aside-depth0 m7">
+                <span class="mo-aside-depth1--txt">สำนักงานของฉัน</span>
+            </button>
+        </li>
+        <li class="mo-aside-li">
+            <button onclick="toggle2Depth(event)" type="button" class="mo-aside-depth1 m0">
+                <span class="mo-aside-depth1--txt">ข้อมูลของฉัน</span>
+            </button>
+            <ul class="mo-aside-ul-in" style="display: none;">
+                <li class="mo-aside-ul-li">
+                    <a href="/myoffice/mypage/confirmPassword.do?gubun=myinfo" class="mo-aside-depth2 m00">เปลี่ยนข้อมูลส่วนตัว</a>
+                </li>
+                
+                
+                
+
+                <li class="mo-aside-ul-li">
+                    <a href="/myoffice/mypage/confirmPassword.do?gubun=passChange" class="mo-aside-depth2 m02">เปลี่ยนรหัสผ่าน</a>
+                </li>
+
+
+
+            </ul>
+        </li>
+        <li class="mo-aside-li">
+            <button onclick="toggle2Depth(event)" type="button" class="mo-aside-depth1 m1">
+                <span class="mo-aside-depth1--txt">ประวัติการสั่งซื้อ</span>
+            </button>
+            <ul class="mo-aside-ul-in" style="display: none;">
+                <li class="mo-aside-ul-li">
+                    <a href="/myoffice/order/orderList.do" class="mo-aside-depth2 m10">ประวัติการสั่งซื้อ</a>
+                </li>
+                
+            </ul>
+        </li>
+        <li class="mo-aside-li">
+            <button onclick="toggle2Depth(event)" type="button" class="mo-aside-depth1 m4">
+                <span class="mo-aside-depth1--txt">การจัดการประสิทธิภาพ</span>
+            </button>
+            <ul class="mo-aside-ul-in" style="display: none;">
+                <li class="mo-aside-ul-li">
+                    <a href="/myoffice/performance/allowanceList.do" class="mo-aside-depth2 m40">สรุปยอดรายสัปดาห์</a>
+                </li>
+                <li class="mo-aside-ul-li">
+                    <a href="/myoffice/performance/allowanceMonthList.do" class="mo-aside-depth2  m41">สรุปยอดรายเดือน</a>
+                </li>
+                <li class="mo-aside-ul-li">
+                    <a href="/myoffice/performance/searchLeg.do" class="mo-aside-depth2 m42">รายงานยอดปริมาณตามขาซ้ายและขาขวาในระบบไบนารี</a>
+                </li>
+                <li class="mo-aside-ul-li">
+                    <a href="/myoffice/performance/groupsalesRecomStatus.do" class="mo-aside-depth2 m43">รายงานยอดขายจากสายงานการแนะนำ</a>
+                </li>
+                <li class="mo-aside-ul-li">
+                    <a href="/myoffice/performance/groupsalesstatus.do" class="mo-aside-depth2 m44">รายงานยอดขายจากสายงานไบนารี่</a>
+                </li>
+                
+            </ul>
+        </li>
+        <li class="mo-aside-li">
+            <button onclick="toggle2Depth(event)" type="button" class="mo-aside-depth1 m5">
+                <span class="mo-aside-depth1--txt">องค์กรของฉัน</span>
+            </button>
+            <ul class="mo-aside-ul-in" style="display: none;">
+                <li class="mo-aside-ul-li">
+                    <a href="/myoffice/chart/orgChart.do?searchType=S" class="mo-aside-depth2 m50">ดูโครงสร้างการแนะนำและไบนารี่</a>
+                </li>
+                <!--
+                <li class="mo-aside-ul-li">
+                    <a href="/myoffice/chart/tree.do" class="mo-aside-depth2 m51">계층형계보도</a>
+                </li>
+                -->
+                <li class="mo-aside-ul-li">
+                    <a href="/myoffice/performance/getDownlineBusinessReport.do" class="mo-aside-depth2 m52">รายงานธุรกิจ</a>
+                </li>
+            </ul>
+        </li>
+    </ul>
+    
+
+            </li>
+            <li>
+                <a>
+                    <span>การสนับสนุน</span> <i class="arr"></i>
+                </a>
+                <ul>
+                    <li>
+                        <a href="/board/boardList.do?gubun=300">
+                            <span>ประกาศ</span>
+                        </a>
+                    </li>
+                    <li>
+                        <a href="/faq/faqList.do">
+                            <span>คำถามที่พบบ่อย</span>
+                        </a>
+                    </li>
+                    <li>
+                        <a href="/board/boardList.do?gubun=400">
+                            <span>ข้อมูลอ้างอิง</span>
+                        </a>
+                    </li>
+                </ul>
+            </li>
+        </ul>
+    </div>
+    <div class="lang-wrap side-lang-wrap">
+        <div class="header-util-lang">
+            <button type="button" name="button" title="Click to display the related site list." class="side-lang-btn">
+                <p>ภาษา</p><p class="ico arrow_up">List</p>
+            </button>
+            <ul class="side-lang-list">
+                <li class="en"><a href="#">English</a></li>
+                <li class="th"><a href="#">Thailand</a></li>
+                <!-- <li class="ko"><a href="#">Korean</a></li> -->
+            </ul>
+        </div>
+    </div>
+</div>
+    </aside>
+
+    
+
+
+
+
+	<script>
+	window.onpageshow = function(event){
+		//console.log(event);
+		//console.log(document.referrer);
+		
+		//뒤로가기 버튼으로 이동된 경우..
+		if(event.persisted || (window.performance && window.performance.navigation.type == "2")){
+			//뒤로가기 버튼으로 이동된 경우..
+			location.href = "/common/main/index.do";
+			return false;
+		}
+		else{
+			//처음 접속시..
+		}
+	}
+	
+	$(document.body).ready(function() {
+		$("#btnLogin").on("click", function() {
+			if($.trim($("input[name=loginid]").val()) == ""){
+				$(".span_loginError").text("Please enter your ID.");
+				$("input[name=loginid]").val("");
+				return false;
+			}
+			else if($("input[name=passWord]").val() == ""){
+				$(".span_loginError").text("Please enter your password.");
+				return false;
+			}
+			
+			$("#frm").ajaxForm({
+				url : "/common/login/loginSubmit.json"
+				, method : "POST"
+				, async : false
+				, type : "json"
+				, beforeSend: function(xhr, settings)   {  }
+				, complete:  function (xhr, textStatus) {  }
+				, success : function(data) {
+					//console.log(data)
+					
+					if(data.result) {
+						//비밀번호 변경예정일이 3개월 지났는지 flag 체크
+						if(data.password_update_needed === "Y") {
+							//지났으면 변경안내 페이지로 이동
+							location.href = "/member/account/changePasswordExpiration.do";
+							return false;
+						}
+						
+						//let return_url = "/myoffice/main/index.do";
+						return_url = "/myoffice/main/index.do"; // 무조건 마이오피스로 이동
+						
+						//return_url url이 없는 경우 마이오피스로 이동..
+						if(return_url == undefined || return_url == ""){
+							return_url = "/myoffice/main/index.do";
+						}
+						
+						location.href = return_url;
+					} else {
+						$(".span_loginError").text(data.resultMessage);
+						//alert(data.resultMessage);
+					}
+				}
+				, error : function(data) {
+				   console.log(data);
+				   alert("An error occurred. Please contact the administrator.");
+				}
+			}).submit();
+		});
+		
+	    if($("input[name='loginid']").val() != ""){ // 그 전에 ID를 저장해서 처음 페이지 로딩
+	                                           // 아이디 저장하기 체크되어있을 시,
+	        $("#idCheck").attr("checked", true); // ID 저장하기를 체크 상태로 두기.
+	    }
+	    
+	    //아이디 포커스..
+	    $("input[name=loginid]").focus();
+	    
+	    //아이디 엔터 입력시..
+	    $("input[name=loginid]").on("keyup", function(e){
+	    	if(e.keyCode == "13"){
+	    		$("input[name=passWord]").focus();
+			}
+	    });
+	    
+		//아이디 엔터 입력시..
+		$("input[name=passWord]").on("keyup", function(e){
+			if(e.keyCode == "13"){
+				$("#btnLogin").trigger("click");
+			}
+		});
+
+		
+		//카카오로그인 버튼 클릭시..
+		$("#kakao_login").on("click", function(){
+			const return_url = '{"return_url":"/myoffice/main/index.do"}';
+			
+			location.href = "https://kauth.kakao.com/oauth/authorize"
+					      + "?response_type=code"
+					      + "&client_id=cabf5a61d71bfa78a7d71290e29f28cb"
+					      + "&redirect_uri=" + window.location.origin.toString() + "/common/login/kakao/loginSubmit.do"
+					      //+ "&scope=account_email,gender,birthday" 동의사항 표시안함
+					      + "&state=" + encodeURIComponent(encodeURIComponent(return_url));
+		});
+		
+
+        
+		//네이버로그인 버튼 클릭시..
+		$("#naver_login").on("click", function(){
+			const return_url = '{"return_url":"/myoffice/main/index.do"}';
+			
+			location.href = "https://nid.naver.com/oauth2.0/authorize"
+					      + "?response_type=code"
+					      + "&client_id=HvKU8Jx97vPmlrHqNcfQ"
+					      + "&redirect_uri=" + window.location.origin.toString() + "/common/login/naver/loginSubmit.do"
+					      //+ "&auth_type=reprompt" //동의사항 표시안함
+					      + "&state=" + encodeURIComponent(encodeURIComponent(return_url));
+		});
+		
+	})
+	//$(document.body).ready END
+    //ID, 패스워드 CapsLock 확인
+    function checkCapsLock(event)  {
+      if (event.getModifierState("CapsLock")) {
+        $(".span_loginError").text("* CapsLock is on.");
+
+      }else {
+        $(".span_loginError").text("");
+      }
+    }
+	
+	</script>
+	
+	<div id="wrap">
+	    <form name="frm" id="frm">
+	        <fieldset>
+	            <div id="login">
+	                <section class="login-inner"><!-- min-width 380px / 폐쇄형 -->
+	                    
+	                    <!-- form-area// -->
+	                    <div class="form-area">
+	                        <h2 class="h2-title">เข้าสู่ระบบ</h2>
+	                        <div class="form-box">
+	                            <div class="ipt-wrap">
+	                                <div>
+	                                    <!--
+	                                        오류 발생 시 입력 데이터 초기화 되면서 div.visual-ipt에 error 클래스가 추가됩니다. 
+	                                        (퍼블 영역이 아닌 것 같아 미작업)
+	                                        error 클래스 추가 시 삭제아이콘 및 보기 아이콘은 hidden됩니다. (common js : clickInput 함수 참고)
+	                                     -->
+	                                    <div class="visual-ipt">
+	                                        <input type="text" onkeyup="checkCapsLock(event)" name="loginid" value="" placeholder="กรุณาป้อนชื่อผู้ใช้">
+	                                        <div class="btn-wrap">
+	                                            <span class="btn-delete"><!-- 입력 시 삭제 아이콘 출력 -->
+	                                                <span class="hidden">Delete</span>
+	                                            </span>
+	                                        </div>
+	                                    </div>
+	                                </div>
+	                            </div>
+	                            <div class="ipt-wrap">
+	                                <div>
+	                                    <div class="visual-ipt"><!-- 오류 시 value 초기화 되면서 느낌표 뜸 : 사용자가 입력 시 느낌표 사라지고 초기화 버튼+뜬눈 -->
+	                                        <input type="password" onkeyup="checkCapsLock(event)" name="passWord" placeholder="กรุณาป้อนรหัสผ่าน">
+	                                        <div class="btn-wrap">
+	                                            <span class="btn-delete"><!-- 입력 시 삭제 아이콘 출력 -->
+	                                                <span class="hidden">Delete</span>
+	                                            </span>
+	                                            <label class="btn-pw-show"><!-- 2023.01.18 수정 -->
+                                                	<input type="checkbox">
+                                                	<span></span>
+                                            	</label>
+	                                        </div>
+	                                    </div>
+	                                    <p class="text-error span_loginError"></p><!-- 오류문구 1문장 -->
+	
+	                                    <!--오류문구 2문장 예시입니다. 
+	
+	                                    개발 협의 필요 : span추가방식이 공통으로 잡기 어려울 경우 다른 방식을 고려하겠습니다.
+	
+	                                    <p class="text-error">
+	                                        <span style="display:block;">올바른 인증번호를 입력해주세요.</span>
+	                                        발급받을 수 있는 인증번호는 2회 남았습니다.
+	                                    </p>
+	                                    -->
+	                                </div>
+	                                <p></p>
+	                            </div> 
+	                            <div class="chk-wrap">
+	                            	
+	                                <label>
+	                                	<input type="checkbox" name="idCheck" id="idCheck" value="Y">
+	                                	<span>จำฉันไว้</span>
+	                                </label>
+	                                
+	                            </div>
+	                            <div class="btn-wrap">
+	                                <a href="javascript:;" class="btn fullpoint big" id="btnLogin">เข้าสู่ระบบ</a>
+	                                <a href="/member/register/registerStep01.do" class="btn big">สมัครสมาชิก</a>
+	                            </div>
+	                            
+	                            <!--
+	                            <div class="link-wrap">
+	                                <a href="/member/account/findId.do" class="btn-line">ค้าหา ID</a>
+	                                <a href="/member/account/findPassword.do" class="btn-line">ค้นหา Password</a>
+	                            </div>
+	                            -->
+	                            <div class="client-logo">
+									
+										<input type="hidden" id="logofileurl" name="logofileurl" value="https://prod-firstkoreathailand-contents.s3.ap-northeast-2.amazonaws.com/company/2024/79d5be05-033e-48ee-8605-1bae4bb95059_logo_g.png">
+									
+								</div>
+	                        </div>
+	                    </div>
+	                    <!-- //form-area -->
+	
+	                </section>
+	            </div>
+	        </fieldset>
+	    </form>
+	</div>
+
+    
+
+
+<style>
+    @media screen and (max-width: 1260px) {
+        .poplayer header {
+            padding: 17px 36px;
+        }
+    }
+
+    .poplayer header {
+        position: relative;
+        min-height: 60px;
+        padding: 17px 60px;
+        background: #3F3F3F !important;
+    }
+</style>
+<script>
+    $(document.body).ready(function () {
+        $("#btnMemberSearch").on("click", function () {
+            $("#frmMemberSearch").ajaxForm({
+                url: "/member/customerSearchResult.json"
+                , method: "GET"
+                , dataType: "json"
+                , beforeSend: function (xhr, settings) {
+                    if (!$("input[name=search_dist_no]").val()) {
+                        alert("Please enter your membership number correctly.");
+                        $("input[name=search_dist_no]").focus();
+                        return false;
+                    }
+                    if (!$("input[name=search_dist_name]").val()) {
+                        alert("Please enter your name correctly.");
+                        $("input[name=search_dist_name]").focus();
+                        return false;
+                    }
+                    if (!$("input[name=search_birthday]").val() || $("input[name=search_birthday]").val().length !== 10) {
+                        alert("Please enter your birthday correctly.");
+                        $("input[name=search_birthday]").focus();
+                        return false;
+                    }
+                }
+                , complete: function (xhr, textStatus) {
+                }
+                , success: function (data) {
+                    const result = data.resultMessage;
+
+                    if (data.result) {
+                        $("#resultSearch").text(result);
+                    } else {
+                        $("#resultSearch").text(result);
+                    }
+                }
+                , error: function (data) {
+                    console.log(data);
+                }
+            }).submit();
+        });
+
+        //아이디 엔터 입력시..
+        $("input[name=search_dist_no]").on("keyup", function (e) {
+            if (e.keyCode == "13") {
+                $("input[name=search_dist_name]").focus();
+            }
+        });
+
+        //아이디 엔터 입력시..
+        $("input[name=search_dist_name]").on("keyup", function (e) {
+            if (e.keyCode == "13") {
+                $("#btnMemberSearch").trigger("click");
+            }
+        });
+
+        //생년월일
+        $("#search_birthday").on("propertychange change keyup paste input", function () {
+            validateBirthDay($("#search_birthday").val());
+        });
+    })
+
+    function validateBirthDay(val) {
+        //날짜 파싱 및 범위 검증
+        val = val.replace(/[^0-9]/g, '').replace(/(\d{4})(\d{2})(\d{2})/, '$1-$2-$3');
+        //replace한 value 적용
+        $("#search_birthday").val(val);
+
+        if (val.length === 10) {
+            // 날짜 파싱 및 범위 검증
+            const year = parseInt(val.substr(0, 4));
+            const month = parseInt(val.substr(5, 2));
+            const day = parseInt(val.substr(8, 2));
+
+            //년월일 검증
+            if (year < 0 || year > 9999 || month < 1 || month > 12 || day < 1 || day > 31) {
+                alert("The corresponding year, month, and day do not exist.");
+                $("#search_birthday").val("");
+                return false;
+            }
+
+            //월별 일수 검증
+            const daysInMonth = new Date(year, month, 0).getDate();
+            if (day > daysInMonth) {
+                alert("The corresponding year, month, and day do not exist.");
+                $("#search_birthday").val("");
+                return false;
+            }
+        }
+    }
+
+    //공제번호조회 클릭시..
+    function consumerSearch() {
+        window.open("https://www.kossa.or.kr/user/m3/bbs/union/ddcNotie/selectBbsInc.do?bbsSeq=4", "customerSearch");
+    }
+
+    //회원조회 클릭시..
+    function customerSearch() {
+        fn.popupOpen('#pop_register_identity');
+
+        $("input[name=search_dist_no]").val("");
+        $("input[name=search_dist_name]").val("");
+        $("input[name=search_birthday]").val("");
+        $("#resultSearch").text("");
+
+        //아이디 포커스..
+        $("input[name=search_dist_no]").focus();
+    }
+</script>
+
+<!-- footer// -->
+<div class="wrap">
+<footer id="footer">
+    <div class="footer_in">
+        <div class="foot_box">
+            <div class="foot_menu">
+                <ul>
+                    
+                    
+                </ul>
+            </div>
+            <!-- <div class="foot_info">
+                <ul>
+                    <li>
+                        <dl>
+                            <dt>ศูนย์บริการลูกค้า</dt>
+                            <dd class="big"><a href="tel:1544-3539">1544-3539</a></dd>
+                        </dl>
+                    </li>
+                    <li>
+                        <dl>
+                            <dt>แฟกซ์</dt>
+                            <dd>070-7500-7051</dd>
+                        </dl>
+                    </li>
+                    <li>
+                        <dl>
+                            <dt>อีเมล</dt>
+                            <dd>CS@FIRSTKOR.CO.KR</dd>
+                        </dl>
+                    </li>
+                    <li class="sns">
+                        <a href="https://www.instagram.com/firstkorea_magazine/" class="ins" target="_blank">
+                            <img src="/include/images/foot_ins.png" alt="인스타그램"/>
+                        </a>
+                        <a href="https://pf.kakao.com/_cVhxnG" class="kakao" target="_blank">
+                            <img src="/include/images/foot_kakao.png" alt="카카오톡"/>
+                        </a>
+                    </li>
+                </ul>
+            </div> -->
+        </div><!-- //foot_box -->
+
+        <div class="foot_btm">
+            <div class="logo">
+                <img src="/include/images/logo_wh.png" alt="FirstKorea">
+            </div>
+            <div class="txt_box">
+                <div class="ceo">
+                    <dl>
+                        <dt>FIRST DIRECT (THAILAND) COMPANY LIMITED</dt>
+                        <!-- <dd>Gyu-seop Kim</dd> -->
+                    </dl>
+                </div>
+                <p class="addr">No. 288/1 Prasertmanukit Road, Nawamin Subdistrict, Bueng Kum District, Bangkok 10240</p>
+                <div class="etc">
+                    <ul>
+                        <li>Company no. 02-116 6611</li>
+                        <li>Email. <a href="mailto:CSTH@firstthailand.co.th">CSTH@firstthailand.co.th</a></li>
+                        <li>Business Registration Number. 0105566065383</li>
+                    </ul>
+                    <ul>
+                        <li>Customer services LINE OA: @firstthailand</li>
+                    </ul>
+                </div>
+                <p class="copy">Copyright ⓒ FIRST DIRECT (THAILAND) COMPANY LIMITED. All Rights Reserved.</p>
+            </div>
+        </div>
+
+    </div><!-- //footer_in -->
+</footer>
+</div>
+<!-- //footer -->
+
+<!-- 회원조회 팝업// -->
+<div id="pop_register_identity" class="poplayer pop-nohead"><!-- id값 수정 가능 -->
+    <div class="inner  nohead small">
+        <header>
+            <h2>การตรวจสอบผู้ขาย</h2><!-- heading -->
+        </header>
+
+        <div class="popcont" style="padding:30px 20px 20px 20px;">
+            <div class="cont">
+                <form id="frmMemberSearch" name="frmMemberSearch">
+                    <fieldset>
+                        <legend>ค้าหาสมาชิก</legend>
+
+                        <!-- 등록 데이터 출력// -->
+                        <div class="textbox">
+                            <ul class="list-text">
+                                <li><input type="text" name="search_dist_no" placeholder="หมายเลขสมาชิก"></li>
+                                <li><input type="text" name="search_dist_name" placeholder="ชื่อ"></li>
+                                <li style="margin-top: 24px;"><input type="text" id="search_birthday" name="search_birthday" value="1999-01-01" placeholder="วันเกิด" maxlength="10"></li>
+                                <li><span id="resultSearch">ผลการค้นหา</span></li>
+                            </ul>
+                        </div>
+                        <!-- 등록 데이터 출력// -->
+
+                        <!-- btn-wrap// -->
+                        <div class="btn-wrap" style="padding:30px 0px 0px 0px;">
+                            <button type="button" class="btn medium" onclick="fn.popupClose('#pop_register_identity');">
+                                ปิด
+                            </button>
+                            <button type="button" class="btn medium fullnavy" id="btnMemberSearch">ค้นหา</button>
+                        </div>
+                        <!-- //btn-wrap -->
+
+                    </fieldset>
+                </form>
+            </div>
+        </div>
+        <button type="button" class="btn-popclose" onclick="fn.popupClose('#pop_register_identity');"><span class="hidden">Close</span></button>
+    </div>
+    <span class="poplayer-background"></span>
+</div>
+<!-- //회원조회 팝업 -->
+
+<!-- btn-top// -->
+<button class="btn-top" onclick="window.scrollTo(0, 0);">
+        <span>
+            <svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="82" height="82" viewBox="0 0 82 82"><defs><filter id="a" x="0" y="0" width="82" height="82" filterUnits="userSpaceOnUse"><feOffset dy="3" input="SourceAlpha"></feOffset><feGaussianBlur stdDeviation="3" result="b"></feGaussianBlur><feFlood flood-opacity="0.078"></feFlood><feComposite operator="in" in2="b"></feComposite><feComposite in="SourceGraphic"></feComposite></filter></defs><g transform="translate(3)"><g transform="translate(6 6)"><g transform="translate(0)"><g transform="matrix(1, 0, 0, 1, -9, -6)" filter="url(#a)"><circle cx="32" cy="32" r="32" transform="translate(9 6)" fill="#fff"></circle></g><g transform="translate(21.488 21)"><g transform="translate(-0.488)"><path d="M15.753,26.888H13.135V9.67l-7.2,7.892L4.08,15.524,14.444,4.16,24.808,15.524,22.95,17.562l-7.2-7.892Z" transform="translate(-2.808 -2.888)" fill="#2e2e2e"></path><rect width="1.544" height="1.544" fill="none"></rect></g></g></g></g><rect width="76" height="76" fill="none"></rect></g>
+            </svg>
+        </span>
+</button>
+<!-- //btn-top -->
+
+    <script>
+    $(function(){
+        // 현재 메뉴 상태
+        let cgnb = `common`;
+        let csnb = `login`;
+
+        // 현재 메뉴 상태
+        function menuActive() {
+            if( cgnb === "" ) return;
+            // 공통맞추기
+            if( cgnb === "faq" ) cgnb = "about";
+            $(".menu > ul > li[data-gnb="+ cgnb + "]").addClass("active");
+            // 메뉴 서브
+            if( csnb === "" ) return;
+            $(".menu > ul > li > ul > li[data-snb="+ csnb + "]").addClass("active");
+        }
+        menuActive();
+    })
+    </script>
+</div>
+
+</body></html>

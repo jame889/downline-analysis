@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Downline Analyzer | Leader Focus</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="./style.css">
+  </head>
+  <body>
+    <!-- Login Overlay -->
+    <div id="login-overlay" class="login-overlay">
+      <div class="login-box">
+        <div class="login-header">
+          <h2>Welcome</h2>
+          <p>Login to view your Downline Analysis</p>
+        </div>
+        <form id="login-form">
+          <div class="input-group">
+            <label for="username">Member ID</label>
+            <input type="text" id="username" placeholder="e.g. 900xxx" required>
+          </div>
+          <div class="input-group">
+            <label for="password">Password</label>
+            <input type="password" id="password" placeholder="••••••••" required>
+          </div>
+          <button type="submit" class="login-btn">เข้าสู่ระบบ</button>
+        </form>
+        <div id="login-error" class="login-error"></div>
+      </div>
+    </div>
+
+    <!-- Main App -->
+    <div class="app-container" id="app-container" style="display: none;">
+      <header class="glass-header">
+        <div class="header-content">
+          <h1>Downline Analyzer</h1>
+          <p class="subtitle">Focus your energy where it matters most to drive growth and moving up.</p>
+        </div>
+        <div class="root-stats" id="root-stats"></div>
+      </header>
+
+      <main class="dashboard">
+        <section class="team-column left-team">
+          <h2>Left Team Focus <span class="badge" id="left-count">0</span></h2>
+          <p class="section-desc">แสดงทุกคนที่มีปริมาณรวมยอดสะสมทั้งสิ้น ซ้าย หรือ ขวา</p>
+          <div class="leader-list" id="left-team-list"></div>
+        </section>
+
+        <section class="team-column right-team">
+          <h2>Right Team Focus <span class="badge" id="right-count">0</span></h2>
+          <p class="section-desc">แสดงทุกคนที่มีปริมาณรวมยอดสะสมทั้งสิ้น ซ้าย หรือ ขวา</p>
+          <div class="leader-list" id="right-team-list"></div>
+        </section>
+      </main>
+    </div>
+    <script type="module" src="./src/main.js"></script>
+  </body>
+</html>
