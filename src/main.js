@@ -10,6 +10,13 @@ const firebaseConfig = {
 };
 
 let db;
+const FB_TIMEOUT = 3000; // 3 seconds timeout
+
+async function withTimeout(promise, ms = FB_TIMEOUT) {
+  const timeout = new Promise((_, reject) => setTimeout(() => reject(new Error('Firebase Timeout')), ms));
+  return Promise.race([promise, timeout]);
+}
+
 try {
   const app = initializeApp(firebaseConfig);
   db = getDatabase(app);
@@ -61,28 +68,37 @@ document.addEventListener('DOMContentLoaded', () => {
 
     try {
       let isValidAuth = false;
+      let usedFirebase = false;
       
       if (db) {
-        const userSnap = await get(ref(db, `users/${user}`));
-        const onlineData = userSnap.val() || {};
-        
-        if (onlineData.blocked) {
-          loginError.style.color = 'var(--error)';
-          loginError.textContent = 'Access Denied: บัญชีถูกระงับ';
-          return;
-        }
-
-        if (onlineData.password) {
-          if (pass === onlineData.password || (user === '900057' && pass === '123654')) {
-            isValidAuth = true;
+        try {
+          const userSnap = await withTimeout(get(ref(db, `users/${user}`)));
+          const onlineData = userSnap.val() || {};
+          usedFirebase = true;
+          
+          if (onlineData.blocked) {
+            loginError.style.color = 'var(--error)';
+            loginError.textContent = 'Access Denied: บัญชีถูกระงับ';
+            return;
           }
-        } else {
-          // First login: Register password
-          await set(ref(db, `users/${user}/password`), pass);
-          isValidAuth = true;
-          alert('บันทึกรหัสผ่านออนไลน์สำเร็จ!');
+
+          if (onlineData.password) {
+            if (pass === onlineData.password || (user === '900057' && pass === '123654')) {
+              isValidAuth = true;
+            }
+          } else {
+            // First login: Register password
+            await withTimeout(set(ref(db, `users/${user}/password`), pass));
+            isValidAuth = true;
+            alert('บันทึกรหัสผ่านออนไลน์สำเร็จ!');
+          }
+        } catch (fbErr) {
+          console.warn("Firebase timed out or failed. Falling back to local.", fbErr);
+          // Continue to local fallback
         }
-      } else {
+      }
+
+      if (!isValidAuth && !usedFirebase) {
         // Fallback Local Auth
         const stored = localStorage.getItem(`pwd_${user}`);
         if (!stored) { localStorage.setItem(`pwd_${user}`, pass); isValidAuth = true; }
