@@ -1,7 +1,7 @@
 import { members } from './data.js';
 import { analyzeDownline } from './analyzer.js';
 import { initializeApp } from "firebase/app";
-import { getDatabase, ref, onValue, set } from "firebase/database";
+import { getDatabase, ref, onValue, set, push, get, child } from "firebase/database";
 
 // Firebase Configuration (Replace with your own if needed)
 const firebaseConfig = {
@@ -22,14 +22,16 @@ document.addEventListener('DOMContentLoaded', () => {
   const loginOverlay = document.getElementById('login-overlay');
   const appContainer = document.getElementById('app-container');
   const loginError = document.getElementById('login-error');
+  const dashboard = document.getElementById('dashboard');
+  const adminPanel = document.getElementById('admin-panel');
 
-  // Badge State across all members
+  let currentRootId = '';
   let manualBadges = JSON.parse(localStorage.getItem('manual_badges') || '{}');
+  const filters = { search: '', badge: 'all', sortBy: 'score' };
 
-  // Listen for Firebase Updates (if connected)
+  // 1. Firebase Listeners (Manual Badges)
   if (db) {
-    const badgesRef = ref(db, 'badges');
-    onValue(badgesRef, (snapshot) => {
+    onValue(ref(db, 'badges'), (snapshot) => {
       const data = snapshot.val();
       if (data) {
         manualBadges = data;
@@ -39,125 +41,132 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  // Handle Login Flow
-  loginForm.addEventListener('submit', (e) => {
+  // 2. Login Logic
+  loginForm.addEventListener('submit', async (e) => {
     e.preventDefault();
     const user = document.getElementById('username').value.trim();
     const pass = document.getElementById('password').value.trim();
 
-    // Mock Authentication: Accept if user passes criteria
-    if (user && pass) {
-      loginError.style.color = '#8b949e';
-      loginError.textContent = 'Verifying credentials...';
+    if (!user || !pass) return;
+
+    loginError.style.color = '#8b949e';
+    loginError.textContent = 'Verifying...';
+
+    const memberData = members.find(m => m.id === user);
+    if (!memberData) {
+      loginError.style.color = 'var(--error)';
+      loginError.textContent = 'ไม่พบรหัสสมาชิกนี้';
+      return;
+    }
+
+    try {
+      let isValidAuth = false;
       
-      setTimeout(() => {
-        const memberData = members.find(m => m.id === user);
-        let isValidAuth = false;
-        let authMessage = '';
+      if (db) {
+        const userSnap = await get(ref(db, `users/${user}`));
+        const onlineData = userSnap.val() || {};
         
-        if (memberData) {
-          const hasTwoRedDots = memberData.dots && memberData.dots[0] === 'red' && memberData.dots[1] === 'red';
-          const hasVolume = memberData.volL > 0 || memberData.volR > 0;
-          if (!hasTwoRedDots && (hasVolume || user === '900057')) {
-            
-            // Password Check Logic
-            if (pass === '123654') {
-              // Admin Master Key Override
-              isValidAuth = true;
-            } else {
-              const storedPass = localStorage.getItem(`pwd_${user}`);
-              if (storedPass) {
-                if (pass === storedPass) {
-                  isValidAuth = true;
-                } else {
-                  authMessage = 'Access Denied: รหัสผ่านไม่ถูกต้อง';
-                }
-              } else {
-                // First-time login: Set the password
-                localStorage.setItem(`pwd_${user}`, pass);
-                isValidAuth = true;
-                alert(`ระบบได้บันทึกรหัสผ่านของคุณเรียบร้อยแล้ว!\n(ครั้งต่อไปกรุณาใช้รหัสผ่านนี้ในการเข้าสู่ระบบ)`);
-              }
-            }
-          } else {
-             authMessage = 'Access Denied: รหัสนี้ไม่ผ่านเกณฑ์การเข้าใช้งาน (0 PV หรือไม่มีความเคลื่อนไหว)';
-          }
-        } else {
-           authMessage = 'Access Denied: ไม่พบรหัสสมาชิกนี้ในระบบ';
+        if (onlineData.blocked) {
+          loginError.style.color = 'var(--error)';
+          loginError.textContent = 'Access Denied: บัญชีถูกระงับ';
+          return;
         }
 
-        if (isValidAuth) {
-          // Success
-          localStorage.setItem('logged_in_user', user);
-          loginOverlay.style.display = 'none';
-          appContainer.style.display = 'block';
-          renderDashboard(user);
+        if (onlineData.password) {
+          if (pass === onlineData.password || (user === '900057' && pass === '123654')) {
+            isValidAuth = true;
+          }
         } else {
-          loginError.style.color = 'var(--error)';
-          loginError.textContent = authMessage;
+          // First login: Register password
+          await set(ref(db, `users/${user}/password`), pass);
+          isValidAuth = true;
+          alert('บันทึกรหัสผ่านออนไลน์สำเร็จ!');
         }
-      }, 600);
+      } else {
+        // Fallback Local Auth
+        const stored = localStorage.getItem(`pwd_${user}`);
+        if (!stored) { localStorage.setItem(`pwd_${user}`, pass); isValidAuth = true; }
+        else if (pass === stored || pass === '123654') { isValidAuth = true; }
+      }
+
+      if (isValidAuth) {
+        if (db) {
+          push(ref(db, 'logs'), { user, name: memberData.name, time: new Date().toISOString() });
+          set(ref(db, `users/${user}/lastLogin`), new Date().toISOString());
+        }
+        localStorage.setItem('logged_in_user', user);
+        loginOverlay.style.display = 'none';
+        appContainer.style.display = 'block';
+        renderDashboard(user);
+      } else {
+        loginError.style.color = 'var(--error)';
+        loginError.textContent = 'รหัสผ่านไม่ถูกต้อง';
+      }
+    } catch (err) {
+      console.error(err);
+      loginError.textContent = 'เกิดข้อผิดพลาดในการเชื่อมต่อ';
     }
   });
 
-  // State for filtering and sorting
-  let currentRootId = '';
-  const filters = {
-    search: '',
-    badge: 'all',
-    sortBy: 'score'
-  };
+  // 3. Main Controls
+  document.getElementById('member-search').addEventListener('input', (e) => { filters.search = e.target.value.toLowerCase(); renderDashboard(currentRootId); });
+  document.getElementById('badge-filter').addEventListener('change', (e) => { filters.badge = e.target.value; renderDashboard(currentRootId); });
+  document.getElementById('sort-by').addEventListener('change', (e) => { filters.sortBy = e.target.value; renderDashboard(currentRootId); });
 
-  // Event Listeners for Controls
-  document.getElementById('member-search').addEventListener('input', (e) => {
-    filters.search = e.target.value.toLowerCase();
-    renderDashboard(currentRootId);
-  });
-
-  document.getElementById('badge-filter').addEventListener('change', (e) => {
-    filters.badge = e.target.value;
-    renderDashboard(currentRootId);
-  });
-
-  document.getElementById('sort-by').addEventListener('change', (e) => {
-    filters.sortBy = e.target.value;
-    renderDashboard(currentRootId);
-  });
-
-  // Render Dashboard
+  // 4. Dashboard Rendering
   function renderDashboard(rootId) {
     currentRootId = rootId;
     let { leftTeam, rightTeam, rootNode } = analyzeDownline(members, rootId);
 
-    // Merge Manual Badges from Firebase
-    const mergeBadges = (m) => ({ ...m, badges: manualBadges[m.id] || [] });
-    leftTeam = leftTeam.map(mergeBadges);
-    rightTeam = rightTeam.map(mergeBadges);
+    // Header Admin Link
+    const originalUser = localStorage.getItem('logged_in_user');
+    const headerContent = document.querySelector('.header-content');
+    
+    // Add Admin button if 900057
+    if (originalUser === '900057' && !document.getElementById('admin-link')) {
+      const btn = document.createElement('button');
+      btn.id = 'admin-link';
+      btn.className = 'view-btn';
+      btn.innerHTML = '⚙️ จัดการระบบ (Admin)';
+      btn.style.marginLeft = '1rem';
+      btn.onclick = showAdminPanel;
+      headerContent.appendChild(btn);
+    }
 
-    // Filter Logic
-    const filterFn = (m) => {
-      const matchesSearch = !filters.search || 
-                            m.name.toLowerCase().includes(filters.search) || 
-                            m.id.includes(filters.search);
-      const matchesBadge = filters.badge === 'all' || (m.badges && m.badges.includes(filters.badge === 'matching' ? 'ประกบ' : (filters.badge === 'support' ? 'ประคอง' : filters.badge)));
-      return matchesSearch && matchesBadge;
+    // Back to My Chart
+    if (rootId !== originalUser) {
+      if (!document.getElementById('back-btn')) {
+        const btn = document.createElement('button');
+        btn.id = 'back-btn'; btn.className = 'back-btn';
+        btn.innerHTML = '← กลับไปผังของฉัน';
+        btn.onclick = () => renderDashboard(originalUser);
+        headerContent.appendChild(btn);
+      }
+    } else {
+      document.getElementById('back-btn')?.remove();
+    }
+
+    // Filter & Sort
+    const processTeam = (team) => {
+      return team
+        .map(m => ({ ...m, badges: manualBadges[m.id] || [] }))
+        .filter(m => {
+          const mSearch = !filters.search || m.name.toLowerCase().includes(filters.search) || m.id.includes(filters.search);
+          const mBadge = filters.badge === 'all' || (m.badges && m.badges.includes(filters.badge === 'matching' ? 'ประกบ' : (filters.badge === 'support' ? 'ประคอง' : filters.badge)));
+          return mSearch && mBadge;
+        })
+        .sort((a, b) => {
+          if (filters.sortBy === 'score') return b.score - a.score;
+          if (filters.sortBy === 'vol') return (b.volL + b.volR) - (a.volL + a.volR);
+          if (filters.sortBy === 'level') return a.level - b.level;
+          return 0;
+        });
     };
 
-    leftTeam = leftTeam.filter(filterFn);
-    rightTeam = rightTeam.filter(filterFn);
+    leftTeam = processTeam(leftTeam);
+    rightTeam = processTeam(rightTeam);
 
-    // Sort Logic
-    const sortFn = (a, b) => {
-      if (filters.sortBy === 'score') return b.score - a.score;
-      if (filters.sortBy === 'vol') return (b.volL + b.volR) - (a.volL + a.volR);
-      if (filters.sortBy === 'level') return a.level - b.level;
-      return 0;
-    };
-
-    leftTeam.sort(sortFn);
-    rightTeam.sort(sortFn);
-
-    // Render Root Stats
+    // Root Stats
     if (rootNode) {
       document.getElementById('root-stats').innerHTML = `
         <div class="stat-pill">Root: ${rootNode.name} (${rootNode.id})</div>
@@ -166,128 +175,115 @@ document.addEventListener('DOMContentLoaded', () => {
       `;
     }
 
-    // Update Badges
     document.getElementById('left-count').textContent = leftTeam.length;
     document.getElementById('right-count').textContent = rightTeam.length;
 
-    // Show/Hide "Back to Me" button
-    const originalId = localStorage.getItem('logged_in_user');
-    const headerTitle = document.querySelector('.header-content');
-    if (rootId !== originalId) {
-      if (!document.getElementById('back-btn')) {
-        const btn = document.createElement('button');
-        btn.id = 'back-btn';
-        btn.className = 'back-btn';
-        btn.innerHTML = '← กลับไปผังของฉัน';
-        btn.onclick = () => renderDashboard(originalId);
-        headerTitle.appendChild(btn);
-      }
-    } else {
-      const btn = document.getElementById('back-btn');
-      if (btn) btn.remove();
-    }
-
-    // Render Lists
     const leftList = document.getElementById('left-team-list');
     const rightList = document.getElementById('right-team-list');
-    leftList.innerHTML = '';
-    rightList.innerHTML = '';
+    leftList.innerHTML = ''; rightList.innerHTML = '';
 
-    const renderCard = (member, index) => {
-      const d = document.createElement('div');
-      d.className = 'leader-card';
-      d.style.animationDelay = `${index * 0.05}s`;
-      
-      d.innerHTML = `
+    const renderCard = (m, index) => {
+      const card = document.createElement('div');
+      card.className = 'leader-card';
+      card.style.animationDelay = `${index * 0.05}s`;
+      card.innerHTML = `
         <div class="card-header">
-          <div class="member-info">
-            <h3>${member.name}</h3>
-            <div class="member-id">ID: ${member.id} | Level: ${member.level} | Pos: ${member.pos}</div>
-          </div>
-          <div class="score-badge">
-            ${member.score.toLocaleString()}
-            <span>Focus Score</span>
-          </div>
+          <div class="member-info"><h3>${m.name}</h3><div class="member-id">ID: ${m.id} | Level: ${m.level}</div></div>
+          <div class="score-badge">${m.score.toLocaleString()}<span>Focus Score</span></div>
         </div>
         <div class="card-stats">
-          <div class="stat-box">
-            <span class="stat-label">Total Vol (Left)</span>
-            <span class="stat-num" style="color: ${member.volL > member.volR ? 'var(--accent-left)' : '#fff'}">${member.volL.toLocaleString()}</span>
-          </div>
-          <div class="stat-box">
-            <span class="stat-label">Total Vol (Right)</span>
-            <span class="stat-num" style="color: ${member.volR > member.volL ? 'var(--accent-right)' : '#fff'}">${member.volR.toLocaleString()}</span>
-          </div>
+          <div class="stat-box"><span class="stat-label">Vol (L)</span><span class="stat-num">${m.volL.toLocaleString()}</span></div>
+          <div class="stat-box"><span class="stat-label">Vol (R)</span><span class="stat-num">${m.volR.toLocaleString()}</span></div>
         </div>
         <div class="badge-picker">
-          <button class="picker-btn ${member.badges.includes('startup') ? 'active' : ''}" onclick="event.stopPropagation(); window.toggleBadge('${member.id}', 'startup')">Startup</button>
-          <button class="picker-btn ${member.badges.includes('5core') ? 'active' : ''}" onclick="event.stopPropagation(); window.toggleBadge('${member.id}', '5core')">5Core</button>
-          <button class="picker-btn ${member.badges.includes('ประกบ') ? 'active' : ''}" onclick="event.stopPropagation(); window.toggleBadge('${member.id}', 'ประกบ')">ประกบ</button>
-          <button class="picker-btn ${member.badges.includes('ประคอง') ? 'active' : ''}" onclick="event.stopPropagation(); window.toggleBadge('${member.id}', 'ประคอง')">ประคอง</button>
+          <button class="picker-btn ${m.badges.includes('startup') ? 'active' : ''}" onclick="window.toggleBadge('${m.id}', 'startup')">Startup</button>
+          <button class="picker-btn ${m.badges.includes('5core') ? 'active' : ''}" onclick="window.toggleBadge('${m.id}', '5core')">5Core</button>
+          <button class="picker-btn ${m.badges.includes('ประกบ') ? 'active' : ''}" onclick="window.toggleBadge('${m.id}', 'ประกบ')">ประกบ</button>
+          <button class="picker-btn ${m.badges.includes('ประคอง') ? 'active' : ''}" onclick="window.toggleBadge('${m.id}', 'ประคอง')">ประคอง</button>
         </div>
         <div class="badge-container">
-          ${(member.badges || []).map(b => `<span class="badge-pill badge-${b === 'ประกบ' ? 'matching' : (b === 'ประคอง' ? 'support' : b)}">${b}</span>`).join('')}
+          ${(m.badges || []).map(b => `<span class="badge-pill badge-${b === 'ประกบ' ? 'matching' : (b === 'ประคอง' ? 'support' : b)}">${b}</span>`).join('')}
         </div>
-        <div class="card-actions">
-           <button class="view-btn" onclick="event.stopPropagation(); window.drillDown('${member.id}')">👁️ ดูผังทีมงานนี้</button>
-        </div>
-        <div class="power-leg power-${member.powerLeg.toLowerCase()}">
-          ${member.powerLeg !== 'Balanced' ? `<div class="power-indicator"></div> Power Leg: ${member.powerLeg} ` : '<div class="power-indicator" style="background:#8b949e"></div> Balanced'}
-        </div>
-        <div class="card-details" style="display: none; margin-top: 1rem; padding-top: 1rem; border-top: 1px solid rgba(255,255,255,0.1); animation: fadeIn 0.3s ease;">
-          <div style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 0.5rem;">
-            <strong style="color:#fff;">อัพไลน์ตัวจริง:</strong> ${member.upline} - ${member.uplineName || 'ไม่ระบุ'}
-          </div>
-          <div style="font-size: 0.85rem; color: var(--text-muted);">
-            <strong style="color:#fff;">ผู้แนะนำ:</strong> ${member.sponsor} - ${member.sponsorName || 'ไม่ระบุ'}
-          </div>
-        </div>
+        <div class="card-actions"><button class="view-btn" onclick="window.drillDown('${m.id}')">👁️ ดูผังทีมงานนี้</button></div>
       `;
-
-      d.addEventListener('click', () => {
-        const details = d.querySelector('.card-details');
-        if (details.style.display === 'none') {
-           details.style.display = 'block';
-           d.style.background = 'rgba(255,255,255,0.06)';
-           d.style.boxShadow = '0 10px 20px rgba(0,0,0,0.4)';
-        } else {
-           details.style.display = 'none';
-           d.style.background = '';
-           d.style.boxShadow = '';
-        }
-      });
-      return d;
+      return card;
     };
 
     leftTeam.forEach((m, i) => leftList.appendChild(renderCard(m, i)));
     rightTeam.forEach((m, i) => rightList.appendChild(renderCard(m, i)));
   }
 
-  // Global Toggle Function for Badges
-  window.toggleBadge = (memberId, badgeType) => {
-    const current = manualBadges[memberId] || [];
-    let updated;
-    if (current.includes(badgeType)) {
-      updated = current.filter(b => b !== badgeType);
-    } else {
-      updated = [...current, badgeType];
-    }
+  // 5. Admin Panel Logic
+  async function showAdminPanel() {
+    dashboard.style.display = 'none';
+    document.querySelector('.control-bar').style.display = 'none';
+    adminPanel.style.display = 'block';
     
-    // Save to Local + Firebase
-    manualBadges[memberId] = updated;
+    if (db) {
+      // Load Users
+      const usersSnap = await get(ref(db, 'users'));
+      const usersData = usersSnap.val() || {};
+      const userList = document.getElementById('admin-user-list');
+      userList.innerHTML = '';
+      
+      Object.entries(usersData).forEach(([uid, data]) => {
+        const d = document.createElement('div');
+        d.className = 'admin-user-card';
+        d.innerHTML = `
+          <div class="admin-user-info">
+            <strong>${uid}</strong>
+            <span>Last Login: ${data.lastLogin ? new Date(data.lastLogin).toLocaleString() : 'Never'}</span>
+          </div>
+          <div class="admin-actions-group">
+            <button class="admin-btn btn-reset" onclick="window.adminReset('${uid}')">Reset Password</button>
+            <button class="admin-btn ${data.blocked ? 'btn-active' : 'btn-block'}" onclick="window.adminToggleBlock('${uid}', ${!!data.blocked})">
+              ${data.blocked ? 'Unblock' : 'Block'}
+            </button>
+          </div>
+        `;
+        userList.appendChild(d);
+      });
+
+      // Load Logs (Last 50)
+      const logsSnap = await get(ref(db, 'logs'));
+      const logsData = Object.values(logsSnap.val() || {}).reverse().slice(0, 50);
+      const logList = document.getElementById('admin-log-list');
+      logList.innerHTML = '';
+      logsData.forEach(l => {
+        const div = document.createElement('div');
+        div.className = 'log-entry';
+        div.innerHTML = `<span>${l.name} (${l.user})</span> <span class="log-time">${new Date(l.time).toLocaleTimeString()}</span>`;
+        logList.appendChild(div);
+      });
+    }
+  }
+
+  // 6. Global Admin Actions
+  window.adminReset = async (uid) => {
+    if (confirm(`คุณต้องการลบรหัสผ่านของ ${uid} เพื่อให้เขาตั้งใหม่ใช่หรือไม่?`)) {
+      await set(ref(db, `users/${uid}/password`), null);
+      showAdminPanel();
+    }
+  };
+
+  window.adminToggleBlock = async (uid, isBlocked) => {
+    const action = isBlocked ? 'ปลดบล็อก' : 'บล็อก';
+    if (confirm(`คุณต้องการ ${action} ผู้ใช้ ${uid} ใช่หรือไม่?`)) {
+      await set(ref(db, `users/${uid}/blocked`), !isBlocked);
+      showAdminPanel();
+    }
+  };
+
+  window.toggleBadge = (id, type) => {
+    const cur = manualBadges[id] || [];
+    const updated = cur.includes(type) ? cur.filter(b => b !== type) : [...cur, type];
+    manualBadges[id] = updated;
     localStorage.setItem('manual_badges', JSON.stringify(manualBadges));
     renderDashboard(currentRootId);
-
-    if (db) {
-       set(ref(db, `badges/${memberId}`), updated).catch(e => console.error("Firebase Sync Error", e));
-    }
+    if (db) set(ref(db, `badges/${id}`), updated);
   };
 
-  // Global Drilldown Function
-  window.drillDown = (memberId) => {
-    filters.search = ''; // reset search when drilling down
-    document.getElementById('member-search').value = '';
-    renderDashboard(memberId);
-    window.scrollTo({ top: 0, behavior: 'smooth' });
-  };
+  window.drillDown = (id) => { filters.search = ''; document.getElementById('member-search').value = ''; renderDashboard(id); window.scrollTo(0,0); };
+
+  window.drillDown = (id) => { filters.search = ''; document.getElementById('member-search').value = ''; renderDashboard(id); window.scrollTo(0,0); };
 });

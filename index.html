@@ -62,7 +62,30 @@
         </div>
       </div>
 
-      <main class="dashboard">
+      <div id="admin-panel" style="display: none; padding: 2rem; max-width: 1200px; margin: 0 auto; animation: fadeIn 0.4s ease;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem;">
+          <h2 style="font-size: 2rem; font-weight: 800;">User Management & Logs</h2>
+          <button class="back-btn" onclick="document.getElementById('admin-panel').style.display='none'; document.getElementById('dashboard').style.display='grid'; document.querySelector('.control-bar').style.display='flex';">← กลับไปหน้าหลัก</button>
+        </div>
+        
+        <div class="admin-grid" style="display: grid; grid-template-columns: 2fr 1fr; gap: 2rem;">
+          <section class="admin-section team-column">
+            <h3>Registered Users</h3>
+            <div id="admin-user-list" class="leader-list">
+              <!-- User list will be rendered here -->
+            </div>
+          </section>
+          
+          <section class="admin-section team-column">
+            <h3>Access Logs (Last 50)</h3>
+            <div id="admin-log-list" class="leader-list" style="font-size: 0.85rem;">
+              <!-- Logs will be rendered here -->
+            </div>
+          </section>
+        </div>
+      </div>
+
+      <main class="dashboard" id="dashboard">
         <section class="team-column left-team">
           <h2>Left Team Focus <span class="badge" id="left-count">0</span></h2>
           <p class="section-desc">แสดงทุกคนที่มีปริมาณรวมยอดสะสมทั้งสิ้น ซ้าย หรือ ขวา</p>
