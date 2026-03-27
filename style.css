@@ -219,3 +219,49 @@ body { background: var(--bg-color); color: var(--text-main); min-height: 100vh; 
   background: var(--accent);
   color: #fff;
 }
+
+/* Drill-down Navigation Styles */
+.card-actions {
+  margin-top: 0.5rem;
+  display: flex;
+  justify-content: flex-end;
+}
+
+.view-btn {
+  background: var(--accent-left-bg);
+  border: 1px solid var(--accent-left);
+  color: var(--accent-left);
+  padding: 0.4rem 0.8rem;
+  border-radius: 8px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.view-btn:hover {
+  background: var(--accent-left);
+  color: #fff;
+  transform: translateY(-1px);
+}
+
+.back-btn {
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  color: #fff;
+  padding: 0.5rem 1rem;
+  border-radius: 20px;
+  font-size: 0.85rem;
+  margin-top: 1rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: inline-block;
+}
+
+.back-btn:hover {
+  background: rgba(255, 255, 255, 0.2);
+  border-color: #fff;
+}

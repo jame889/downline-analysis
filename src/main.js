@@ -88,6 +88,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         if (isValidAuth) {
           // Success
+          localStorage.setItem('logged_in_user', user);
           loginOverlay.style.display = 'none';
           appContainer.style.display = 'block';
           renderDashboard(user);
@@ -169,6 +170,23 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('left-count').textContent = leftTeam.length;
     document.getElementById('right-count').textContent = rightTeam.length;
 
+    // Show/Hide "Back to Me" button
+    const originalId = localStorage.getItem('logged_in_user');
+    const headerTitle = document.querySelector('.header-content');
+    if (rootId !== originalId) {
+      if (!document.getElementById('back-btn')) {
+        const btn = document.createElement('button');
+        btn.id = 'back-btn';
+        btn.className = 'back-btn';
+        btn.innerHTML = '← กลับไปผังของฉัน';
+        btn.onclick = () => renderDashboard(originalId);
+        headerTitle.appendChild(btn);
+      }
+    } else {
+      const btn = document.getElementById('back-btn');
+      if (btn) btn.remove();
+    }
+
     // Render Lists
     const leftList = document.getElementById('left-team-list');
     const rightList = document.getElementById('right-team-list');
@@ -209,6 +227,9 @@ document.addEventListener('DOMContentLoaded', () => {
         </div>
         <div class="badge-container">
           ${(member.badges || []).map(b => `<span class="badge-pill badge-${b === 'ประกบ' ? 'matching' : (b === 'ประคอง' ? 'support' : b)}">${b}</span>`).join('')}
+        </div>
+        <div class="card-actions">
+           <button class="view-btn" onclick="event.stopPropagation(); window.drillDown('${member.id}')">👁️ ดูผังทีมงานนี้</button>
         </div>
         <div class="power-leg power-${member.powerLeg.toLowerCase()}">
           ${member.powerLeg !== 'Balanced' ? `<div class="power-indicator"></div> Power Leg: ${member.powerLeg} ` : '<div class="power-indicator" style="background:#8b949e"></div> Balanced'}
@@ -260,5 +281,13 @@ document.addEventListener('DOMContentLoaded', () => {
     if (db) {
        set(ref(db, `badges/${memberId}`), updated).catch(e => console.error("Firebase Sync Error", e));
     }
+  };
+
+  // Global Drilldown Function
+  window.drillDown = (memberId) => {
+    filters.search = ''; // reset search when drilling down
+    document.getElementById('member-search').value = '';
+    renderDashboard(memberId);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 });
