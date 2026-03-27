@@ -43,39 +43,42 @@ import fs from 'fs';
     });
 
     console.log("Waiting for network to settle after login...");
-    await page.waitForNavigation({ waitUntil: 'domcontentloaded', timeout: 15000 }).catch(() => console.log("Navigation ready."));
+    await page.waitForNavigation({ waitUntil: 'networkidle', timeout: 30000 }).catch(() => console.log("Navigation ready (idle)."));
 
     console.log("Navigating to Downline Business Report...");
-    await page.goto('https://www.firstthailand.co.th/myoffice/performance/getDownlineBusinessReport.do', { waitUntil: 'domcontentloaded' });
+    await page.goto('https://www.firstthailand.co.th/myoffice/performance/getDownlineBusinessReport.do', { waitUntil: 'domcontentloaded', timeout: 60000 });
     
     console.log("Waiting for report table to load...");
-    await page.waitForTimeout(6000); // Give the table and scripts 6 seconds to populate
+    await page.waitForTimeout(10000); // Increased wait time
 
     console.log("Triggering Excel Download...");
-    // Use an evaluate trick to click the exact download endpoint if known, or text match
-    const downloadPromise = page.waitForEvent('download', { timeout: 20000 });
+    const downloadPromise = page.waitForEvent('download', { timeout: 60000 });
     
-    // Try an alternative Playwright locator for the Excel link before evaluating
+    // Better click strategy
     const excelLocator = page.locator('a, button, img').filter({ hasText: /excel|download/i }).first();
     if (await excelLocator.count() > 0) {
-        console.log("Triggering explicit locator click for Excel...");
-        await excelLocator.click();
+        console.log("Triggering locator click for Excel...");
+        await excelLocator.click({ timeout: 10000 }).catch(async () => {
+            console.log("Locator click failed, trying evaluate...");
+            await page.evaluate(() => {
+                const el = Array.from(document.querySelectorAll('a, button')).find(e => e.innerText.toLowerCase().includes('excel'));
+                if (el) el.click();
+            });
+        });
     } else {
         await page.evaluate(() => {
-           const links = Array.from(document.querySelectorAll('a, span, div, button, img'));
-           const excelAct = links.find(el => 
-              (el.tagName === 'A' && el.href.includes('excel')) || 
-              (el.innerText && el.innerText.toLowerCase().includes('excel')) ||
-              (el.src && el.src.includes('excel'))
-           );
-           if (excelAct) excelAct.click();
-           else if (typeof excelDown === 'function') excelDown();
+           if (typeof excelDown === 'function') excelDown();
+           else {
+               const el = Array.from(document.querySelectorAll('a, button')).find(e => e.innerText.toLowerCase().includes('excel'));
+               if (el) el.click();
+           }
         });
     }
 
+    let downloadPath;
     try {
       const download = await downloadPromise;
-      const downloadPath = `./temp_report.xlsx`;
+      downloadPath = `./temp_report.xlsx`;
       await download.saveAs(downloadPath);
       console.log(`Report downloaded successfully to temp file.`);
     } catch(e) {

@@ -42,6 +42,26 @@
         <div class="root-stats" id="root-stats"></div>
       </header>
 
+      <div class="control-bar">
+        <div class="search-box">
+          <input type="text" id="member-search" placeholder="ค้นหาชื่อหรือรหัสสมาชิก...">
+        </div>
+        <div class="filter-group">
+          <select id="badge-filter">
+            <option value="all">ทุกป้ายไฟ</option>
+            <option value="startup">Startup</option>
+            <option value="5core">5Core</option>
+            <option value="matching">ประกบ (Matching)</option>
+            <option value="support">ประคอง (Support)</option>
+          </select>
+          <select id="sort-by">
+            <option value="score">เรียงตาม Focus Score</option>
+            <option value="vol">เรียงตามยอดรวม (PV)</option>
+            <option value="level">เรียงตาม Level</option>
+          </select>
+        </div>
+      </div>
+
       <main class="dashboard">
         <section class="team-column left-team">
           <h2>Left Team Focus <span class="badge" id="left-count">0</span></h2>

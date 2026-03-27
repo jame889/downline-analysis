@@ -58,14 +58,16 @@ export function analyzeDownline(members, rootId) {
 
   // Assign Team Side and Flatten with DFS for correct Upline order
   const dfsAnalyzed = [];
-  
   function traverseAndAnalyze(node, team) {
     node.team = team;
-    
     const imbalance = Math.abs(node.volL - node.volR);
     const powerLeg = node.volL > node.volR ? 'Left' : (node.volR > node.volL ? 'Right' : 'Balanced');
     const totalVol = node.volL + node.volR;
     
+    // Automated Badges Removed (Now 100% Manual)
+    const badges = [];
+    
+    node.badges = badges;
     node.imbalance = imbalance;
     node.powerLeg = powerLeg;
     node.totalVol = totalVol;
@@ -84,6 +86,8 @@ export function analyzeDownline(members, rootId) {
   rootNode.totalVol = rootNode.volL + rootNode.volR;
   rootNode.score = rootNode.totalVol === 0 ? 0 : Math.round(rootNode.imbalance * 1.5 + rootNode.level * 100);
   
+  rootNode.badges = []; // Reset root badges
+
   dfsAnalyzed.push(rootNode);
 
   if (rootNode.children.length > 0) traverseAndAnalyze(rootNode.children[0], 'Left');

@@ -1,11 +1,43 @@
 import { members } from './data.js';
 import { analyzeDownline } from './analyzer.js';
+import { initializeApp } from "firebase/app";
+import { getDatabase, ref, onValue, set } from "firebase/database";
+
+// Firebase Configuration (Replace with your own if needed)
+const firebaseConfig = {
+  apiKey: "optional-placeholder-key",
+  databaseURL: "https://downline-analyzer-default-rtdb.asia-southeast1.firebasedatabase.app"
+};
+
+let db;
+try {
+  const app = initializeApp(firebaseConfig);
+  db = getDatabase(app);
+} catch (e) {
+  console.warn("Firebase initialization failed. Falling back to Local Mode.", e);
+}
 
 document.addEventListener('DOMContentLoaded', () => {
   const loginForm = document.getElementById('login-form');
   const loginOverlay = document.getElementById('login-overlay');
   const appContainer = document.getElementById('app-container');
   const loginError = document.getElementById('login-error');
+
+  // Badge State across all members
+  let manualBadges = JSON.parse(localStorage.getItem('manual_badges') || '{}');
+
+  // Listen for Firebase Updates (if connected)
+  if (db) {
+    const badgesRef = ref(db, 'badges');
+    onValue(badgesRef, (snapshot) => {
+      const data = snapshot.val();
+      if (data) {
+        manualBadges = data;
+        localStorage.setItem('manual_badges', JSON.stringify(manualBadges));
+        if (currentRootId) renderDashboard(currentRootId);
+      }
+    });
+  }
 
   // Handle Login Flow
   loginForm.addEventListener('submit', (e) => {
@@ -67,9 +99,62 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   });
 
+  // State for filtering and sorting
+  let currentRootId = '';
+  const filters = {
+    search: '',
+    badge: 'all',
+    sortBy: 'score'
+  };
+
+  // Event Listeners for Controls
+  document.getElementById('member-search').addEventListener('input', (e) => {
+    filters.search = e.target.value.toLowerCase();
+    renderDashboard(currentRootId);
+  });
+
+  document.getElementById('badge-filter').addEventListener('change', (e) => {
+    filters.badge = e.target.value;
+    renderDashboard(currentRootId);
+  });
+
+  document.getElementById('sort-by').addEventListener('change', (e) => {
+    filters.sortBy = e.target.value;
+    renderDashboard(currentRootId);
+  });
+
   // Render Dashboard
   function renderDashboard(rootId) {
-    const { leftTeam, rightTeam, rootNode } = analyzeDownline(members, rootId);
+    currentRootId = rootId;
+    let { leftTeam, rightTeam, rootNode } = analyzeDownline(members, rootId);
+
+    // Merge Manual Badges from Firebase
+    const mergeBadges = (m) => ({ ...m, badges: manualBadges[m.id] || [] });
+    leftTeam = leftTeam.map(mergeBadges);
+    rightTeam = rightTeam.map(mergeBadges);
+
+    // Filter Logic
+    const filterFn = (m) => {
+      const matchesSearch = !filters.search || 
+                            m.name.toLowerCase().includes(filters.search) || 
+                            m.id.includes(filters.search);
+      const matchesBadge = filters.badge === 'all' || (m.badges && m.badges.includes(filters.badge === 'matching' ? 'ประกบ' : (filters.badge === 'support' ? 'ประคอง' : filters.badge)));
+      return matchesSearch && matchesBadge;
+    };
+
+    leftTeam = leftTeam.filter(filterFn);
+    rightTeam = rightTeam.filter(filterFn);
+
+    // Sort Logic
+    const sortFn = (a, b) => {
+      if (filters.sortBy === 'score') return b.score - a.score;
+      if (filters.sortBy === 'vol') return (b.volL + b.volR) - (a.volL + a.volR);
+      if (filters.sortBy === 'level') return a.level - b.level;
+      return 0;
+    };
+
+    leftTeam.sort(sortFn);
+    rightTeam.sort(sortFn);
 
     // Render Root Stats
     if (rootNode) {
@@ -87,7 +172,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // Render Lists
     const leftList = document.getElementById('left-team-list');
     const rightList = document.getElementById('right-team-list');
-    leftList.innerHTML = ''; // clear any existing data
+    leftList.innerHTML = '';
     rightList.innerHTML = '';
 
     const renderCard = (member, index) => {
@@ -115,6 +200,15 @@ document.addEventListener('DOMContentLoaded', () => {
             <span class="stat-label">Total Vol (Right)</span>
             <span class="stat-num" style="color: ${member.volR > member.volL ? 'var(--accent-right)' : '#fff'}">${member.volR.toLocaleString()}</span>
           </div>
+        </div>
+        <div class="badge-picker">
+          <button class="picker-btn ${member.badges.includes('startup') ? 'active' : ''}" onclick="event.stopPropagation(); window.toggleBadge('${member.id}', 'startup')">Startup</button>
+          <button class="picker-btn ${member.badges.includes('5core') ? 'active' : ''}" onclick="event.stopPropagation(); window.toggleBadge('${member.id}', '5core')">5Core</button>
+          <button class="picker-btn ${member.badges.includes('ประกบ') ? 'active' : ''}" onclick="event.stopPropagation(); window.toggleBadge('${member.id}', 'ประกบ')">ประกบ</button>
+          <button class="picker-btn ${member.badges.includes('ประคอง') ? 'active' : ''}" onclick="event.stopPropagation(); window.toggleBadge('${member.id}', 'ประคอง')">ประคอง</button>
+        </div>
+        <div class="badge-container">
+          ${(member.badges || []).map(b => `<span class="badge-pill badge-${b === 'ประกบ' ? 'matching' : (b === 'ประคอง' ? 'support' : b)}">${b}</span>`).join('')}
         </div>
         <div class="power-leg power-${member.powerLeg.toLowerCase()}">
           ${member.powerLeg !== 'Balanced' ? `<div class="power-indicator"></div> Power Leg: ${member.powerLeg} ` : '<div class="power-indicator" style="background:#8b949e"></div> Balanced'}
@@ -147,4 +241,24 @@ document.addEventListener('DOMContentLoaded', () => {
     leftTeam.forEach((m, i) => leftList.appendChild(renderCard(m, i)));
     rightTeam.forEach((m, i) => rightList.appendChild(renderCard(m, i)));
   }
+
+  // Global Toggle Function for Badges
+  window.toggleBadge = (memberId, badgeType) => {
+    const current = manualBadges[memberId] || [];
+    let updated;
+    if (current.includes(badgeType)) {
+      updated = current.filter(b => b !== badgeType);
+    } else {
+      updated = [...current, badgeType];
+    }
+    
+    // Save to Local + Firebase
+    manualBadges[memberId] = updated;
+    localStorage.setItem('manual_badges', JSON.stringify(manualBadges));
+    renderDashboard(currentRootId);
+
+    if (db) {
+       set(ref(db, `badges/${memberId}`), updated).catch(e => console.error("Firebase Sync Error", e));
+    }
+  };
 });
