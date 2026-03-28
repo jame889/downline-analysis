@@ -220,7 +220,10 @@ document.addEventListener('DOMContentLoaded', () => {
         <div class="badge-container">
           ${(m.badges || []).map(b => `<span class="badge-pill badge-${b === 'ประกบ' ? 'matching' : (b === 'ประคอง' ? 'support' : b)}">${b}</span>`).join('')}
         </div>
-        <div class="card-actions"><button class="view-btn" onclick="window.drillDown('${m.id}')">👁️ ดูผังทีมงานนี้</button></div>
+        <div class="card-actions">
+          <button class="view-btn" onclick="window.drillDown('${m.id}')">👁️ ดูผังทีมงานนี้</button>
+          <button class="view-btn" style="background:linear-gradient(135deg,#4f46e5,#7c3aed); margin-left:0.5rem;" onclick="window.showProgressChart('${m.id}','${m.name}')">📈 ดูกราฟ</button>
+        </div>
       `;
       return card;
     };
@@ -301,5 +304,97 @@ document.addEventListener('DOMContentLoaded', () => {
 
   window.drillDown = (id) => { filters.search = ''; document.getElementById('member-search').value = ''; renderDashboard(id); window.scrollTo(0,0); };
 
-  window.drillDown = (id) => { filters.search = ''; document.getElementById('member-search').value = ''; renderDashboard(id); window.scrollTo(0,0); };
+  // 7. Progress Chart
+  let chartInstance = null;
+  window.showProgressChart = async (memberId, memberName) => {
+    const modal = document.getElementById('chart-modal');
+    const loading = document.getElementById('chart-loading');
+    const noData = document.getElementById('chart-no-data');
+    const canvas = document.getElementById('progress-chart');
+    document.getElementById('chart-title').textContent = `📈 ${memberName}`;
+    document.getElementById('chart-subtitle').textContent = `ID: ${memberId} — ประวัติ Vol ซ้าย/ขวา`;
+
+    modal.style.display = 'block';
+    loading.style.display = 'block';
+    noData.style.display = 'none';
+    canvas.style.display = 'none';
+    if (chartInstance) { chartInstance.destroy(); chartInstance = null; }
+
+    if (!db) {
+      loading.style.display = 'none';
+      noData.style.display = 'block';
+      noData.innerHTML = '⚠️ ไม่ได้เชื่อมต่อ Firebase<br><small>ระบบทำงานแบบออฟไลน์</small>';
+      return;
+    }
+
+    try {
+      const snap = await withTimeout(get(ref(db, `history/${memberId}`)), 8000);
+      const data = snap.val();
+
+      if (!data || Object.keys(data).length === 0) {
+        loading.style.display = 'none';
+        noData.style.display = 'block';
+        noData.innerHTML = '📭 ยังไม่มีข้อมูลประวัติ<br><small>ระบบจะเริ่มบันทึกตั้งแต่การ Sync ครั้งต่อไป</small>';
+        return;
+      }
+
+      const sorted = Object.entries(data).sort(([a], [b]) => a.localeCompare(b));
+      const labels = sorted.map(([d]) => d);
+      const volLData = sorted.map(([, v]) => v.volL || 0);
+      const volRData = sorted.map(([, v]) => v.volR || 0);
+
+      loading.style.display = 'none';
+      canvas.style.display = 'block';
+
+      chartInstance = new Chart(canvas, {
+        type: 'line',
+        data: {
+          labels,
+          datasets: [
+            {
+              label: 'Vol ซ้าย (L)',
+              data: volLData,
+              borderColor: '#60a5fa',
+              backgroundColor: 'rgba(96,165,250,0.15)',
+              tension: 0.4,
+              fill: true,
+              pointRadius: 4,
+              pointHoverRadius: 6,
+            },
+            {
+              label: 'Vol ขวา (R)',
+              data: volRData,
+              borderColor: '#a78bfa',
+              backgroundColor: 'rgba(167,139,250,0.15)',
+              tension: 0.4,
+              fill: true,
+              pointRadius: 4,
+              pointHoverRadius: 6,
+            }
+          ]
+        },
+        options: {
+          responsive: true,
+          interaction: { mode: 'index', intersect: false },
+          plugins: {
+            legend: { labels: { color: '#e6edf3' } },
+            tooltip: {
+              callbacks: {
+                label: ctx => ` ${ctx.dataset.label}: ${ctx.raw.toLocaleString()}`
+              }
+            }
+          },
+          scales: {
+            x: { ticks: { color: '#8b949e' }, grid: { color: 'rgba(255,255,255,0.05)' } },
+            y: { ticks: { color: '#8b949e', callback: v => v.toLocaleString() }, grid: { color: 'rgba(255,255,255,0.05)' } }
+          }
+        }
+      });
+    } catch (e) {
+      loading.style.display = 'none';
+      noData.style.display = 'block';
+      noData.innerHTML = '❌ โหลดข้อมูลไม่สำเร็จ<br><small>' + e.message + '</small>';
+    }
+  };
+
 });

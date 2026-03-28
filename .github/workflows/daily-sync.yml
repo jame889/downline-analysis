@@ -31,6 +31,7 @@ jobs:
       - name: Run Downline Scraper
         env:
           FIRST_DIRECT_PASSWORD: ${{ secrets.FIRST_DIRECT_PASSWORD }}
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
         run: node sync.js
 
       - name: Commit updated data back to repository

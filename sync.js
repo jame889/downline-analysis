@@ -2,6 +2,36 @@ import { chromium } from 'playwright';
 import * as XLSX from 'xlsx';
 import fs from 'fs';
 
+// ---- Firebase Admin Setup (for Node.js / GitHub Actions) ----
+// Uses FIREBASE_SERVICE_ACCOUNT env var (JSON string) in CI,
+// or falls back to a local serviceAccountKey.json file.
+let fbAdmin = null;
+let fbDb = null;
+try {
+  const { default: admin } = await import('firebase-admin');
+  let serviceAccount;
+  if (process.env.FIREBASE_SERVICE_ACCOUNT) {
+    serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
+  } else if (fs.existsSync('./serviceAccountKey.json')) {
+    serviceAccount = JSON.parse(fs.readFileSync('./serviceAccountKey.json', 'utf8'));
+  }
+  if (serviceAccount) {
+    if (!admin.apps.length) {
+      admin.initializeApp({
+        credential: admin.credential.cert(serviceAccount),
+        databaseURL: "https://downline-analyzer-default-rtdb.asia-southeast1.firebasedatabase.app"
+      });
+    }
+    fbAdmin = admin;
+    fbDb = admin.database();
+    console.log("✅ Firebase Admin connected.");
+  } else {
+    console.warn("⚠️ No Firebase credentials found. History will NOT be pushed.");
+  }
+} catch (e) {
+  console.warn("⚠️ firebase-admin not available:", e.message);
+}
+
 (async () => {
   console.log("Starting Automated Sync Tracker...");
   const browser = await chromium.launch({ headless: true });
@@ -137,6 +167,21 @@ import fs from 'fs';
     const fileContent = `export const members = ${JSON.stringify(members, null, 2)};\n`;
     fs.writeFileSync('./src/data.js', fileContent);
     console.log(`✅ Automated Sync Complete! Successfully extracted and replaced ${members.length} records into the app.`);
+
+    // ---- Push Daily History Snapshot to Firebase ----
+    if (fbDb) {
+      const today = new Date().toISOString().slice(0, 10); // e.g. "2026-03-29"
+      console.log(`📊 Pushing daily snapshot for ${today} to Firebase (${members.length} members)...`);
+      const updates = {};
+      for (const m of members) {
+        if (m.volL || m.volR) {
+          updates[`history/${m.id}/${today}`] = { volL: m.volL, volR: m.volR, name: m.name };
+        }
+      }
+      await fbDb.ref('/').update(updates);
+      console.log(`✅ History snapshot pushed for ${Object.keys(updates).length} members.`);
+      await fbAdmin.app().delete();
+    }
     
     // Cleanup temp excel file
     fs.unlinkSync(downloadPath);

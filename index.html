@@ -8,6 +8,7 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="./style.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
   </head>
   <body>
     <!-- Login Overlay -->
@@ -99,6 +100,25 @@
         </section>
       </main>
     </div>
+
+    <!-- Chart Modal -->
+    <div id="chart-modal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.85); backdrop-filter:blur(8px); z-index:9999; overflow-y:auto; padding:2rem;">
+      <div style="max-width:800px; margin:0 auto; background:var(--surface); border-radius:20px; border:1px solid var(--border); padding:2rem;">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1.5rem;">
+          <div>
+            <h2 id="chart-title" style="font-size:1.4rem; font-weight:800; margin:0;">📈 กราฟความเคลื่อนไหว</h2>
+            <p id="chart-subtitle" style="color:var(--text-muted); margin:0.3rem 0 0;"></p>
+          </div>
+          <button onclick="document.getElementById('chart-modal').style.display='none'" style="background:var(--border); border:none; color:var(--text); padding:0.5rem 1rem; border-radius:8px; cursor:pointer; font-size:1rem;">✕ ปิด</button>
+        </div>
+        <div id="chart-loading" style="text-align:center; padding:3rem; color:var(--text-muted); display:none;">⏳ กำลังโหลดข้อมูล...</div>
+        <div id="chart-no-data" style="text-align:center; padding:3rem; color:var(--text-muted); display:none;">
+          📭 ยังไม่มีข้อมูลประวัติ<br><small>ระบบจะเริ่มบันทึกตั้งแต่การ Sync ครั้งต่อไป</small>
+        </div>
+        <canvas id="progress-chart" style="max-height:400px;"></canvas>
+      </div>
+    </div>
+
     <script type="module" src="./src/main.js"></script>
   </body>
 </html>
