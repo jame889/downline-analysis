@@ -240,20 +240,62 @@ document.addEventListener('DOMContentLoaded', () => {
     document.querySelector('.control-bar').style.display = 'none';
     adminPanel.style.display = 'block';
     
+    const userList = document.getElementById('admin-user-list');
+    const logList = document.getElementById('admin-log-list');
+    
+    userList.innerHTML = '<div style="padding: 1rem; color: var(--text-muted);">⏳ กำลังดึงข้อมูล...</div>';
+    logList.innerHTML = '<div style="padding: 1rem; color: var(--text-muted);">⏳ กำลังดึงข้อมูล...</div>';
+
+    let usersData = {};
+    let logsData = [];
+
     if (db) {
-      // Load Users
-      const usersSnap = await get(ref(db, 'users'));
-      const usersData = usersSnap.val() || {};
-      const userList = document.getElementById('admin-user-list');
-      userList.innerHTML = '';
-      
-      Object.entries(usersData).forEach(([uid, data]) => {
+      try {
+        // Load Users
+        const usersSnap = await withTimeout(get(ref(db, 'users')), 5000);
+        usersData = usersSnap.val() || {};
+        
+        // Load Logs (Last 50)
+        const logsSnap = await withTimeout(get(ref(db, 'logs')), 5000);
+        logsData = Object.values(logsSnap.val() || {}).reverse().slice(0, 50);
+      } catch (e) {
+        console.warn('Failed to load admin data from Firebase:', e);
+        userList.innerHTML = `<div style="padding: 1rem; color: var(--error);">⚠️ ไม่สามารถดึงข้อมูลจาก Server ได้ (อาจเกิดจากสิทธิ์การเข้าถึงหรือ Timeout)</div>`;
+        logList.innerHTML = `<div style="padding: 1rem; color: var(--error);">⚠️ ไม่สามารถดึงข้อมูลจาก Server ได้</div>`;
+        
+        // Try fallback to local users
+        for (let i = 0; i < localStorage.length; i++) {
+          const key = localStorage.key(i);
+          if (key.startsWith('pwd_')) {
+            const uid = key.replace('pwd_', '');
+            usersData[uid] = { lastLogin: null, localOnly: true };
+          }
+        }
+      }
+    } else {
+       // Local only
+       for (let i = 0; i < localStorage.length; i++) {
+         const key = localStorage.key(i);
+         if (key.startsWith('pwd_')) {
+           const uid = key.replace('pwd_', '');
+           usersData[uid] = { lastLogin: null, localOnly: true };
+         }
+       }
+    }
+
+    // Render Users
+    userList.innerHTML = '';
+    const userEntries = Object.entries(usersData);
+    if (userEntries.length === 0) {
+      userList.innerHTML = '<div style="padding: 1rem; color: var(--text-muted);">ยังไม่มีผู้ใช้งานลงทะเบียน</div>';
+    } else {
+      userEntries.forEach(([uid, data]) => {
         const d = document.createElement('div');
         d.className = 'admin-user-card';
         d.innerHTML = `
           <div class="admin-user-info">
             <strong>${uid}</strong>
-            <span>Last Login: ${data.lastLogin ? new Date(data.lastLogin).toLocaleString() : 'Never'}</span>
+            <span>${data.localOnly ? '(Local Data)' : `Last Login: ${data.lastLogin ? new Date(data.lastLogin).toLocaleString() : 'Never'}`}</span>
           </div>
           <div class="admin-actions-group">
             <button class="admin-btn btn-reset" onclick="window.adminReset('${uid}')">Reset Password</button>
@@ -264,11 +306,10 @@ document.addEventListener('DOMContentLoaded', () => {
         `;
         userList.appendChild(d);
       });
+    }
 
-      // Load Logs (Last 50)
-      const logsSnap = await get(ref(db, 'logs'));
-      const logsData = Object.values(logsSnap.val() || {}).reverse().slice(0, 50);
-      const logList = document.getElementById('admin-log-list');
+    // Render Logs
+    if (logsData.length > 0) {
       logList.innerHTML = '';
       logsData.forEach(l => {
         const div = document.createElement('div');
@@ -276,6 +317,8 @@ document.addEventListener('DOMContentLoaded', () => {
         div.innerHTML = `<span>${l.name} (${l.user})</span> <span class="log-time">${new Date(l.time).toLocaleTimeString()}</span>`;
         logList.appendChild(div);
       });
+    } else if (logList.innerHTML.includes('กำลังดึงข้อมูล')) {
+      logList.innerHTML = '<div style="padding: 1rem; color: var(--text-muted);">ยังไม่มีประวัติการเข้าใช้งาน</div>';
     }
   }
 
