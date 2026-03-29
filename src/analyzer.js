@@ -16,13 +16,14 @@ export function analyzeDownline(members, rootId) {
   // Helper to trace if a node is functionally underneath the dynamic rootId
   function isUnderRoot(startNode) {
     if (startNode.id === rootId) return true;
-    let curr = startNode.upline || startNode.sponsor;
+    const getCleanId = (str) => str ? String(str).split('\n')[0].trim() : null;
+    let curr = getCleanId(startNode.upline) || getCleanId(startNode.sponsor);
     let limit = 1000;
     while (curr && limit-- > 0) {
       if (curr === rootId) return true;
       let p = membersMap.get(curr);
       if (!p) break;
-      curr = p.upline || p.sponsor;
+      curr = getCleanId(p.upline) || getCleanId(p.sponsor);
     }
     // Specific Fallback: If logged in as sweeping admin (900057), all data inherently belongs to them
     if (rootId === '900057') return true;
@@ -37,7 +38,8 @@ export function analyzeDownline(members, rootId) {
       if (!isUnderRoot(m)) return;
       
       let parent = null;
-      let currUplineId = m.upline || m.sponsor;
+      const getCleanId = (str) => str ? String(str).split('\n')[0].trim() : null;
+      let currUplineId = getCleanId(m.upline) || getCleanId(m.sponsor);
       let limit = 1000;
       
       while (currUplineId && limit-- > 0) {
@@ -48,7 +50,7 @@ export function analyzeDownline(members, rootId) {
           parent = p;
           break;
         }
-        currUplineId = p.upline || p.sponsor;
+        currUplineId = getCleanId(p.upline) || getCleanId(p.sponsor);
       }
 
       if (!parent) parent = rootNode;
