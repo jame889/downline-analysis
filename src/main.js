@@ -35,7 +35,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   let currentRootId = '';
   let manualBadges = JSON.parse(localStorage.getItem('manual_badges') || '{}');
-  const filters = { search: '', badge: 'all', sortBy: 'score' };
+  const filters = { search: '', badge: 'all', sortBy: 'upline' };
 
   // 1. Firebase Listeners (Manual Badges)
   if (db) {
