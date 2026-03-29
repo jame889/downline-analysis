@@ -129,6 +129,10 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('member-search').addEventListener('input', (e) => { filters.search = e.target.value.toLowerCase(); renderDashboard(currentRootId); });
   document.getElementById('badge-filter').addEventListener('change', (e) => { filters.badge = e.target.value; renderDashboard(currentRootId); });
   document.getElementById('sort-by').addEventListener('change', (e) => { filters.sortBy = e.target.value; renderDashboard(currentRootId); });
+  document.getElementById('logout-btn').addEventListener('click', () => {
+    localStorage.removeItem('logged_in_user');
+    window.location.reload();
+  });
 
   // 4. Dashboard Rendering
   function renderDashboard(rootId) {
@@ -290,11 +294,13 @@ document.addEventListener('DOMContentLoaded', () => {
       userList.innerHTML = '<div style="padding: 1rem; color: var(--text-muted);">ยังไม่มีผู้ใช้งานลงทะเบียน</div>';
     } else {
       userEntries.forEach(([uid, data]) => {
+        const member = members.find(m => m.id === uid);
+        const userName = member ? member.name : (uid === '900057' ? 'Admin' : 'Unknown User');
         const d = document.createElement('div');
         d.className = 'admin-user-card';
         d.innerHTML = `
           <div class="admin-user-info">
-            <strong>${uid}</strong>
+            <strong>${uid} - ${userName}</strong>
             <span>${data.localOnly ? '(Local Data)' : `Last Login: ${data.lastLogin ? new Date(data.lastLogin).toLocaleString() : 'Never'}`}</span>
           </div>
           <div class="admin-actions-group">
