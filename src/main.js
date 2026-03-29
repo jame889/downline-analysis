@@ -1,4 +1,5 @@
 import { members } from './data.js';
+import { localHistory } from './history.js';
 import { analyzeDownline } from './analyzer.js';
 import { initializeApp } from "firebase/app";
 import { getDatabase, ref, onValue, set, push, get, child } from "firebase/database";
@@ -320,81 +321,89 @@ document.addEventListener('DOMContentLoaded', () => {
     canvas.style.display = 'none';
     if (chartInstance) { chartInstance.destroy(); chartInstance = null; }
 
-    if (!db) {
+    // Start with local history as base (always available)
+    let mergedData = { ...(localHistory[memberId] || {}) };
+
+    // Try to fetch Firebase history and merge (Firebase takes priority on same dates)
+    if (db) {
+      try {
+        const snap = await withTimeout(get(ref(db, `history/${memberId}`)), 6000);
+        const fbData = snap.val();
+        if (fbData) {
+          mergedData = { ...mergedData, ...fbData };
+        }
+      } catch (e) {
+        // Firebase unavailable — use local history only
+        console.warn('Firebase history unavailable, using local data:', e.message);
+      }
+    }
+
+    if (!mergedData || Object.keys(mergedData).length === 0) {
       loading.style.display = 'none';
       noData.style.display = 'block';
-      noData.innerHTML = '⚠️ ไม่ได้เชื่อมต่อ Firebase<br><small>ระบบทำงานแบบออฟไลน์</small>';
+      noData.innerHTML = '📭 ยังไม่มีข้อมูลประวัติสำหรับสมาชิกนี้<br><small>ข้อมูลเริ่มต้นตั้งแต่ ส.ค. 2025</small>';
       return;
     }
 
-    try {
-      const snap = await withTimeout(get(ref(db, `history/${memberId}`)), 8000);
-      const data = snap.val();
+    const sorted = Object.entries(mergedData).sort(([a], [b]) => a.localeCompare(b));
+    const labels = sorted.map(([d]) => {
+      // Format YYYY-MM-DD → MMM YY (Thai short month)
+      const [y, m] = d.split('-');
+      const thaiMonths = ['','ม.ค.','ก.พ.','มี.ค.','เม.ย.','พ.ค.','มิ.ย.','ก.ค.','ส.ค.','ก.ย.','ต.ค.','พ.ย.','ธ.ค.'];
+      return `${thaiMonths[parseInt(m)] || m} ${String((parseInt(y) + 543) % 100).padStart(2,'0')}`;
+    });
+    const rawLabels = sorted.map(([d]) => d);
+    const volLData = sorted.map(([, v]) => v.volL || 0);
+    const volRData = sorted.map(([, v]) => v.volR || 0);
 
-      if (!data || Object.keys(data).length === 0) {
-        loading.style.display = 'none';
-        noData.style.display = 'block';
-        noData.innerHTML = '📭 ยังไม่มีข้อมูลประวัติ<br><small>ระบบจะเริ่มบันทึกตั้งแต่การ Sync ครั้งต่อไป</small>';
-        return;
-      }
+    loading.style.display = 'none';
+    canvas.style.display = 'block';
 
-      const sorted = Object.entries(data).sort(([a], [b]) => a.localeCompare(b));
-      const labels = sorted.map(([d]) => d);
-      const volLData = sorted.map(([, v]) => v.volL || 0);
-      const volRData = sorted.map(([, v]) => v.volR || 0);
-
-      loading.style.display = 'none';
-      canvas.style.display = 'block';
-
-      chartInstance = new Chart(canvas, {
-        type: 'line',
-        data: {
-          labels,
-          datasets: [
-            {
-              label: 'Vol ซ้าย (L)',
-              data: volLData,
-              borderColor: '#60a5fa',
-              backgroundColor: 'rgba(96,165,250,0.15)',
-              tension: 0.4,
-              fill: true,
-              pointRadius: 4,
-              pointHoverRadius: 6,
-            },
-            {
-              label: 'Vol ขวา (R)',
-              data: volRData,
-              borderColor: '#a78bfa',
-              backgroundColor: 'rgba(167,139,250,0.15)',
-              tension: 0.4,
-              fill: true,
-              pointRadius: 4,
-              pointHoverRadius: 6,
-            }
-          ]
-        },
-        options: {
-          responsive: true,
-          interaction: { mode: 'index', intersect: false },
-          plugins: {
-            legend: { labels: { color: '#e6edf3' } },
-            tooltip: {
-              callbacks: {
-                label: ctx => ` ${ctx.dataset.label}: ${ctx.raw.toLocaleString()}`
-              }
-            }
+    chartInstance = new Chart(canvas, {
+      type: 'line',
+      data: {
+        labels,
+        datasets: [
+          {
+            label: 'Vol ซ้าย (L)',
+            data: volLData,
+            borderColor: '#60a5fa',
+            backgroundColor: 'rgba(96,165,250,0.15)',
+            tension: 0.4,
+            fill: true,
+            pointRadius: 5,
+            pointHoverRadius: 7,
           },
-          scales: {
-            x: { ticks: { color: '#8b949e' }, grid: { color: 'rgba(255,255,255,0.05)' } },
-            y: { ticks: { color: '#8b949e', callback: v => v.toLocaleString() }, grid: { color: 'rgba(255,255,255,0.05)' } }
+          {
+            label: 'Vol ขวา (R)',
+            data: volRData,
+            borderColor: '#a78bfa',
+            backgroundColor: 'rgba(167,139,250,0.15)',
+            tension: 0.4,
+            fill: true,
+            pointRadius: 5,
+            pointHoverRadius: 7,
           }
+        ]
+      },
+      options: {
+        responsive: true,
+        interaction: { mode: 'index', intersect: false },
+        plugins: {
+          legend: { labels: { color: '#e6edf3', font: { size: 13 } } },
+          tooltip: {
+            callbacks: {
+              title: ctx => rawLabels[ctx[0].dataIndex],
+              label: ctx => ` ${ctx.dataset.label}: ${ctx.raw.toLocaleString()}`
+            }
+          }
+        },
+        scales: {
+          x: { ticks: { color: '#8b949e', font: { size: 11 } }, grid: { color: 'rgba(255,255,255,0.05)' } },
+          y: { ticks: { color: '#8b949e', callback: v => v.toLocaleString() }, grid: { color: 'rgba(255,255,255,0.05)' } }
         }
-      });
-    } catch (e) {
-      loading.style.display = 'none';
-      noData.style.display = 'block';
-      noData.innerHTML = '❌ โหลดข้อมูลไม่สำเร็จ<br><small>' + e.message + '</small>';
-    }
+      }
+    });
   };
 
 });
