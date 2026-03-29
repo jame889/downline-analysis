@@ -239,7 +239,17 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Render Coach JOE Advice
     const { allAnalyzed } = analyzeDownline(members, rootId);
-    const advice = getCoachJoeAdvice(rootId, members, allAnalyzed);
+    const left5CoreCount = leftTeam.filter(m => m.badges.includes('5core')).length;
+    const right5CoreCount = rightTeam.filter(m => m.badges.includes('5core')).length;
+    
+    const balanceStats = {
+      left5Core: left5CoreCount,
+      right5Core: right5CoreCount,
+      volL: rootNode ? rootNode.volL : 0,
+      volR: rootNode ? rootNode.volR : 0
+    };
+
+    const advice = getCoachJoeAdvice(rootId, members, allAnalyzed, balanceStats);
     const joePanel = document.getElementById('coach-joe-panel');
     
     if (advice && rootNode) {

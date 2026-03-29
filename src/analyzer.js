@@ -106,7 +106,7 @@ export function analyzeDownline(members, rootId) {
   return { leftTeam, rightTeam, rootNode, allAnalyzed: dfsAnalyzed };
 }
 
-export function getCoachJoeAdvice(rootId, allMembers, dfsAnalyzed) {
+export function getCoachJoeAdvice(rootId, allMembers, dfsAnalyzed, balanceStats) {
   const getCleanId = (str) => str ? String(str).split('\n')[0].trim() : null;
 
   // 1. Gen 1 Metrics (Frontline)
@@ -167,6 +167,41 @@ export function getCoachJoeAdvice(rootId, allMembers, dfsAnalyzed) {
       color: '#10b981', // Emerald Green
       stats: { gen1Count, gen1Volume, nextGenDepth, nextGenCount, nextGenVolume }
     };
+  }
+
+  // 4. Balance Analysis (Left vs Right)
+  if (balanceStats) {
+    const { left5Core, right5Core, volL, volR } = balanceStats;
+    const diff5Core = Math.abs(left5Core - right5Core);
+    const powerLeg = volL > volR ? 'ซ้าย' : (volR > volL ? 'ขวา' : 'สมดุล');
+    const weakLeg = volL > volR ? 'ขวา' : (volR > volL ? 'ซ้าย' : 'สมดุล');
+    
+    let balanceMessage = `<br/><br/><div style="background: rgba(255,255,255,0.05); padding: 1rem; border-radius: 8px; border-left: 4px solid var(--advice-color, #fff); margin-top: 1rem;">`;
+    balanceMessage += `<strong style="color:#fff;">⚖️ การวิเคราะห์ความสมดุล (Balance):</strong><br/>`;
+    balanceMessage += `<ul style="margin-top: 0.5rem; padding-left: 1.2rem; color: #cbd5e1; font-size: 0.95rem; display: flex; flex-direction: column; gap: 0.5rem;">`;
+    
+    // 5Core Analysis
+    if ((left5Core + right5Core) > 0) {
+      balanceMessage += `<li>คุณมีผู้นำ 5Core จำนวน <strong>${left5Core + right5Core} คน</strong> (ซ้าย: ${left5Core}, ขวา: ${right5Core})</li>`;
+      if (diff5Core >= 2) {
+        const weak5CoreSide = left5Core > right5Core ? 'ขวา' : 'ซ้าย';
+        balanceMessage += `<li>⚠️ <strong>ความเสี่ยง:</strong> ผู้นำ 5Core <u>ฝั่ง${weak5CoreSide}</u> น้อยกว่าหน้ากว้าง แนะนำให้ลงไป Focus สร้างผู้นำฝั่ง${weak5CoreSide}เพิ่มด่วนเพื่อ Balance ธุรกิจ</li>`;
+      } else {
+        balanceMessage += `<li>✅ จำนวนผู้นำ 5Core ของคุณกระจายตัวได้สมดุลดีแล้ว</li>`;
+      }
+    } else {
+      balanceMessage += `<li>⚠️ คุณยังไม่มีผู้นำระดับ 5Core ในทีม รีบค้นหาและพัฒนาผู้นำด่วน!</li>`;
+    }
+    
+    // Volume Analysis
+    if (volL !== volR && (volL > 0 || volR > 0)) {
+       balanceMessage += `<li>💡 คะแนนทีมแข็งของคุณคือ <strong>ฝั่ง${powerLeg}</strong> แนะนำให้ลงไปช่วยกระตุ้นทีม <strong>ฝั่ง${weakLeg}</strong> เพื่อเพิ่ม Matching Bonus รายวัน</li>`;
+    } else if (volL > 0 && volR > 0) {
+       balanceMessage += `<li>✅ คะแนนทั้งสองฝั่งของคุณ (ซ้าย-ขวา) มีความสมดุลดีมาก รักษาโมเมนตัมนี้ไว้!</li>`;
+    }
+    
+    balanceMessage += `</ul></div>`;
+    advice.message += balanceMessage;
   }
 
   return advice;
