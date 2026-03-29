@@ -40,7 +40,10 @@
           <h1>Downline Analyzer</h1>
           <p class="subtitle">Focus your energy where it matters most to drive growth and moving up.</p>
         </div>
-        <div class="root-stats" id="root-stats"></div>
+        <div style="display: flex; gap: 1rem; align-items: center;">
+          <div class="root-stats" id="root-stats"></div>
+          <button id="logout-btn" class="back-btn" style="background: rgba(239,68,68,0.2); color: #fca5a5; border: 1px solid rgba(239,68,68,0.3);">Logout</button>
+        </div>
       </header>
 
       <div class="control-bar">
@@ -86,6 +89,8 @@
           </section>
         </div>
       </div>
+
+      <div id="coach-joe-panel" class="coach-joe-container" style="display: none;"></div>
 
       <main class="dashboard" id="dashboard">
         <section class="team-column left-team">

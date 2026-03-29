@@ -105,3 +105,69 @@ export function analyzeDownline(members, rootId) {
   
   return { leftTeam, rightTeam, rootNode, allAnalyzed: dfsAnalyzed };
 }
+
+export function getCoachJoeAdvice(rootId, allMembers, dfsAnalyzed) {
+  const getCleanId = (str) => str ? String(str).split('\n')[0].trim() : null;
+
+  // 1. Gen 1 Metrics (Frontline)
+  const gen1Members = allMembers.filter(m => getCleanId(m.sponsor) === rootId);
+  const gen1Count = gen1Members.length;
+  const gen1Volume = gen1Members.reduce((sum, m) => sum + (parseFloat(m.volL) || 0) + (parseFloat(m.volR) || 0), 0);
+
+  // 2. Next Gen Metrics (Taproot / Depth)
+  // dfsAnalyzed already contains all members in the Downline tree of rootId (placement)
+  const nextGenMembers = dfsAnalyzed.filter(m => m.id !== rootId);
+  const nextGenCount = nextGenMembers.length;
+  const nextGenVolume = nextGenMembers.reduce((sum, m) => sum + (parseFloat(m.volL) || 0) + (parseFloat(m.volR) || 0), 0);
+  
+  // Calculate depth based on standard level distance in binary tree
+  let nextGenDepth = 0;
+  if (nextGenMembers.length > 0) {
+    const rootLevel = dfsAnalyzed.find(m => m.id === rootId)?.level || 0;
+    const maxLevel = Math.max(...nextGenMembers.map(m => m.level));
+    nextGenDepth = maxLevel - rootLevel;
+  }
+
+  // 3. Logic & Recommendation Rules based on Coach JOE's Hybrid Plan
+  let advice = {};
+
+  if (gen1Count < 2) {
+    advice = {
+      level: 'Spark',
+      title: 'Hybrid Step 1: จุดไฟด้วยสปอนเซอร์ส่วนตัว',
+      message: 'คุณยังมี Gen 1 น้อยเกินไป (ขาดหน้ากว้าง)! กฎข้อ 1: "คุณต้องไม่หยุดสปอนเซอร์ส่วนตัว" เพื่อหาวัตถุดิบ เติมเลือดใหม่ และสร้างตัวอย่างการทำงาน (Lead by Example) ให้กับตั้วเองและทีมงาน',
+      image: './assets/coachjoe/step1.jpg',
+      color: '#eab308', // Gold
+      stats: { gen1Count, gen1Volume, nextGenDepth, nextGenCount, nextGenVolume }
+    };
+  } else if (gen1Count >= 2 && nextGenDepth < 3) {
+    advice = {
+      level: 'Taproot',
+      title: 'Hybrid Step 2: ขุดลึกทันทีภายใน 48 ชั่วโมง',
+      message: 'คุณมี Gen 1 แล้ว! แต่รากฐานยังไม่ลึกพอ แนะนำให้รีบทำ "Work Plan" ดึงรายชื่อจาก Gen 1 ของคุณ และช่วยเขาสปอนเซอร์ต่อให้ได้ภายใน 48 ชั่วโมง เพื่อเปลี่ยนมือใหม่ให้กลายเป็น "ความลึก"',
+      image: './assets/coachjoe/step2.jpg',
+      color: '#f97316', // Orange
+      stats: { gen1Count, gen1Volume, nextGenDepth, nextGenCount, nextGenVolume }
+    };
+  } else if (nextGenDepth >= 3 && nextGenDepth < 6 && nextGenCount < 20) {
+    advice = {
+      level: 'StopDigging',
+      title: 'Hybrid Step 3: กฎการหยดขุด (When to Stop Digging)',
+      message: `สายลึกเริ่มมาแล้ว (ปัจจุบันลึก ${nextGenDepth} ชั้น)! ขุดลึกลงไปจนกว่าจะเจอ "ผู้นำที่ทำงานแทนคุณได้" อย่างน้อย 2-3 คน (Safe Zone) เมื่อสายงาน Secured คุณจึงค่อยย้ายโฟกัสไปขยายหน้ากว้างอื่น`,
+      image: './assets/coachjoe/step3.jpg',
+      color: '#3b82f6', // Blue
+      stats: { gen1Count, gen1Volume, nextGenDepth, nextGenCount, nextGenVolume }
+    };
+  } else {
+    advice = {
+      level: 'Synthesis',
+      title: 'The Synthesis: สถาปัตยกรรมแห่งความสำเร็จ',
+      message: 'สุดยอด! สถาปัตยกรรมองค์กรของคุณมั่นคงมาก ผสานกลยุทธ์ Hybrid ได้อย่างสมบูรณ์แบบ ทั้ง Speed (20% Frontline) และ Stability (80% Taprooting) ยกระดับองค์กรนี้เพื่อการเกษียณถาวร!',
+      image: './assets/coachjoe/synthesis.jpg',
+      color: '#10b981', // Emerald Green
+      stats: { gen1Count, gen1Volume, nextGenDepth, nextGenCount, nextGenVolume }
+    };
+  }
+
+  return advice;
+}

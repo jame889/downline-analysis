@@ -1,6 +1,6 @@
 import { members } from './data.js';
 import { localHistory } from './history.js';
-import { analyzeDownline } from './analyzer.js';
+import { analyzeDownline, getCoachJoeAdvice } from './analyzer.js';
 import { initializeApp } from "firebase/app";
 import { getDatabase, ref, onValue, set, push, get, child } from "firebase/database";
 
@@ -236,6 +236,40 @@ document.addEventListener('DOMContentLoaded', () => {
 
     leftTeam.forEach((m, i) => leftList.appendChild(renderCard(m, i)));
     rightTeam.forEach((m, i) => rightList.appendChild(renderCard(m, i)));
+
+    // Render Coach JOE Advice
+    const { allAnalyzed } = analyzeDownline(members, rootId);
+    const advice = getCoachJoeAdvice(rootId, members, allAnalyzed);
+    const joePanel = document.getElementById('coach-joe-panel');
+    
+    if (advice && rootNode) {
+      joePanel.style.display = 'flex';
+      joePanel.style.setProperty('--advice-color', advice.color);
+      
+      joePanel.innerHTML = `
+        <div class="cj-content">
+          <div class="cj-header">
+            <span class="cj-badge">${advice.level}</span>
+            <h2 class="cj-title">คำแนะนำ by Coach JOE</h2>
+          </div>
+          <p class="cj-message">
+            <strong>${advice.title}</strong><br/>
+            ${advice.message}
+          </p>
+          <div class="cj-stats-grid">
+            <div class="cj-stat-box"><span class="cj-stat-label">Gen 1 Sponsors</span><span class="cj-stat-val">${advice.stats.gen1Count} คน</span></div>
+            <div class="cj-stat-box"><span class="cj-stat-label">Gen 1 Volume</span><span class="cj-stat-val">${advice.stats.gen1Volume.toLocaleString()}</span></div>
+            <div class="cj-stat-box"><span class="cj-stat-label">Taproot ลึกสุด</span><span class="cj-stat-val">${advice.stats.nextGenDepth} ชั้น</span></div>
+            <div class="cj-stat-box"><span class="cj-stat-label">Next Gen Total</span><span class="cj-stat-val">${advice.stats.nextGenCount} คน</span></div>
+          </div>
+        </div>
+        <div class="cj-image-wrapper">
+          <img src="${advice.image}" alt="Coach JOE Advice" onerror="this.src='data:image/svg+xml;utf8,<svg xmlns=\\'http://www.w3.org/2000/svg\\' width=\\'300\\' height=\\'200\\'><rect width=\\'100%\\' height=\\'100%\\' fill=\\'%23333\\'/><text x=\\'50%\\' y=\\'50%\\' fill=\\'white\\' text-anchor=\\'middle\\' font-family=\\'sans-serif\\' font-size=\\'16\\'>Image: ${advice.level}</text></svg>'">
+        </div>
+      `;
+    } else {
+      joePanel.style.display = 'none';
+    }
   }
 
   // 5. Admin Panel Logic
