@@ -1,6 +1,6 @@
 import { members } from './data.js';
 import { localHistory } from './history.js';
-import { analyzeDownline, getCoachJoeAdvice } from './analyzer.js';
+import { analyzeDownline, getCoachJoeAdvice, getAdvancedAnalysis } from './analyzer.js';
 import { initializeApp } from "firebase/app";
 import { getDatabase, ref, onValue, set, push, get, child } from "firebase/database";
 
@@ -277,8 +277,49 @@ document.addEventListener('DOMContentLoaded', () => {
           <img src="${advice.image}" alt="Coach JOE Advice" onerror="this.src='data:image/svg+xml;utf8,<svg xmlns=\\'http://www.w3.org/2000/svg\\' width=\\'300\\' height=\\'200\\'><rect width=\\'100%\\' height=\\'100%\\' fill=\\'%23333\\'/><text x=\\'50%\\' y=\\'50%\\' fill=\\'white\\' text-anchor=\\'middle\\' font-family=\\'sans-serif\\' font-size=\\'16\\'>Image: ${advice.level}</text></svg>'">
         </div>
       `;
+      
+      // Render Advanced Analytics
+      const advContainer = document.getElementById('advanced-analytics');
+      const advGrid = document.getElementById('adv-grid');
+      
+      const advStats = getAdvancedAnalysis(rootNode, allAnalyzed, members, leftTeam, rightTeam);
+      
+      if (advStats) {
+        advContainer.style.display = 'block';
+        advGrid.innerHTML = `
+          <div class="adv-card info">
+            <div class="adv-card-header">🎯 เป้าหมายจับคู่ (Matching Target)</div>
+            <div class="adv-card-value">${advStats.diffVol.toLocaleString()} PV</div>
+            <div class="adv-card-desc">คือคะแนนที่ฝั่ง${advStats.weakLegName}ต้องสร้างเพิ่ม เพื่อจับคู่กับฝั่งแข็งให้หมด (${advStats.powerLegVol.toLocaleString()} PV)</div>
+          </div>
+          <div class="adv-card success">
+            <div class="adv-card-header">🚀 โมเมนตัมสายเลือดใหม่ (Momentum)</div>
+            <div class="adv-card-value">${advStats.momentumPercent}%</div>
+            <div class="adv-card-desc">สัดส่วนยอด PV ที่เกิดจากฐานลึกสุดของเครือข่าย แสดงถึงการเติบโตที่แท้จริงจากสายเลือดใหม่</div>
+          </div>
+          <div class="adv-card purple">
+            <div class="adv-card-header">🧬 โรงงานผลิตผู้นำ (Leader Factory)</div>
+            <div class="adv-card-value">${advStats.leaderFactories} คน</div>
+            <div class="adv-card-desc">แม่ทัพ 5Core ที่สามารถปลุกปั้นลูกทีมสายเลือด (Sponsor) ให้เป็น 5Core ได้สำเร็จ</div>
+          </div>
+          <div class="adv-card warning">
+            <div class="adv-card-header">🔥 THE DRIVERS vs ขาลอย 🐢</div>
+            <div class="adv-card-value">${advStats.drivers} / ${advStats.freeRiders}</div>
+            <div class="adv-card-desc">พบเสาหลัก ${advStats.drivers} คน และผู้รอกินบุญ (ยอดฝั่งเดียวทะลุหมื่น) ${advStats.freeRiders} คน</div>
+          </div>
+          <div class="adv-card danger">
+            <div class="adv-card-header">⏳ เครือข่ายหลับลึก (Sleeping Nodes)</div>
+            <div class="adv-card-value">${advStats.sleepingNodes} คน</div>
+            <div class="adv-card-desc">พบคนมียอดรอแต่ไม่เคลื่อนไหว ควรโฟกัสลงไปประเมินและช่วยวางแผนกระตุ้นด่วน</div>
+          </div>
+        `;
+      } else {
+        advContainer.style.display = 'none';
+      }
+
     } else {
       joePanel.style.display = 'none';
+      document.getElementById('advanced-analytics').style.display = 'none';
     }
   }
 

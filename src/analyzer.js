@@ -106,27 +106,63 @@ export function analyzeDownline(members, rootId) {
   return { leftTeam, rightTeam, rootNode, allAnalyzed: dfsAnalyzed };
 }
 
+export function getSponsorTreeStats(rootId, allMembers) {
+  const getCleanId = (str) => str ? String(str).split('\n')[0].trim() : null;
+  const map = new Map();
+  allMembers.forEach(m => map.set(m.id, { ...m, sponsorChildren: [] }));
+  
+  allMembers.forEach(m => {
+    const sponsorId = getCleanId(m.sponsor);
+    if (sponsorId && map.has(sponsorId)) {
+      map.get(sponsorId).sponsorChildren.push(m.id);
+    }
+  });
+
+  let maxDepth = 0;
+  let totalCount = 0;
+  let totalVolume = 0;
+
+  function traverse(id, currentDepth) {
+    const node = map.get(id);
+    if (!node) return;
+    
+    if (currentDepth > maxDepth) maxDepth = currentDepth;
+    
+    node.sponsorChildren.forEach(childId => {
+      totalCount++;
+      const childNode = map.get(childId);
+      if (childNode) totalVolume += (parseFloat(childNode.volL) || 0) + (parseFloat(childNode.volR) || 0);
+      traverse(childId, currentDepth + 1);
+    });
+  }
+
+  const rootNode = map.get(rootId);
+  if (rootNode) {
+    rootNode.sponsorChildren.forEach(childId => {
+      totalCount++;
+      const childNode = map.get(childId);
+      if (childNode) totalVolume += (parseFloat(childNode.volL) || 0) + (parseFloat(childNode.volR) || 0);
+      traverse(childId, 1);
+    });
+  }
+
+  return { maxDepth, totalCount, totalVolume };
+}
+
 export function getCoachJoeAdvice(rootId, allMembers, dfsAnalyzed, balanceStats) {
   const getCleanId = (str) => str ? String(str).split('\n')[0].trim() : null;
 
-  // 1. Gen 1 Metrics (Frontline)
+  // 1. Gen 1 Metrics (Frontline - Only those personally sponsored)
   const gen1Members = allMembers.filter(m => getCleanId(m.sponsor) === rootId);
   const gen1Count = gen1Members.length;
   const gen1Volume = gen1Members.reduce((sum, m) => sum + (parseFloat(m.volL) || 0) + (parseFloat(m.volR) || 0), 0);
 
-  // 2. Next Gen Metrics (Taproot / Depth)
-  // dfsAnalyzed already contains all members in the Downline tree of rootId (placement)
-  const nextGenMembers = dfsAnalyzed.filter(m => m.id !== rootId);
-  const nextGenCount = nextGenMembers.length;
-  const nextGenVolume = nextGenMembers.reduce((sum, m) => sum + (parseFloat(m.volL) || 0) + (parseFloat(m.volR) || 0), 0);
-  
-  // Calculate depth based on standard level distance in binary tree
-  let nextGenDepth = 0;
-  if (nextGenMembers.length > 0) {
-    const rootLevel = dfsAnalyzed.find(m => m.id === rootId)?.level || 0;
-    const maxLevel = Math.max(...nextGenMembers.map(m => m.level));
-    nextGenDepth = maxLevel - rootLevel;
-  }
+  // 2. Next Gen Metrics (Taproot / Depth - using pure Sponsorship Tree)
+  const sponsorStats = getSponsorTreeStats(rootId, allMembers);
+  const nextGenDepth = sponsorStats.maxDepth;
+  const nextGenCount = sponsorStats.totalCount - gen1Count; // Exclude direct gen1 from "nextGen" count
+  const nextGenVolume = sponsorStats.totalVolume - gen1Volume;
+
 
   // 3. Logic & Recommendation Rules based on Coach JOE's Hybrid Plan
   let advice = {};
@@ -205,4 +241,92 @@ export function getCoachJoeAdvice(rootId, allMembers, dfsAnalyzed, balanceStats)
   }
 
   return advice;
+}
+
+export function getAdvancedAnalysis(rootNode, dfsAnalyzed, allMembers, leftTeam, rightTeam) {
+  const getCleanId = (str) => str ? String(str).split('\n')[0].trim() : null;
+  
+  // 1. Matching Target
+  const volL = rootNode ? rootNode.volL : 0;
+  const volR = rootNode ? rootNode.volR : 0;
+  const diffVol = Math.abs(volL - volR);
+  const weakLegName = volL < volR ? 'ซ้าย' : (volR < volL ? 'ขวา' : '-');
+  const powerLegVol = Math.max(volL, volR);
+
+  // Pre-calculate sponsors count for each member to evaluate drivers
+  const sponsorCountMap = {};
+  allMembers.forEach(m => {
+    const sId = getCleanId(m.sponsor);
+    if (sId) { sponsorCountMap[sId] = (sponsorCountMap[sId] || 0) + 1; }
+  });
+
+  // 2. The "Free-Rider" vs "Driver"
+  let drivers = 0;
+  let freeRiders = 0;
+  let sleepingNodes = 0;
+  
+  dfsAnalyzed.forEach(m => {
+    if (m.id === rootNode?.id) return;
+    const sCount = sponsorCountMap[m.id] || 0;
+    const mVolL = parseFloat(m.volL) || 0;
+    const mVolR = parseFloat(m.volR) || 0;
+    
+    // Driver: decent balance & sponsoring
+    if (sCount > 0 && mVolL > 0 && mVolR > 0) {
+       const ratio = Math.min(mVolL, mVolR) / Math.max(mVolL, mVolR);
+       if (ratio > 0.1) drivers++;
+    }
+    // Free rider / Sleeping: one leg > 10,000, other leg == 0, no sponsors
+    if (sCount === 0 && ((mVolL > 10000 && mVolR === 0) || (mVolR > 10000 && mVolL === 0))) {
+       freeRiders++;
+       sleepingNodes++;
+    }
+  });
+
+  // 3. Momentum Index (Volume from deep levels)
+  const maxLevel = Math.max(...dfsAnalyzed.map(m => m.level)) || 0;
+  const rootLvl = rootNode?.level || 0;
+  const placementDepth = maxLevel - rootLvl;
+  
+  let deepVol = 0;
+  let totalDescVol = 0;
+  dfsAnalyzed.forEach(m => {
+    if (m.id === rootNode?.id) return;
+    const mVol = (parseFloat(m.volL) || 0) + (parseFloat(m.volR) || 0);
+    totalDescVol += mVol;
+    // Bottom 2 levels
+    if (m.level >= maxLevel - 1) {
+      deepVol += mVol;
+    }
+  });
+  const momentumPercent = totalDescVol > 0 ? ((deepVol / totalDescVol) * 100).toFixed(1) : 0;
+
+  // 4. Leadership Duplication
+  const teamMap = new Map();
+  [...leftTeam, ...rightTeam].forEach(m => teamMap.set(m.id, m));
+  
+  let leaderFactories = 0;
+  teamMap.forEach(m => {
+    if (m.badges && m.badges.includes('5core')) {
+      // Find m's sponsored children who are ALSO in the team and are 5core
+      const sponsoredDwn = allMembers.filter(child => getCleanId(child.sponsor) === m.id);
+      const has5CoreChild = sponsoredDwn.some(child => {
+         const tChild = teamMap.get(child.id);
+         return tChild && tChild.badges && tChild.badges.includes('5core');
+      });
+      if (has5CoreChild) leaderFactories++;
+    }
+  });
+
+  return {
+    diffVol,
+    weakLegName,
+    powerLegVol,
+    drivers,
+    freeRiders,
+    momentumPercent,
+    placementDepth,
+    leaderFactories,
+    sleepingNodes
+  };
 }
