@@ -189,6 +189,7 @@ document.addEventListener('DOMContentLoaded', () => {
         <div class="stat-pill">Root: ${rootNode.name} (${rootNode.id})</div>
         <div class="stat-pill">Vol L: <span class="stat-value">${rootNode.volL.toLocaleString()}</span></div>
         <div class="stat-pill">Vol R: <span class="stat-value">${rootNode.volR.toLocaleString()}</span></div>
+        <button class="view-btn" style="background:linear-gradient(135deg,#4f46e5,#7c3aed); margin-left:0.5rem; height: 32px; font-size: 0.85rem; display: inline-flex; vertical-align: middle; border: none; color: white;" onclick="window.showProgressChart('${rootNode.id}','${rootNode.name}')">📈 กราฟความคืบหน้า</button>
       `;
     }
 
