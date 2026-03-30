@@ -1,0 +1,20 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+body {
+  @apply bg-slate-950 text-slate-100;
+}
+
+/* Light mode overrides */
+.light .bg-slate-900 { background-color: #ffffff; }
+.light .bg-slate-950 { background-color: #f8fafc; }
+.light .bg-slate-800 { background-color: #f1f5f9; }
+.light .bg-slate-800\/30 { background-color: rgba(241, 245, 249, 0.3); }
+.light .border-slate-800 { border-color: #e2e8f0; }
+.light .border-slate-700 { border-color: #cbd5e1; }
+.light .text-white { color: #0f172a; }
+.light .text-slate-300 { color: #334155; }
+.light .text-slate-400 { color: #475569; }
+.light .text-slate-500 { color: #64748b; }
+.light .text-slate-600 { color: #94a3b8; }
