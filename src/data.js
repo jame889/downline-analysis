@@ -10,7 +10,7 @@ export const members = [
     "sponsor": "900008\n(Bussara",
     "sponsorName": "Bussara Meejanpetch",
     "volL": 3890,
-    "volR": 35455,
+    "volR": 35983,
     "dots": [
       "blue",
       "blue"
@@ -43,7 +43,7 @@ export const members = [
     "uplineName": "Atchara Sritathere",
     "sponsor": "900057\n(Atchara",
     "sponsorName": "Atchara Sritathere",
-    "volL": 37172,
+    "volL": 37700,
     "volR": 769,
     "dots": [
       "blue",
@@ -94,7 +94,7 @@ export const members = [
     "uplineName": "Nitita Thadapongsatorn",
     "sponsor": "900183\n(Nitita",
     "sponsorName": "Nitita Thadapongsatorn",
-    "volL": 39735,
+    "volL": 40263,
     "volR": 922,
     "dots": [
       "blue",
@@ -163,7 +163,7 @@ export const members = [
     "sponsor": "900188\n(Urai",
     "sponsorName": "Urai Wiriyatrakoolchai",
     "volL": 3220,
-    "volR": 22848,
+    "volR": 23376,
     "dots": [
       "blue",
       "blue"
@@ -276,13 +276,13 @@ export const members = [
     "name": "Chalermpop Neamnil",
     "level": 4,
     "regDate": "2025-09-01",
-    "pos": "BR / FA",
+    "pos": "BR / ST",
     "upline": "900194\n(Kanokwan",
     "uplineName": "Kanokwan Hutayana",
     "sponsor": "900194\n(Kanokwan",
     "sponsorName": "Kanokwan Hutayana",
-    "volL": 999,
-    "volR": 6480,
+    "volL": 1463,
+    "volR": 6513,
     "dots": [
       "blue",
       "blue"
@@ -383,7 +383,7 @@ export const members = [
     "uplineName": "Chalermpop Neamnil",
     "sponsor": "900197\n(Chalermpop",
     "sponsorName": "Chalermpop Neamnil",
-    "volL": 1545,
+    "volL": 2009,
     "volR": 0,
     "dots": [
       "red",
@@ -519,7 +519,7 @@ export const members = [
     "uplineName": "Chalermpop Neamnil",
     "sponsor": "900206\n(SUPINDA",
     "sponsorName": "SUPINDA TEERARAT",
-    "volL": 4643,
+    "volL": 5075,
     "volR": 204,
     "dots": [
       "blue",
@@ -673,7 +673,7 @@ export const members = [
     "sponsor": "900207\n(ISARAPHON",
     "sponsorName": "ISARAPHON THATSANEEPHONG",
     "volL": 0,
-    "volR": 7064,
+    "volR": 7464,
     "dots": [
       "blue",
       "red"
@@ -928,7 +928,7 @@ export const members = [
     "sponsor": "900208\n(GUMLAI",
     "sponsorName": "GUMLAI NUTAPE",
     "volL": 0,
-    "volR": 4452,
+    "volR": 4852,
     "dots": [
       "blue",
       "red"
@@ -1251,7 +1251,7 @@ export const members = [
     "sponsor": "900230\n(Varinda",
     "sponsorName": "Varinda Maneerat",
     "volL": 0,
-    "volR": 3877,
+    "volR": 4277,
     "dots": [
       "blue",
       "red"
@@ -1506,7 +1506,7 @@ export const members = [
     "sponsor": "900244\n(Khuntong",
     "sponsorName": "Khuntong Poonphol",
     "volL": 1305,
-    "volR": 436,
+    "volR": 836,
     "dots": [
       "blue",
       "blue"
@@ -1863,7 +1863,7 @@ export const members = [
     "sponsor": "900245\n(Warisa",
     "sponsorName": "Warisa Somsukjaroen",
     "volL": 0,
-    "volR": 0,
+    "volR": 400,
     "dots": [
       "red",
       "red"
@@ -2186,7 +2186,7 @@ export const members = [
     "sponsor": "900320\n(Bour",
     "sponsorName": "Bour Amsawat",
     "volL": 0,
-    "volR": 0,
+    "volR": 400,
     "dots": [
       "red",
       "red"
@@ -2560,7 +2560,7 @@ export const members = [
     "sponsor": "900346\n(Khemaporn",
     "sponsorName": "Khemaporn Phoomsawas",
     "volL": 0,
-    "volR": 0,
+    "volR": 400,
     "dots": [
       "red",
       "red"
@@ -2815,7 +2815,7 @@ export const members = [
     "sponsor": "900491\n(Chanidapa",
     "sponsorName": "Chanidapa Promsawang",
     "volL": 0,
-    "volR": 0,
+    "volR": 400,
     "dots": [
       "red",
       "red"
@@ -2985,7 +2985,7 @@ export const members = [
     "sponsor": "900505\n(Prontip",
     "sponsorName": "Prontip Chaiming",
     "volL": 0,
-    "volR": 0,
+    "volR": 400,
     "dots": [
       "red",
       "red"
@@ -3172,7 +3172,7 @@ export const members = [
     "sponsor": "900506\n(Pawanrat",
     "sponsorName": "Pawanrat Photchanasith",
     "volL": 0,
-    "volR": 0,
+    "volR": 400,
     "dots": [
       "red",
       "red"
@@ -3325,7 +3325,7 @@ export const members = [
     "sponsor": "900507\n(Natthiya",
     "sponsorName": "Natthiya Thongdaeng",
     "volL": 0,
-    "volR": 0,
+    "volR": 400,
     "dots": [
       "red",
       "red"
@@ -3444,7 +3444,7 @@ export const members = [
     "sponsor": "900508\n(Kannika",
     "sponsorName": "Kannika Huaitrakul",
     "volL": 0,
-    "volR": 200,
+    "volR": 600,
     "dots": [
       "red",
       "red"
@@ -3597,7 +3597,7 @@ export const members = [
     "sponsor": "900509\n(Kaewjai",
     "sponsorName": "Kaewjai Janta",
     "volL": 0,
-    "volR": 0,
+    "volR": 200,
     "dots": [
       "red",
       "red"
@@ -3699,7 +3699,7 @@ export const members = [
     "sponsor": "900583\n(Pattharakwan",
     "sponsorName": "Pattharakwan Chaiming",
     "volL": 0,
-    "volR": 0,
+    "volR": 200,
     "dots": [
       "red",
       "red"
@@ -3767,7 +3767,7 @@ export const members = [
     "sponsor": "900597\n(Natthachayanan",
     "sponsorName": "Natthachayanan Noothep",
     "volL": 0,
-    "volR": 0,
+    "volR": 200,
     "dots": [
       "blue",
       "red"
@@ -3802,6 +3802,23 @@ export const members = [
     "sponsorName": "Amornpan Juntaket",
     "volL": 0,
     "volR": 200,
+    "dots": [
+      "blue",
+      "red"
+    ]
+  },
+  {
+    "id": "900645",
+    "name": "๊U-rai Jantimakom",
+    "level": 22,
+    "regDate": "2026-03-30",
+    "pos": "FA / FA",
+    "upline": "900245\n(Warisa",
+    "uplineName": "Warisa Somsukjaroen",
+    "sponsor": "900609\n(Nipapron",
+    "sponsorName": "Nipapron Chammalai",
+    "volL": 0,
+    "volR": 0,
     "dots": [
       "blue",
       "red"
