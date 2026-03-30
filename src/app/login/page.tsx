@@ -50,7 +50,7 @@ export default function LoginPage() {
               type="text"
               value={memberId}
               onChange={(e) => setMemberId(e.target.value)}
-              placeholder="เช่น 900057"
+              placeholder="เช่น 900xxx"
               required
               className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2.5 text-white text-sm placeholder-slate-500 focus:outline-none focus:border-brand-500"
             />

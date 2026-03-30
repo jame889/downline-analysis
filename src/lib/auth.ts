@@ -8,7 +8,7 @@ const SECRET = new TextEncoder().encode(
 )
 
 export const SESSION_COOKIE = 'dl_session'
-export const ROOT_MEMBER_ID = '900057'
+export const ROOT_MEMBER_ID = process.env.NEXT_PUBLIC_ROOT_MEMBER_ID ?? '900057'
 
 export interface SessionPayload {
   memberId: string

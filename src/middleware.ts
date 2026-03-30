@@ -5,7 +5,7 @@ const SECRET = new TextEncoder().encode(
   process.env.JWT_SECRET ?? 'downline-sps-secret-key-2026-internal'
 )
 const SESSION_COOKIE = 'dl_session'
-const ROOT_MEMBER_ID = '900057'
+const ROOT_MEMBER_ID = process.env.NEXT_PUBLIC_ROOT_MEMBER_ID ?? '900057'
 
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl

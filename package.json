@@ -5,8 +5,11 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
-    "start": "next start",
+    "start": "next start -p ${PORT:-3000}",
     "import": "python3 scripts/import_data.py"
+  },
+  "engines": {
+    "node": ">=20.0.0"
   },
   "dependencies": {
     "clsx": "^2.1.1",
