@@ -1,0 +1,16 @@
+{
+  "crons": [
+    {
+      "path": "/api/cron/telegram?type=weekly",
+      "schedule": "0 1 * * 1"
+    },
+    {
+      "path": "/api/cron/telegram?type=wakeup",
+      "schedule": "0 2 * * 2-5"
+    },
+    {
+      "path": "/api/cron/telegram?type=watchlist",
+      "schedule": "0 3 * * 0"
+    }
+  ]
+}
