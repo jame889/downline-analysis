@@ -42,10 +42,65 @@ document.addEventListener('DOMContentLoaded', () => {
   let currentRootId = '';
   let manualBadges = JSON.parse(localStorage.getItem('manual_badges') || '{}');
   let liveMembers = null; // Loaded from Firebase
+  let snapshotMembers = null; // Loaded on demand when selecting historical data
   const filters = { search: '', badge: 'all', sortBy: 'upline' };
 
   // Helper to get active member set
-  const getActiveMembers = () => liveMembers || staticMembers;
+  const getActiveMembers = () => snapshotMembers || liveMembers || staticMembers;
+
+  // 0. Snapshot Management
+  const monthDropdown = document.getElementById('month-dropdown');
+  const monthSelectorBar = document.getElementById('month-selector-bar');
+  const snapshotBadge = document.getElementById('snapshot-status-badge');
+
+  async function loadAvailableSnapshots() {
+    if (!db) return;
+    try {
+      const snap = await withTimeout(get(ref(db, 'snapshots')), 5000);
+      const data = snap.val();
+      if (data) {
+        // Clear existing options except "latest"
+        while (monthDropdown.options.length > 1) monthDropdown.remove(1);
+        
+        const months = Object.keys(data).sort().reverse();
+        months.forEach(m => {
+          const opt = document.createElement('option');
+          opt.value = m;
+          const [yr, mo] = m.split('-');
+          const thaiMonths = ['','ม.ค.','ก.พ.','มี.ค.','เม.ย.','พ.ค.','มิ.ย.','ก.ค.','ส.ค.','ก.ย.','ต.ค.','พ.ย.','ธ.ค.'];
+          opt.textContent = `📅 ${thaiMonths[parseInt(mo)]} ${parseInt(yr) + 543}`;
+          monthDropdown.appendChild(opt);
+        });
+      }
+    } catch (e) {
+      console.error("Failed to load snapshots:", e);
+    }
+  }
+
+  monthDropdown.addEventListener('change', async (e) => {
+    const val = e.target.value;
+    if (val === 'latest') {
+      snapshotMembers = null;
+      snapshotBadge.style.display = 'none';
+      renderDashboard(currentRootId);
+    } else {
+      syncStatus.className = 'sync-status info';
+      syncStatus.textContent = `กำลังโหลดข้อมูล snapshot ${val}...`;
+      try {
+        const snap = await withTimeout(get(ref(db, `snapshots/${val}/members`)), 8000);
+        const data = snap.val();
+        if (data) {
+          snapshotMembers = Object.values(data);
+          snapshotBadge.style.display = 'block';
+          snapshotBadge.textContent = `ข้อมูลย้อนหลัง: ${val}`;
+          renderDashboard(currentRootId);
+        }
+      } catch (err) {
+        alert("ไม่สามารถโหลดข้อมูลย้อนหลังได้: " + err.message);
+        monthDropdown.value = 'latest';
+      }
+    }
+  });
 
   // 1. Firebase Listeners (Manual Badges)
   if (db) {
@@ -67,9 +122,11 @@ document.addEventListener('DOMContentLoaded', () => {
         if (currentRootId) renderDashboard(currentRootId);
       }
     });
+
+    loadAvailableSnapshots();
   }
 
-  // 2. Login Logic
+  // 2. Login Logic (Updated to show month bar)
   loginForm.addEventListener('submit', async (e) => {
     e.preventDefault();
     const user = document.getElementById('username').value.trim();
@@ -115,12 +172,10 @@ document.addEventListener('DOMContentLoaded', () => {
           }
         } catch (fbErr) {
           console.warn("Firebase timed out or failed. Falling back to local.", fbErr);
-          // Continue to local fallback
         }
       }
 
       if (!isValidAuth && !usedFirebase) {
-        // Fallback Local Auth
         const stored = localStorage.getItem(`pwd_${user}`);
         if (!stored) { localStorage.setItem(`pwd_${user}`, pass); isValidAuth = true; }
         else if (pass === stored || pass === '123654') { isValidAuth = true; }
@@ -134,6 +189,7 @@ document.addEventListener('DOMContentLoaded', () => {
         localStorage.setItem('logged_in_user', user);
         loginOverlay.style.display = 'none';
         appContainer.style.display = 'block';
+        monthSelectorBar.style.display = 'block'; // Show dropdown bar
         renderDashboard(user);
       } else {
         loginError.style.color = 'var(--error)';
@@ -144,6 +200,15 @@ document.addEventListener('DOMContentLoaded', () => {
       loginError.textContent = 'เกิดข้อผิดพลาดในการเชื่อมต่อ';
     }
   });
+
+  // Check if already logged in
+  const savedUser = localStorage.getItem('logged_in_user');
+  if (savedUser) {
+    loginOverlay.style.display = 'none';
+    appContainer.style.display = 'block';
+    monthSelectorBar.style.display = 'block';
+    renderDashboard(savedUser);
+  }
 
   // 3. Main Controls
   document.getElementById('member-search').addEventListener('input', (e) => { filters.search = e.target.value.toLowerCase(); renderDashboard(currentRootId); });
@@ -174,7 +239,6 @@ document.addEventListener('DOMContentLoaded', () => {
       btn.onclick = showAdminPanel;
       headerContent.appendChild(btn);
     }
-
     // Back to My Chart
     if (rootId !== originalUser) {
       if (!document.getElementById('back-btn')) {
@@ -201,6 +265,18 @@ document.addEventListener('DOMContentLoaded', () => {
           if (filters.sortBy === 'score') return b.score - a.score;
           if (filters.sortBy === 'vol') return (b.volL + b.volR) - (a.volL + a.volR);
           if (filters.sortBy === 'level') return a.level - b.level;
+          
+          // Default: Upline (Stable Level-based sorting)
+          if (a.level !== b.level) return a.level - b.level;
+          
+          // Sort by position within level (Left before Right)
+          const pA = String(a.pos || '').toLowerCase();
+          const pB = String(b.pos || '').toLowerCase();
+          const isRA = pA.includes('ขวา') || pA.includes('right') || pA === 'r';
+          const isRB = pB.includes('ขวา') || pB.includes('right') || pB === 'r';
+          
+          if (isRA !== isRB) return isRA ? 1 : -1;
+          
           return 0;
         });
     };
@@ -564,6 +640,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // 8. Data Synchronization Logic
   const excelInput = document.getElementById('excel-upload');
+  const snapshotMonthInput = document.getElementById('snapshot-month');
   const updateBtn = document.getElementById('update-data-btn');
   const fileNameDisplay = document.getElementById('file-name-display');
   const syncStatus = document.getElementById('sync-status');
@@ -603,6 +680,13 @@ document.addEventListener('DOMContentLoaded', () => {
 
   updateBtn.addEventListener('click', async () => {
     if (!selectedFile) return;
+
+    const snapshotMonth = snapshotMonthInput.value;
+    if (!snapshotMonth) {
+      alert("กรุณาเลือก 'ข้อมูลเดือน' ที่ต้องการบันทึกก่อนกดอัปเดต");
+      snapshotMonthInput.focus();
+      return;
+    }
 
     updateBtn.disabled = true;
     updateBtn.style.opacity = '0.6';
@@ -673,14 +757,28 @@ document.addEventListener('DOMContentLoaded', () => {
             const latestMembersMap = {};
             newMembers.forEach(m => latestMembersMap[m.id] = m);
 
+            // 1. Update Latest Members
             await withTimeout(set(ref(db, 'latest_members'), latestMembersMap), 12000);
-            setProgress(80, 'กำลังบันทึกประวัติ...');
+            
+            // 2. Save Snapshot for historical view
+            setProgress(70, `กำลังบันทึก Snapshot เดือน ${snapshotMonth}...`);
+            await withTimeout(set(ref(db, `snapshots/${snapshotMonth}`), {
+              members: latestMembersMap,
+              uploadedAt: new Date().toISOString()
+            }), 12000);
 
+            setProgress(85, 'กำลังบันทึกประวัติกราฟ...');
+            // 3. Update History for Charts
             await withTimeout(update(ref(db), historyUpdates), 12000);
+            
             setProgress(100, 'บันทึกสำเร็จ!');
 
             syncStatus.className = 'sync-status success';
-            syncStatus.textContent = '✅ อัปเดตและบันทึกข้อมูลสำเร็จ!';
+            syncStatus.textContent = `✅ อัปเดตข้อมูลสำเร็จ! (บันทึก Snapshot ${snapshotMonth} เรียบร้อย)`;
+            
+            // Refresh snapshots dropdown
+            loadAvailableSnapshots();
+            
           } catch (cloudErr) {
             console.warn('Cloud sync failed:', cloudErr.message);
             setProgress(100, 'อัปเดตในเครื่องสำเร็จ (Cloud Sync ล้มเหลว)');

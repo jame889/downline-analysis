@@ -83,11 +83,15 @@
             <div id="sync-status" class="sync-status"></div>
           </div>
           
-          <div class="sync-actions" style="display: flex; gap: 1rem; align-items: center;">
+          <div class="sync-actions" style="display: flex; gap: 1rem; align-items: center; flex-wrap: wrap;">
             <div class="file-input-wrapper">
               <input type="file" id="excel-upload" accept=".xlsx" style="display: none;">
               <button class="view-btn" onclick="document.getElementById('excel-upload').click()">📁 เลือกไฟล์ Excel (.xlsx)</button>
               <span id="file-name-display" style="margin-left: 1rem; color: var(--text-muted); font-size: 0.85rem;">ยังไม่ได้เลือกไฟล์</span>
+            </div>
+            <div style="display:flex; align-items:center; gap:0.5rem;">
+              <label for="snapshot-month" style="color:var(--text-muted); font-size:0.85rem; white-space:nowrap;">📅 ข้อมูลเดือน:</label>
+              <input type="month" id="snapshot-month" style="background:rgba(0,0,0,0.4); color:var(--text-main); border:1px solid var(--border-color); border-radius:8px; padding:0.45rem 0.75rem; font-size:0.9rem; font-family:inherit; cursor:pointer; outline:none;">
             </div>
             <button id="update-data-btn" class="login-btn" style="width: auto; padding: 0.75rem 2rem; font-size: 1rem; opacity: 0.6; cursor: not-allowed;" disabled>🚀 อัปเดตข้อมูลล่าสุด</button>
           </div>
@@ -126,6 +130,17 @@
         <h3 class="adv-title">🔍 เจาะลึกองค์กร (Advanced Network Analytics)</h3>
         <div class="adv-grid" id="adv-grid">
            <!-- Rendered via JS -->
+        </div>
+      </div>
+
+      <!-- Month Selector Bar (visible to all logged-in users) -->
+      <div id="month-selector-bar" style="display:none; padding: 0.6rem 2rem; background: rgba(13,17,23,0.9); border-bottom: 1px solid var(--border-color); position: sticky; top: 0; z-index: 100; backdrop-filter: blur(8px);">
+        <div style="max-width:1200px; margin:0 auto; display:flex; align-items:center; gap:1rem;">
+          <label for="month-dropdown" style="color:var(--text-muted); font-size:0.8rem; white-space:nowrap;">📅 ดูข้อมูลย้อนหลัง:</label>
+          <select id="month-dropdown" class="month-dropdown-select">
+            <option value="latest">🔄 ข้อมูลล่าสุด (Live)</option>
+          </select>
+          <div id="snapshot-status-badge" style="display:none; background:rgba(68, 147, 248, 0.1); color:var(--primary); padding: 0.2rem 0.6rem; border-radius: 4px; font-size: 0.75rem; border: 1px solid rgba(68, 147, 248, 0.3);">Snapshot</div>
         </div>
       </div>
 

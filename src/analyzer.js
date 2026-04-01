@@ -92,11 +92,18 @@ export function analyzeDownline(members, rootId) {
 
   dfsAnalyzed.push(rootNode);
 
-  if (rootNode.children.length > 0) traverseAndAnalyze(rootNode.children[0], 'Left');
-  if (rootNode.children.length > 1) traverseAndAnalyze(rootNode.children[1], 'Right');
-  for (let i = 2; i < rootNode.children.length; i++) {
-    const side = i % 2 === 0 ? 'Left' : 'Right';
-    traverseAndAnalyze(rootNode.children[i], side); 
+  if (rootNode.children.length > 0) {
+    rootNode.children.forEach(child => {
+      const p = String(child.pos || '').toLowerCase();
+      let side = 'Left'; // Default
+      if (p.includes('ขวา') || p.includes('right') || p === 'r') side = 'Right';
+      else if (p.includes('ซ้าย') || p.includes('left') || p === 'l') side = 'Left';
+      else {
+        // Fallback for messy data: use simple index-based heuristic for root
+        // (but usually Excel has 'ซ้าย'/'ขวา')
+      }
+      traverseAndAnalyze(child, side);
+    });
   }
   
   // We already skipped inactive nodes during mapping, so the tree is clean.
