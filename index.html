@@ -9,6 +9,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="./style.css">
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+    <!-- Deployment v1.0.1: April 1, 2026 -->
   </head>
   <body>
     <!-- Login Overlay -->
@@ -73,10 +74,10 @@
           <button class="back-btn" onclick="document.getElementById('admin-panel').style.display='none'; document.getElementById('dashboard').style.display='grid'; document.querySelector('.control-bar').style.display='flex';">← กลับไปหน้าหลัก</button>
         </div>
 
-        <section class="admin-section data-sync-card" style="margin-bottom: 2.5rem; padding: 2rem; background: var(--surface); border: 1px solid var(--border); border-radius: 16px;">
+        <section class="admin-section data-sync-card" style="margin-bottom: 2.5rem; padding: 2rem; background: var(--panel-bg); border: 1px solid var(--border-color); border-radius: 16px;">
           <div style="display: flex; justify-content: space-between; align-items: flex-start;">
             <div>
-              <h3 style="margin-top: 0; color: var(--text);">🔄 อัปเดตข้อมูลเครือข่าย (Data Synchronization)</h3>
+              <h3 style="margin-top: 0; color: var(--text-main);">🔄 อัปเดตข้อมูลเครือข่าย (Data Synchronization)</h3>
               <p style="color: var(--text-muted); font-size: 0.9rem; margin: 0.5rem 0 1.5rem;">อัปโหลดไฟล์ Excel จาก First Thailand Portal เพื่ออัปเดตยอด PV และโครงสร้างทีมล่าสุด</p>
             </div>
             <div id="sync-status" class="sync-status"></div>

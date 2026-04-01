@@ -10,6 +10,8 @@
   --accent-right-bg: rgba(210, 168, 255, 0.15);
   --success: #3fb950;
   --error: #f85149;
+  --primary: #4493f8;
+  --secondary: #d2a8ff;
 }
 
 * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Inter', sans-serif; }
