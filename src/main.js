@@ -1,8 +1,9 @@
-import { members } from './data.js';
+import { members as staticMembers } from './data.js';
 import { localHistory } from './history.js';
 import { analyzeDownline, getCoachJoeAdvice, getAdvancedAnalysis } from './analyzer.js';
 import { initializeApp } from "firebase/app";
-import { getDatabase, ref, onValue, set, push, get, child } from "firebase/database";
+import { getDatabase, ref, onValue, set, push, get, child, update } from "firebase/database";
+import * as XLSX from 'xlsx';
 
 // Firebase Configuration (Replace with your own if needed)
 const firebaseConfig = {
@@ -35,7 +36,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
   let currentRootId = '';
   let manualBadges = JSON.parse(localStorage.getItem('manual_badges') || '{}');
+  let liveMembers = null; // Loaded from Firebase
   const filters = { search: '', badge: 'all', sortBy: 'upline' };
+
+  // Helper to get active member set
+  const getActiveMembers = () => liveMembers || staticMembers;
 
   // 1. Firebase Listeners (Manual Badges)
   if (db) {
@@ -44,6 +49,16 @@ document.addEventListener('DOMContentLoaded', () => {
       if (data) {
         manualBadges = data;
         localStorage.setItem('manual_badges', JSON.stringify(manualBadges));
+        if (currentRootId) renderDashboard(currentRootId);
+      }
+    });
+
+    // Listen for live members update
+    onValue(ref(db, 'latest_members'), (snapshot) => {
+      const data = snapshot.val();
+      if (data) {
+        liveMembers = Object.values(data);
+        console.log("🚀 Live members updated from Firebase:", liveMembers.length);
         if (currentRootId) renderDashboard(currentRootId);
       }
     });
@@ -60,7 +75,7 @@ document.addEventListener('DOMContentLoaded', () => {
     loginError.style.color = '#8b949e';
     loginError.textContent = 'Verifying...';
 
-    const memberData = members.find(m => m.id === user);
+    const memberData = getActiveMembers().find(m => m.id === user);
     if (!memberData) {
       loginError.style.color = 'var(--error)';
       loginError.textContent = 'ไม่พบรหัสสมาชิกนี้';
@@ -137,7 +152,8 @@ document.addEventListener('DOMContentLoaded', () => {
   // 4. Dashboard Rendering
   function renderDashboard(rootId) {
     currentRootId = rootId;
-    let { leftTeam, rightTeam, rootNode } = analyzeDownline(members, rootId);
+    const activeMembers = getActiveMembers();
+    let { leftTeam, rightTeam, rootNode } = analyzeDownline(activeMembers, rootId);
 
     // Header Admin Link
     const originalUser = localStorage.getItem('logged_in_user');
@@ -238,7 +254,7 @@ document.addEventListener('DOMContentLoaded', () => {
     rightTeam.forEach((m, i) => rightList.appendChild(renderCard(m, i)));
 
     // Render Coach JOE Advice
-    const { allAnalyzed } = analyzeDownline(members, rootId);
+    const { allAnalyzed } = analyzeDownline(activeMembers, rootId);
     const left5CoreCount = leftTeam.filter(m => m.badges.includes('5core')).length;
     const right5CoreCount = rightTeam.filter(m => m.badges.includes('5core')).length;
     
@@ -249,7 +265,7 @@ document.addEventListener('DOMContentLoaded', () => {
       volR: rootNode ? rootNode.volR : 0
     };
 
-    const advice = getCoachJoeAdvice(rootId, members, allAnalyzed, balanceStats);
+    const advice = getCoachJoeAdvice(rootId, activeMembers, allAnalyzed, balanceStats);
     const joePanel = document.getElementById('coach-joe-panel');
     
     if (advice && rootNode) {
@@ -282,7 +298,7 @@ document.addEventListener('DOMContentLoaded', () => {
       const advContainer = document.getElementById('advanced-analytics');
       const advGrid = document.getElementById('adv-grid');
       
-      const advStats = getAdvancedAnalysis(rootNode, allAnalyzed, members, leftTeam, rightTeam);
+      const advStats = getAdvancedAnalysis(rootNode, allAnalyzed, activeMembers, leftTeam, rightTeam);
       
       if (advStats) {
         advContainer.style.display = 'block';
@@ -379,7 +395,7 @@ document.addEventListener('DOMContentLoaded', () => {
       userList.innerHTML = '<div style="padding: 1rem; color: var(--text-muted);">ยังไม่มีผู้ใช้งานลงทะเบียน</div>';
     } else {
       userEntries.forEach(([uid, data]) => {
-        const member = members.find(m => m.id === uid);
+        const member = getActiveMembers().find(m => m.id === uid);
         const userName = member ? member.name : (uid === '900057' ? 'Admin' : 'Unknown User');
         const d = document.createElement('div');
         d.className = 'admin-user-card';
@@ -540,5 +556,138 @@ document.addEventListener('DOMContentLoaded', () => {
       }
     });
   };
+
+  // 8. Data Synchronization Logic
+  const excelInput = document.getElementById('excel-upload');
+  const updateBtn = document.getElementById('update-data-btn');
+  const fileNameDisplay = document.getElementById('file-name-display');
+  const syncStatus = document.getElementById('sync-status');
+  const progressBar = document.getElementById('sync-progress-bar');
+  const progressFill = document.getElementById('sync-progress-fill');
+  const progressText = document.getElementById('sync-progress-text');
+  const progressPercent = document.getElementById('sync-progress-percent');
+
+  let selectedFile = null;
+
+  excelInput.addEventListener('change', (e) => {
+    selectedFile = e.target.files[0];
+    if (selectedFile) {
+      fileNameDisplay.textContent = selectedFile.name;
+      updateBtn.disabled = false;
+      updateBtn.style.opacity = '1';
+      updateBtn.style.cursor = 'pointer';
+      syncStatus.className = 'sync-status info';
+      syncStatus.textContent = 'ไฟล์พร้อมอัปโหลด';
+    }
+  });
+
+  updateBtn.addEventListener('click', async () => {
+    if (!selectedFile || !db) return;
+
+    try {
+      updateBtn.disabled = true;
+      updateBtn.style.opacity = '0.6';
+      progressBar.style.display = 'block';
+      syncStatus.className = 'sync-status info';
+      syncStatus.textContent = 'กำลังประมวลผล...';
+
+      const reader = new FileReader();
+      reader.onload = async (e) => {
+        try {
+          const data = new Uint8Array(e.target.result);
+          const workbook = XLSX.read(data, { type: 'array' });
+          const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
+          const rows = XLSX.utils.sheet_to_json(firstSheet, { header: 1 });
+
+          progressText.textContent = 'กำลังแยกแยะข้อมูล...';
+          progressPercent.textContent = '20%';
+          progressFill.style.width = '20%';
+
+          const newMembers = [];
+          const historyUpdates = {};
+          const today = new Date().toISOString().split('T')[0];
+
+          // Parsing Logic (Matches import_rest.js)
+          for (let i = 1; i < rows.length; i++) {
+            const row = rows[i];
+            if (!row || row.length < 18) continue;
+
+            const memberRaw = String(row[1] || '');
+            const parts = memberRaw.split('\n');
+            const id = parts[0] ? parts[0].trim() : '';
+            const name = parts.length > 1 ? parts[1].replace(/[()]/g, '').trim() : id;
+            if (!id) continue;
+
+            let volL = row[16];
+            let volR = row[17];
+            if (typeof volL === 'string') volL = parseFloat(volL.replace(/,/g, ''));
+            if (typeof volR === 'string') volR = parseFloat(volR.replace(/,/g, ''));
+
+            const mObj = {
+              id,
+              name,
+              level: parseInt(row[0]) || 0,
+              regDate: String(row[2] || ''),
+              pos: String(row[3] || ''),
+              upline: String(row[4] || ''),
+              uplineName: String(row[5] || ''),
+              sponsor: String(row[6] || ''),
+              sponsorName: String(row[7] || ''),
+              volL: volL || 0,
+              volR: volR || 0
+            };
+
+            newMembers.push(mObj);
+            historyUpdates[`history/${id}/${today}`] = { volL: mObj.volL, volR: mObj.volR, name: mObj.name };
+          }
+
+          if (newMembers.length === 0) throw new Error("ไม่พบข้อมูลสมาชิกในไฟล์");
+
+          progressText.textContent = `กำลังอัปเดตสมาชิก ${newMembers.length} คน...`;
+          progressPercent.textContent = '50%';
+          progressFill.style.width = '50%';
+
+          // Update Latest Members
+          const latestMembersMap = {};
+          newMembers.forEach(m => latestMembersMap[m.id] = m);
+          await set(ref(db, 'latest_members'), latestMembersMap);
+
+          progressText.textContent = 'กำลังบันทึกประวัติ...';
+          progressPercent.textContent = '80%';
+          progressFill.style.width = '80%';
+
+          // Batch Update History
+          await update(ref(db), historyUpdates);
+
+          progressText.textContent = 'เสร็จสมบูรณ์!';
+          progressPercent.textContent = '100%';
+          progressFill.style.width = '100%';
+          
+          syncStatus.className = 'sync-status success';
+          syncStatus.textContent = '✅ อัปเดตข้อมูลสำเร็จ!';
+          
+          setTimeout(() => {
+            progressBar.style.display = 'none';
+            progressFill.style.width = '0%';
+          }, 3000);
+
+        } catch (err) {
+          console.error("Parse Error:", err);
+          syncStatus.className = 'sync-status error';
+          syncStatus.textContent = `❌ ผิดพลาด: ${err.message}`;
+          updateBtn.disabled = false;
+          updateBtn.style.opacity = '1';
+        }
+      };
+      reader.readAsArrayBuffer(selectedFile);
+
+    } catch (err) {
+      console.error("Sync Error:", err);
+      syncStatus.className = 'sync-status error';
+      syncStatus.textContent = `❌ ผิดพลาด: ${err.message}`;
+      updateBtn.disabled = false;
+      updateBtn.style.opacity = '1';
+    }
+  });
 
 });

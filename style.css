@@ -324,6 +324,54 @@ body { background: var(--bg-color); color: var(--text-main); min-height: 100vh; 
   .admin-grid { grid-template-columns: 1fr !important; }
 }
 
+/* Data Sync UI Styles */
+.data-sync-card {
+  animation: slideUp 0.6s ease-out both;
+}
+
+.sync-status {
+  padding: 0.5rem 1rem;
+  border-radius: 8px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  display: none;
+}
+
+.sync-status.success {
+  display: block;
+  background: rgba(63, 185, 80, 0.1);
+  color: #3fb950;
+  border: 1px solid #3fb950;
+}
+
+.sync-status.error {
+  display: block;
+  background: rgba(248, 81, 73, 0.1);
+  color: #f85149;
+  border: 1px solid #f85149;
+}
+
+.sync-status.info {
+  display: block;
+  background: rgba(68, 147, 248, 0.1);
+  color: #4493f8;
+  border: 1px solid #4493f8;
+}
+
+.file-input-wrapper {
+  display: flex;
+  align-items: center;
+  flex: 1;
+  background: rgba(0, 0, 0, 0.2);
+  padding: 0.5rem;
+  border-radius: 12px;
+  border: 1px dashed rgba(255, 255, 255, 0.1);
+}
+
+#sync-progress-fill {
+  box-shadow: 0 0 10px var(--primary);
+}
+
 /* Coach JOE Advice Panel Styles */
 .coach-joe-container {
   background: var(--panel-bg);

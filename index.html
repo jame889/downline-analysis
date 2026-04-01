@@ -69,9 +69,38 @@
 
       <div id="admin-panel" style="display: none; padding: 2rem; max-width: 1200px; margin: 0 auto; animation: fadeIn 0.4s ease;">
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem;">
-          <h2 style="font-size: 2rem; font-weight: 800;">User Management & Logs</h2>
+          <h2 style="font-size: 2rem; font-weight: 800;">Admin Dashboard</h2>
           <button class="back-btn" onclick="document.getElementById('admin-panel').style.display='none'; document.getElementById('dashboard').style.display='grid'; document.querySelector('.control-bar').style.display='flex';">← กลับไปหน้าหลัก</button>
         </div>
+
+        <section class="admin-section data-sync-card" style="margin-bottom: 2.5rem; padding: 2rem; background: var(--surface); border: 1px solid var(--border); border-radius: 16px;">
+          <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+            <div>
+              <h3 style="margin-top: 0; color: var(--text);">🔄 อัปเดตข้อมูลเครือข่าย (Data Synchronization)</h3>
+              <p style="color: var(--text-muted); font-size: 0.9rem; margin: 0.5rem 0 1.5rem;">อัปโหลดไฟล์ Excel จาก First Thailand Portal เพื่ออัปเดตยอด PV และโครงสร้างทีมล่าสุด</p>
+            </div>
+            <div id="sync-status" class="sync-status"></div>
+          </div>
+          
+          <div class="sync-actions" style="display: flex; gap: 1rem; align-items: center;">
+            <div class="file-input-wrapper">
+              <input type="file" id="excel-upload" accept=".xlsx" style="display: none;">
+              <button class="view-btn" onclick="document.getElementById('excel-upload').click()">📁 เลือกไฟล์ Excel (.xlsx)</button>
+              <span id="file-name-display" style="margin-left: 1rem; color: var(--text-muted); font-size: 0.85rem;">ยังไม่ได้เลือกไฟล์</span>
+            </div>
+            <button id="update-data-btn" class="login-btn" style="width: auto; padding: 0.75rem 2rem; font-size: 1rem; opacity: 0.6; cursor: not-allowed;" disabled>🚀 อัปเดตข้อมูลล่าสุด</button>
+          </div>
+
+          <div id="sync-progress-bar" style="display: none; margin-top: 1.5rem;">
+            <div style="display: flex; justify-content: space-between; font-size: 0.8rem; margin-bottom: 0.5rem;">
+              <span id="sync-progress-text" style="color: var(--text-muted);">กำลังเตรียมการ...</span>
+              <span id="sync-progress-percent" style="color: var(--primary);">0%</span>
+            </div>
+            <div style="width: 100%; height: 6px; background: rgba(255,255,255,0.05); border-radius: 10px; overflow: hidden;">
+              <div id="sync-progress-fill" style="width: 0%; height: 100%; background: linear-gradient(90deg, var(--primary), var(--secondary)); transition: width 0.3s ease;"></div>
+            </div>
+          </div>
+        </section>
         
         <div class="admin-grid" style="display: grid; grid-template-columns: 2fr 1fr; gap: 2rem;">
           <section class="admin-section team-column">

@@ -2,3 +2,13 @@ node_modules/
 dist/
 .env
 .DS_Store
+serviceAccountKey.json
+*.zip
+logs_out/
+backfill_downloads/
+test_*.js
+check_*.js
+inspect_*.js
+find_selectors.js
+explore_portal.js
+verify_urls.js
