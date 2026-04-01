@@ -5,10 +5,15 @@ import { initializeApp } from "firebase/app";
 import { getDatabase, ref, onValue, set, push, get, child, update } from "firebase/database";
 import * as XLSX from 'xlsx';
 
-// Firebase Configuration (Replace with your own if needed)
+// Firebase Configuration
 const firebaseConfig = {
-  apiKey: "optional-placeholder-key",
-  databaseURL: "https://downline-analyzer-default-rtdb.asia-southeast1.firebasedatabase.app"
+  apiKey: "AIzaSyATO6VmRLFipbYXdOsph01kBO6dow54yAI",
+  authDomain: "fa-mentor-ultimate.firebaseapp.com",
+  projectId: "fa-mentor-ultimate",
+  storageBucket: "fa-mentor-ultimate.firebasestorage.app",
+  messagingSenderId: "301454187666",
+  appId: "1:301454187666:web:ef54e48a014be955e0da4b",
+  databaseURL: "https://fa-mentor-ultimate-default-rtdb.asia-southeast1.firebasedatabase.app"
 };
 
 let db;
