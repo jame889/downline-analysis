@@ -569,6 +569,21 @@ document.addEventListener('DOMContentLoaded', () => {
 
   let selectedFile = null;
 
+  // Helper: Firebase call with timeout
+  function withTimeout(promise, ms = 10000) {
+    const timeout = new Promise((_, reject) =>
+      setTimeout(() => reject(new Error('Firebase Timeout: เชื่อมต่อฐานข้อมูลไม่ได้ (Cloud Sync Failed)')), ms)
+    );
+    return Promise.race([promise, timeout]);
+  }
+
+  // Helper: Update progress UI
+  function setProgress(percent, text) {
+    progressFill.style.width = `${percent}%`;
+    progressPercent.textContent = `${percent}%`;
+    progressText.textContent = text;
+  }
+
   excelInput.addEventListener('change', (e) => {
     selectedFile = e.target.files[0];
     if (selectedFile) {
@@ -582,112 +597,125 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   updateBtn.addEventListener('click', async () => {
-    if (!selectedFile || !db) return;
+    if (!selectedFile) return;
 
-    try {
-      updateBtn.disabled = true;
-      updateBtn.style.opacity = '0.6';
-      progressBar.style.display = 'block';
-      syncStatus.className = 'sync-status info';
-      syncStatus.textContent = 'กำลังประมวลผล...';
+    updateBtn.disabled = true;
+    updateBtn.style.opacity = '0.6';
+    progressBar.style.display = 'block';
+    syncStatus.className = 'sync-status info';
+    syncStatus.textContent = 'กำลังประมวลผล...';
+    setProgress(0, 'กำลังเตรียมการ...');
 
-      const reader = new FileReader();
-      reader.onload = async (e) => {
-        try {
-          const data = new Uint8Array(e.target.result);
-          const workbook = XLSX.read(data, { type: 'array' });
-          const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
-          const rows = XLSX.utils.sheet_to_json(firstSheet, { header: 1 });
+    const reader = new FileReader();
+    reader.onload = async (e) => {
+      try {
+        const data = new Uint8Array(e.target.result);
+        const workbook = XLSX.read(data, { type: 'array' });
+        const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
+        const rows = XLSX.utils.sheet_to_json(firstSheet, { header: 1 });
 
-          progressText.textContent = 'กำลังแยกแยะข้อมูล...';
-          progressPercent.textContent = '20%';
-          progressFill.style.width = '20%';
+        setProgress(20, 'กำลังแยกแยะข้อมูล...');
 
-          const newMembers = [];
-          const historyUpdates = {};
-          const today = new Date().toISOString().split('T')[0];
+        const newMembers = [];
+        const historyUpdates = {};
+        const today = new Date().toISOString().split('T')[0];
 
-          // Parsing Logic (Matches import_rest.js)
-          for (let i = 1; i < rows.length; i++) {
-            const row = rows[i];
-            if (!row || row.length < 18) continue;
+        for (let i = 1; i < rows.length; i++) {
+          const row = rows[i];
+          if (!row || row.length < 18) continue;
 
-            const memberRaw = String(row[1] || '');
-            const parts = memberRaw.split('\n');
-            const id = parts[0] ? parts[0].trim() : '';
-            const name = parts.length > 1 ? parts[1].replace(/[()]/g, '').trim() : id;
-            if (!id) continue;
+          const memberRaw = String(row[1] || '');
+          const parts = memberRaw.split('\n');
+          const id = parts[0] ? parts[0].trim() : '';
+          const name = parts.length > 1 ? parts[1].replace(/[()]/g, '').trim() : id;
+          if (!id) continue;
 
-            let volL = row[16];
-            let volR = row[17];
-            if (typeof volL === 'string') volL = parseFloat(volL.replace(/,/g, ''));
-            if (typeof volR === 'string') volR = parseFloat(volR.replace(/,/g, ''));
+          let volL = row[16];
+          let volR = row[17];
+          if (typeof volL === 'string') volL = parseFloat(volL.replace(/,/g, ''));
+          if (typeof volR === 'string') volR = parseFloat(volR.replace(/,/g, ''));
 
-            const mObj = {
-              id,
-              name,
-              level: parseInt(row[0]) || 0,
-              regDate: String(row[2] || ''),
-              pos: String(row[3] || ''),
-              upline: String(row[4] || ''),
-              uplineName: String(row[5] || ''),
-              sponsor: String(row[6] || ''),
-              sponsorName: String(row[7] || ''),
-              volL: volL || 0,
-              volR: volR || 0
-            };
+          const mObj = {
+            id, name,
+            level: parseInt(row[0]) || 0,
+            regDate: String(row[2] || ''),
+            pos: String(row[3] || ''),
+            upline: String(row[4] || ''),
+            uplineName: String(row[5] || ''),
+            sponsor: String(row[6] || ''),
+            sponsorName: String(row[7] || ''),
+            volL: volL || 0,
+            volR: volR || 0
+          };
 
-            newMembers.push(mObj);
-            historyUpdates[`history/${id}/${today}`] = { volL: mObj.volL, volR: mObj.volR, name: mObj.name };
+          newMembers.push(mObj);
+          historyUpdates[`history/${id}/${today}`] = { volL: mObj.volL, volR: mObj.volR, name: mObj.name };
+        }
+
+        if (newMembers.length === 0) throw new Error('ไม่พบข้อมูลสมาชิกในไฟล์ กรุณาตรวจสอบรูปแบบไฟล์');
+
+        setProgress(40, `พบสมาชิก ${newMembers.length} คน - กำลังอัปเดต...`);
+
+        // Update local (in-memory) immediately so UI reflects changes
+        liveMembers = newMembers;
+        if (currentRootId) renderDashboard(currentRootId);
+
+        setProgress(60, 'กำลังบันทึกข้อมูลขึ้น Cloud...');
+
+        // Try cloud sync with timeout
+        if (db) {
+          try {
+            const latestMembersMap = {};
+            newMembers.forEach(m => latestMembersMap[m.id] = m);
+
+            await withTimeout(set(ref(db, 'latest_members'), latestMembersMap), 12000);
+            setProgress(80, 'กำลังบันทึกประวัติ...');
+
+            await withTimeout(update(ref(db), historyUpdates), 12000);
+            setProgress(100, 'บันทึกสำเร็จ!');
+
+            syncStatus.className = 'sync-status success';
+            syncStatus.textContent = '✅ อัปเดตและบันทึกข้อมูลสำเร็จ!';
+          } catch (cloudErr) {
+            console.warn('Cloud sync failed:', cloudErr.message);
+            setProgress(100, 'อัปเดตในเครื่องสำเร็จ (Cloud Sync ล้มเหลว)');
+            syncStatus.className = 'sync-status error';
+            syncStatus.textContent = `⚠️ อัปเดตในเครื่องสำเร็จ แต่ Cloud Sync ล้มเหลว: ${cloudErr.message}`;
           }
-
-          if (newMembers.length === 0) throw new Error("ไม่พบข้อมูลสมาชิกในไฟล์");
-
-          progressText.textContent = `กำลังอัปเดตสมาชิก ${newMembers.length} คน...`;
-          progressPercent.textContent = '50%';
-          progressFill.style.width = '50%';
-
-          // Update Latest Members
-          const latestMembersMap = {};
-          newMembers.forEach(m => latestMembersMap[m.id] = m);
-          await set(ref(db, 'latest_members'), latestMembersMap);
-
-          progressText.textContent = 'กำลังบันทึกประวัติ...';
-          progressPercent.textContent = '80%';
-          progressFill.style.width = '80%';
-
-          // Batch Update History
-          await update(ref(db), historyUpdates);
-
-          progressText.textContent = 'เสร็จสมบูรณ์!';
-          progressPercent.textContent = '100%';
-          progressFill.style.width = '100%';
-          
-          syncStatus.className = 'sync-status success';
-          syncStatus.textContent = '✅ อัปเดตข้อมูลสำเร็จ!';
-          
-          setTimeout(() => {
-            progressBar.style.display = 'none';
-            progressFill.style.width = '0%';
-          }, 3000);
-
-        } catch (err) {
-          console.error("Parse Error:", err);
+        } else {
+          setProgress(100, 'อัปเดตในเครื่องสำเร็จ (ไม่ได้เชื่อมต่อ Cloud)');
           syncStatus.className = 'sync-status error';
-          syncStatus.textContent = `❌ ผิดพลาด: ${err.message}`;
+          syncStatus.textContent = '⚠️ อัปเดตในเครื่องสำเร็จ แต่ไม่ได้เชื่อมต่อ Firebase';
+        }
+
+        setTimeout(() => {
+          progressBar.style.display = 'none';
+          setProgress(0, 'กำลังเตรียมการ...');
           updateBtn.disabled = false;
           updateBtn.style.opacity = '1';
-        }
-      };
-      reader.readAsArrayBuffer(selectedFile);
+        }, 5000);
 
-    } catch (err) {
-      console.error("Sync Error:", err);
+      } catch (err) {
+        console.error('Parse Error:', err);
+        setProgress(0, 'เกิดข้อผิดพลาด');
+        progressBar.style.display = 'none';
+        syncStatus.className = 'sync-status error';
+        syncStatus.textContent = `❌ ผิดพลาด: ${err.message}`;
+        updateBtn.disabled = false;
+        updateBtn.style.opacity = '1';
+      }
+    };
+
+    reader.onerror = () => {
+      setProgress(0, 'อ่านไฟล์ไม่ได้');
+      progressBar.style.display = 'none';
       syncStatus.className = 'sync-status error';
-      syncStatus.textContent = `❌ ผิดพลาด: ${err.message}`;
+      syncStatus.textContent = '❌ ไม่สามารถอ่านไฟล์ได้ กรุณาลองใหม่';
       updateBtn.disabled = false;
       updateBtn.style.opacity = '1';
-    }
+    };
+
+    reader.readAsArrayBuffer(selectedFile);
   });
 
 });
