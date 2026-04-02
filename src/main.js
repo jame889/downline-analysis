@@ -710,13 +710,13 @@ document.addEventListener('DOMContentLoaded', () => {
           if (!id) continue;
 
           // Upline and Sponsor are usually in format "900xxx (Name)"
-          const uplineRaw = String(row[10] || '');
-          const upline = uplineRaw.split(' ')[0].trim();
-          const uplineName = uplineRaw.includes('(') ? uplineRaw.split('(')[1].replace(')', '').trim() : upline;
-
-          const sponsorRaw = String(row[11] || '');
+          const sponsorRaw = String(row[10] || '');
           const sponsor = sponsorRaw.split(' ')[0].trim();
           const sponsorName = sponsorRaw.includes('(') ? sponsorRaw.split('(')[1].replace(')', '').trim() : sponsor;
+
+          const uplineRaw = String(row[11] || '');
+          const upline = uplineRaw.split(' ')[0].trim();
+          const uplineName = uplineRaw.includes('(') ? uplineRaw.split('(')[1].replace(')', '').trim() : upline;
 
           let volL = row[16];
           let volR = row[17];
