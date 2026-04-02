@@ -46,19 +46,19 @@ export function analyzeDownline(members, rootId) {
       
       while (currPathId && limit-- > 0) {
         let p = membersMap.get(currPathId);
-        
-        // If parent is found in the map, attach to it.
-        // We traverse up the upline chain specifically.
+
         if (p) {
+          // Skip red-red inactive nodes — walk up to nearest active ancestor
+          if (!isActive(p) && p.id !== rootId) {
+            currPathId = getCleanId(p.upline);
+            continue;
+          }
           parent = p;
           break;
         }
 
-        // The user requested "traverse up to upline of upline" 
-        // if immediate upline is missing from map.
-        // NOTE: If p is null, we don't have its record to find its upline ID.
-        // In this case, we break and default to attaching to the rootNode.
-        break; 
+        // Upline not in map — default to root
+        break;
       }
 
       if (!parent) parent = rootNode;
