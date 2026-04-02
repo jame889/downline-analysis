@@ -21,13 +21,13 @@ export function analyzeDownline(members, rootId) {
     if (rootId === '900057') return true;
 
     const getCleanId = (str) => str ? String(str).split('\n')[0].trim() : null;
-    let curr = getCleanId(startNode.upline) || getCleanId(startNode.sponsor);
+    let curr = getCleanId(startNode.upline);
     let limit = 1000;
     while (curr && limit-- > 0) {
       if (curr === rootId) return true;
       let p = membersMap.get(curr);
-      if (!p) break; // Gap in path, cannot trace further up this branch
-      curr = getCleanId(p.upline) || getCleanId(p.sponsor);
+      if (!p) break; // Gap in placement path
+      curr = getCleanId(p.upline);
     }
     return false;
   }
@@ -43,28 +43,22 @@ export function analyzeDownline(members, rootId) {
       const getCleanId = (str) => str ? String(str).split('\n')[0].trim() : null;
       let currPathId = getCleanId(m.upline);
       let limit = 1000;
-      let fallbackToSponsor = true;
       
       while (currPathId && limit-- > 0) {
         let p = membersMap.get(currPathId);
         
-        // If parent is found in the map, attach immediately (relaxed check as requested)
+        // If parent is found in the map, attach to it.
+        // We traverse up the upline chain specifically.
         if (p) {
           parent = p;
           break;
         }
 
-        // Fallback: If upline path is missing from data, try falling back to the sponsor ID
-        if (fallbackToSponsor) {
-          fallbackToSponsor = false;
-          let sId = getCleanId(m.sponsor);
-          if (sId && sId !== currPathId) {
-            currPathId = sId;
-            continue;
-          }
-        }
-        
-        break; // No further paths to trace
+        // The user requested "traverse up to upline of upline" 
+        // if immediate upline is missing from map.
+        // NOTE: If p is null, we don't have its record to find its upline ID.
+        // In this case, we break and default to attaching to the rootNode.
+        break; 
       }
 
       if (!parent) parent = rootNode;
