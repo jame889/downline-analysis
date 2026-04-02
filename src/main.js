@@ -527,6 +527,31 @@ document.addEventListener('DOMContentLoaded', () => {
 
   window.drillDown = (id) => { filters.search = ''; document.getElementById('member-search').value = ''; renderDashboard(id); window.scrollTo(0,0); };
 
+  // Swap Sponsor↔Upline column toggle
+  let swapSponsorUpline = localStorage.getItem('swap_sponsor_upline') === 'true';
+  const updateSwapBtn = () => {
+    const label = document.getElementById('swap-col-label');
+    const btn = document.getElementById('swap-columns-btn');
+    if (!label || !btn) return;
+    if (swapSponsorUpline) {
+      label.textContent = 'สลับแล้ว';
+      btn.style.color = 'rgba(255,120,120,0.9)';
+      btn.style.borderColor = 'rgba(255,120,120,0.4)';
+      btn.style.background = 'rgba(255,120,120,0.1)';
+    } else {
+      label.textContent = 'ปกติ';
+      btn.style.color = 'rgba(255,200,0,0.8)';
+      btn.style.borderColor = 'rgba(255,200,0,0.4)';
+      btn.style.background = 'rgba(255,200,0,0.07)';
+    }
+  };
+  updateSwapBtn();
+  window.toggleSwapColumns = () => {
+    swapSponsorUpline = !swapSponsorUpline;
+    localStorage.setItem('swap_sponsor_upline', swapSponsorUpline);
+    updateSwapBtn();
+  };
+
   // 7. Progress Chart
   let chartInstance = null;
   window.showProgressChart = async (memberId, memberName) => {
@@ -710,11 +735,15 @@ document.addEventListener('DOMContentLoaded', () => {
           if (!id) continue;
 
           // Upline and Sponsor are usually in format "900xxx (Name)"
-          const sponsorRaw = String(row[10] || '');
+          // Col 10 = Sponsor, Col 11 = Upline (toggle with swap button if file differs)
+          const col10 = String(row[swapSponsorUpline ? 11 : 10] || '');
+          const col11 = String(row[swapSponsorUpline ? 10 : 11] || '');
+
+          const sponsorRaw = col10;
           const sponsor = sponsorRaw.split(' ')[0].trim();
           const sponsorName = sponsorRaw.includes('(') ? sponsorRaw.split('(')[1].replace(')', '').trim() : sponsor;
 
-          const uplineRaw = String(row[11] || '');
+          const uplineRaw = col11;
           const upline = uplineRaw.split(' ')[0].trim();
           const uplineName = uplineRaw.includes('(') ? uplineRaw.split('(')[1].replace(')', '').trim() : upline;
 
