@@ -16,17 +16,19 @@ export function analyzeDownline(members, rootId) {
   // Helper to trace if a node is functionally underneath the dynamic rootId
   function isUnderRoot(startNode) {
     if (startNode.id === rootId) return true;
+    
+    // If we're the admin root, everyone in the report is naturally under us
+    if (rootId === '900057') return true;
+
     const getCleanId = (str) => str ? String(str).split('\n')[0].trim() : null;
     let curr = getCleanId(startNode.upline) || getCleanId(startNode.sponsor);
     let limit = 1000;
     while (curr && limit-- > 0) {
       if (curr === rootId) return true;
       let p = membersMap.get(curr);
-      if (!p) break;
+      if (!p) break; // Gap in path, cannot trace further up this branch
       curr = getCleanId(p.upline) || getCleanId(p.sponsor);
     }
-    // Specific Fallback: If logged in as sweeping admin (900057), all data inherently belongs to them
-    if (rootId === '900057') return true;
     return false;
   }
 
@@ -44,13 +46,21 @@ export function analyzeDownline(members, rootId) {
       
       while (currUplineId && limit-- > 0) {
         let p = membersMap.get(currUplineId);
-        if (!p) break; 
         
-        if (isActive(p) && isUnderRoot(p)) {
+        // If the immediate upline is found, we attach to them. 
+        // We don't care if their own upline is missing from this report.
+        if (p && isActive(p)) {
           parent = p;
           break;
         }
-        currUplineId = getCleanId(p.upline) || getCleanId(p.sponsor);
+
+        // If p is hidden/inactive, we try to trace higher using its own links if available
+        if (p) {
+           currUplineId = getCleanId(p.upline) || getCleanId(p.sponsor);
+        } else {
+           // If p is entirely missing from data, we cannot trace higher.
+           break;
+        }
       }
 
       if (!parent) parent = rootNode;
