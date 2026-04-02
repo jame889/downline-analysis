@@ -41,26 +41,30 @@ export function analyzeDownline(members, rootId) {
       
       let parent = null;
       const getCleanId = (str) => str ? String(str).split('\n')[0].trim() : null;
-      let currUplineId = getCleanId(m.upline) || getCleanId(m.sponsor);
+      let currPathId = getCleanId(m.upline);
       let limit = 1000;
+      let fallbackToSponsor = true;
       
-      while (currUplineId && limit-- > 0) {
-        let p = membersMap.get(currUplineId);
+      while (currPathId && limit-- > 0) {
+        let p = membersMap.get(currPathId);
         
-        // If the immediate upline is found, we attach to them. 
-        // We don't care if their own upline is missing from this report.
-        if (p && isActive(p)) {
+        // If parent is found in the map, attach immediately (relaxed check as requested)
+        if (p) {
           parent = p;
           break;
         }
 
-        // If p is hidden/inactive, we try to trace higher using its own links if available
-        if (p) {
-           currUplineId = getCleanId(p.upline) || getCleanId(p.sponsor);
-        } else {
-           // If p is entirely missing from data, we cannot trace higher.
-           break;
+        // Fallback: If upline path is missing from data, try falling back to the sponsor ID
+        if (fallbackToSponsor) {
+          fallbackToSponsor = false;
+          let sId = getCleanId(m.sponsor);
+          if (sId && sId !== currPathId) {
+            currPathId = sId;
+            continue;
+          }
         }
+        
+        break; // No further paths to trace
       }
 
       if (!parent) parent = rootNode;
