@@ -1,5 +1,16 @@
 /** @type {import('next').NextConfig} */
+const isGithubPages = process.env.GITHUB_PAGES === 'true'
+
 const nextConfig = {
+  ...(isGithubPages && {
+    output: 'export',
+    trailingSlash: true,
+    basePath: '/downline-analysis',
+    assetPrefix: '/downline-analysis',
+  }),
+  images: {
+    unoptimized: true,
+  },
   env: {
     // These are validated at startup — set them in .env.local or Vercel dashboard
     // Required: TELEGRAM_BOT_TOKEN, JWT_SECRET
