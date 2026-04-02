@@ -1,5 +1,5 @@
 'use client'
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, Legend
@@ -7,6 +7,7 @@ import {
 import PositionBadge from '@/components/PositionBadge'
 import VolLRChart from '@/components/VolLRChart'
 import Link from 'next/link'
+import type { AnalyzeNode } from '@/lib/analyzer'
 
 interface HistoryRow {
   month: string
@@ -58,6 +59,86 @@ interface Member { id: string; name: string; join_date: string; lv: number }
 
 interface OrgStats { total: number; active: number; qualified: number; total_bv: number }
 
+interface TreeNode {
+  id: string
+  name: string
+  upline_id: string | null
+  level: number
+  highest_position: string
+  is_active: number
+  monthly_bv: number
+}
+
+const RANK_ORDER = [
+  'CR. Ambassador', 'Crown Royal', 'Crown',
+  'Red Diamond', 'Blue Diamond', 'Diamond',
+  'Ruby', 'Platinum', 'Gold', 'Silver', 'Bronze', 'Star', 'FA',
+]
+
+function rankIndex(pos: string) {
+  const i = RANK_ORDER.indexOf(pos)
+  return i === -1 ? RANK_ORDER.length : i
+}
+
+
+function getLegMembers(myId: string, nodes: TreeNode[]): { left: TreeNode[]; right: TreeNode[] } {
+  const nodeMap = new Map<string, TreeNode>()
+  for (const n of nodes) nodeMap.set(n.id, n)
+
+  const childMap = new Map<string, TreeNode[]>()
+  childMap.set(myId, [])  // ensure root is in map
+
+  // Process level-ascending so closer-to-root nodes are placed first
+  const sorted = [...nodes].filter((n) => n.id !== myId).sort((a, b) => a.level - b.level)
+
+  for (const n of sorted) {
+    // Walk UP the upline chain to find nearest ancestor already in childMap.
+    // Bug 3 fix: when upline not yet placed, keep walking up through treeNodes
+    // (never use sponsor_id — upline chain only).
+    let curr: string | null = n.upline_id
+    let parentId: string | null = null
+
+    while (curr) {
+      if (curr === myId || childMap.has(curr)) {
+        parentId = curr
+        break
+      }
+      // curr not placed yet — walk up via its own upline_id in treeNodes
+      const currNode = nodeMap.get(curr)
+      if (!currNode) break  // not in subtree at all
+      curr = currNode.upline_id
+    }
+
+    if (parentId) {
+      const arr = childMap.get(parentId) ?? []
+      arr.push(n)
+      childMap.set(parentId, arr)
+    }
+  }
+
+  const directKids = childMap.get(myId) ?? []
+  const leftRootId  = directKids[0]?.id ?? null
+  const rightRootId = directKids[1]?.id ?? null
+
+  // Bug 2 fix: BFS order = closest to root first
+  function subtree(rootId: string | null): TreeNode[] {
+    if (!rootId) return []
+    const result: TreeNode[] = []
+    const queue = [rootId]
+    while (queue.length) {
+      const id = queue.shift()!
+      const node = nodeMap.get(id)
+      if (node) {
+        result.push(node)
+        for (const c of childMap.get(id) ?? []) queue.push(c.id)
+      }
+    }
+    return result
+  }
+
+  return { left: subtree(leftRootId), right: subtree(rightRootId) }
+}
+
 export default function MyPage() {
   const [months, setMonths] = useState<string[]>([])
   const [selectedMonth, setSelectedMonth] = useState('')
@@ -66,7 +147,14 @@ export default function MyPage() {
   const [history, setHistory] = useState<HistoryRow[]>([])
   const [directDownlines, setDirectDownlines] = useState<DownlineRow[]>([])
   const [orgStats, setOrgStats] = useState<OrgStats | null>(null)
+  const [treeNodes, setTreeNodes] = useState<TreeNode[]>([])
   const [loading, setLoading] = useState(true)
+
+  // Sub-view: "ดูผังทีมงานนี้"
+  const [focusMemberId, setFocusMemberId] = useState<string | null>(null)
+  const [focusMemberName, setFocusMemberName] = useState<string>('')
+  const [teamFocus, setTeamFocus] = useState<{ left: AnalyzeNode[]; right: AnalyzeNode[] } | null>(null)
+  const [teamFocusLoading, setTeamFocusLoading] = useState(false)
 
   function fetchData(month: string) {
     setLoading(true)
@@ -78,9 +166,34 @@ export default function MyPage() {
         setHistory(d.history ?? [])
         setDirectDownlines(d.directDownlines ?? [])
         setOrgStats(d.orgStats)
+        setTreeNodes(d.treeNodes ?? [])
         if (!selectedMonth) setMonths(d.months ?? [])
         setLoading(false)
+        // Close sub-view when month changes
+        setFocusMemberId(null)
+        setTeamFocus(null)
       })
+  }
+
+  function handleViewTeam(memberId: string, memberName: string) {
+    if (focusMemberId === memberId) {
+      // Toggle off
+      setFocusMemberId(null)
+      setTeamFocus(null)
+      return
+    }
+    setFocusMemberId(memberId)
+    setFocusMemberName(memberName)
+    setTeamFocus(null)
+    setTeamFocusLoading(true)
+    const month = selectedMonth
+    fetch(`/api/team-focus?member=${memberId}&month=${encodeURIComponent(month)}`)
+      .then((r) => r.json())
+      .then((d) => {
+        setTeamFocus({ left: d.left ?? [], right: d.right ?? [] })
+        setTeamFocusLoading(false)
+      })
+      .catch(() => setTeamFocusLoading(false))
   }
 
   useEffect(() => {
@@ -92,6 +205,7 @@ export default function MyPage() {
         setHistory(d.history ?? [])
         setDirectDownlines(d.directDownlines ?? [])
         setOrgStats(d.orgStats)
+        setTreeNodes(d.treeNodes ?? [])
         setMonths(d.months ?? [])
         setSelectedMonth(d.month ?? '')
         setLoading(false)
@@ -110,6 +224,16 @@ export default function MyPage() {
     'มูลค่า (฿)': r.monthly_thb,
     'Weak Leg': r.weak_leg_bv,
   }))
+
+  const legLeaders = useMemo(() => {
+    if (!member?.id || !treeNodes.length) return { left: [], right: [] }
+    const { left, right } = getLegMembers(member.id, treeNodes)
+    const filter = (nodes: TreeNode[]) =>
+      nodes
+        .filter((n) => n.highest_position !== 'FA' && n.is_active === 1)
+        .sort((a, b) => rankIndex(a.highest_position) - rankIndex(b.highest_position))
+    return { left: filter(left), right: filter(right) }
+  }, [member, treeNodes])
 
   if (loading) return <div className="text-slate-400 py-16 text-center">กำลังโหลด...</div>
 
@@ -256,6 +380,59 @@ export default function MyPage() {
         </div>
       )}
 
+      {/* Leg Leaders */}
+      {(legLeaders.left.length > 0 || legLeaders.right.length > 0) && (
+        <div className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden">
+          <div className="px-5 py-4 border-b border-slate-800">
+            <h2 className="text-sm font-semibold text-slate-300">ผู้นำในสายงาน (Active)</h2>
+          </div>
+          <div className="grid md:grid-cols-2 divide-y md:divide-y-0 md:divide-x divide-slate-800">
+            {/* Left leg */}
+            <div className="p-4">
+              <p className="text-xs font-semibold text-sky-400 mb-3">← ขาซ้าย ({legLeaders.left.length} คน)</p>
+              {legLeaders.left.length === 0 ? (
+                <p className="text-xs text-slate-500">ไม่มีผู้นำ active</p>
+              ) : (
+                <div className="space-y-1.5">
+                  {legLeaders.left.map((n) => (
+                    <div key={n.id} className="flex items-center gap-2">
+                      <PositionBadge pos={n.highest_position} />
+                      <Link href={`/members/${n.id}`} className="text-xs text-slate-300 hover:text-brand-400 truncate flex-1">
+                        {n.name}
+                      </Link>
+                      {n.monthly_bv > 0 && (
+                        <span className="text-xs text-slate-500 shrink-0">{n.monthly_bv.toLocaleString()} BV</span>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+            {/* Right leg */}
+            <div className="p-4">
+              <p className="text-xs font-semibold text-purple-400 mb-3">ขาขวา → ({legLeaders.right.length} คน)</p>
+              {legLeaders.right.length === 0 ? (
+                <p className="text-xs text-slate-500">ไม่มีผู้นำ active</p>
+              ) : (
+                <div className="space-y-1.5">
+                  {legLeaders.right.map((n) => (
+                    <div key={n.id} className="flex items-center gap-2">
+                      <PositionBadge pos={n.highest_position} />
+                      <Link href={`/members/${n.id}`} className="text-xs text-slate-300 hover:text-brand-400 truncate flex-1">
+                        {n.name}
+                      </Link>
+                      {n.monthly_bv > 0 && (
+                        <span className="text-xs text-slate-500 shrink-0">{n.monthly_bv.toLocaleString()} BV</span>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Direct downlines */}
       {directDownlines.length > 0 && (
         <div className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden">
@@ -274,11 +451,12 @@ export default function MyPage() {
                   <th className="text-right px-4 py-3">มูลค่า (฿)</th>
                   <th className="text-right px-4 py-3">Vol ซ้าย</th>
                   <th className="text-right px-4 py-3">Vol ขวา</th>
+                  <th className="px-4 py-3" />
                 </tr>
               </thead>
               <tbody>
                 {directDownlines.map((d) => (
-                  <tr key={d.id} className="border-b border-slate-800/50 hover:bg-slate-800/30">
+                  <tr key={d.id} className={`border-b border-slate-800/50 hover:bg-slate-800/30 transition-colors ${focusMemberId === d.id ? 'bg-slate-800/40' : ''}`}>
                     <td className="px-4 py-2.5">
                       <Link href={`/members/${d.id}`} className="hover:text-brand-400">
                         <span className="text-brand-400 font-mono text-xs">{d.id}</span>
@@ -296,11 +474,110 @@ export default function MyPage() {
                     <td className="px-4 py-2.5 text-right text-amber-400">฿{d.monthly_thb.toLocaleString()}</td>
                     <td className="px-4 py-2.5 text-right text-sky-400">{d.total_vol_left.toLocaleString()}</td>
                     <td className="px-4 py-2.5 text-right text-purple-400">{d.total_vol_right.toLocaleString()}</td>
+                    <td className="px-4 py-2.5">
+                      <button
+                        onClick={() => handleViewTeam(d.id, d.name)}
+                        className={`text-xs px-2 py-1 rounded-lg border transition-colors whitespace-nowrap
+                          ${focusMemberId === d.id
+                            ? 'bg-brand-900/40 border-brand-600 text-brand-300'
+                            : 'bg-slate-800 border-slate-700 text-slate-400 hover:text-slate-200 hover:border-slate-500'}`}
+                      >
+                        {focusMemberId === d.id ? '▲ ซ่อน' : 'ดูผังทีมงานนี้'}
+                      </button>
+                    </td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
+        </div>
+      )}
+
+      {/* ── Team Focus sub-view ─────────────────────────────────────────────── */}
+      {focusMemberId && (
+        <div className="bg-slate-900 border border-brand-800/50 rounded-xl overflow-hidden">
+          <div className="px-5 py-4 border-b border-slate-800 flex items-center justify-between">
+            <div>
+              <h2 className="text-sm font-semibold text-slate-300">
+                ผังทีมงาน: <span className="text-brand-400">{focusMemberName}</span>
+              </h2>
+              <p className="text-xs text-slate-500 mt-0.5">Left / Right Team Focus — เรียงจากใกล้ root ไปไกล</p>
+            </div>
+            <button
+              onClick={() => { setFocusMemberId(null); setTeamFocus(null) }}
+              className="text-xs text-slate-500 hover:text-slate-300"
+            >
+              ✕ ปิด
+            </button>
+          </div>
+
+          {teamFocusLoading ? (
+            <div className="py-8 text-center text-slate-400 text-sm">กำลังวิเคราะห์...</div>
+          ) : teamFocus ? (
+            <div className="grid md:grid-cols-2 divide-y md:divide-y-0 md:divide-x divide-slate-800">
+              {/* Left Team Focus */}
+              <div className="p-4">
+                <p className="text-xs font-semibold text-sky-400 mb-3">
+                  ← ทีมซ้าย ({teamFocus.left.length} คน)
+                </p>
+                {teamFocus.left.length === 0 ? (
+                  <p className="text-xs text-slate-500">ไม่มีสมาชิก</p>
+                ) : (
+                  <div className="space-y-1.5 max-h-64 overflow-y-auto pr-1">
+                    {teamFocus.left.map((n) => (
+                      <div key={n.id} className="flex items-center gap-2 text-xs">
+                        <span className="text-slate-600 w-4 shrink-0">{n.depth}</span>
+                        <PositionBadge pos={n.highest_position} />
+                        <Link href={`/members/${n.id}`} className="text-slate-300 hover:text-brand-400 truncate flex-1">
+                          {n.name}
+                        </Link>
+                        <span className={`shrink-0 ${n.is_active ? 'text-green-400' : 'text-slate-600'}`}>
+                          {n.is_active ? '●' : '○'}
+                        </span>
+                        <span className="text-slate-500 shrink-0">{n.monthly_bv.toLocaleString()} BV</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                <p className="text-xs text-sky-700 mt-3">
+                  Vol ซ้ายรวม: <span className="text-sky-400 font-medium">
+                    {teamFocus.left.reduce((s, n) => s + n.monthly_bv, 0).toLocaleString()} BV
+                  </span>
+                </p>
+              </div>
+
+              {/* Right Team Focus */}
+              <div className="p-4">
+                <p className="text-xs font-semibold text-purple-400 mb-3">
+                  ทีมขวา → ({teamFocus.right.length} คน)
+                </p>
+                {teamFocus.right.length === 0 ? (
+                  <p className="text-xs text-slate-500">ไม่มีสมาชิก</p>
+                ) : (
+                  <div className="space-y-1.5 max-h-64 overflow-y-auto pr-1">
+                    {teamFocus.right.map((n) => (
+                      <div key={n.id} className="flex items-center gap-2 text-xs">
+                        <span className="text-slate-600 w-4 shrink-0">{n.depth}</span>
+                        <PositionBadge pos={n.highest_position} />
+                        <Link href={`/members/${n.id}`} className="text-slate-300 hover:text-brand-400 truncate flex-1">
+                          {n.name}
+                        </Link>
+                        <span className={`shrink-0 ${n.is_active ? 'text-green-400' : 'text-slate-600'}`}>
+                          {n.is_active ? '●' : '○'}
+                        </span>
+                        <span className="text-slate-500 shrink-0">{n.monthly_bv.toLocaleString()} BV</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                <p className="text-xs text-purple-700 mt-3">
+                  Vol ขวารวม: <span className="text-purple-400 font-medium">
+                    {teamFocus.right.reduce((s, n) => s + n.monthly_bv, 0).toLocaleString()} BV
+                  </span>
+                </p>
+              </div>
+            </div>
+          ) : null}
         </div>
       )}
 
