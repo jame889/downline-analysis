@@ -266,18 +266,8 @@ document.addEventListener('DOMContentLoaded', () => {
           if (filters.sortBy === 'vol') return (b.volL + b.volR) - (a.volL + a.volR);
           if (filters.sortBy === 'level') return a.level - b.level;
           
-          // Default: Upline (Stable Level-based sorting)
-          if (a.level !== b.level) return a.level - b.level;
-          
-          // Sort by position within level (Left before Right)
-          const pA = String(a.pos || '').toLowerCase();
-          const pB = String(b.pos || '').toLowerCase();
-          const isRA = pA.includes('ขวา') || pA.includes('right') || pA === 'r';
-          const isRB = pB.includes('ขวา') || pB.includes('right') || pB === 'r';
-          
-          if (isRA !== isRB) return isRA ? 1 : -1;
-          
-          return 0;
+          // Default: Upline (Preserve original order from DFS tree)
+          return 0; 
         });
     };
 
@@ -719,6 +709,15 @@ document.addEventListener('DOMContentLoaded', () => {
           const name = parts.length > 1 ? parts[1].replace(/[()]/g, '').trim() : id;
           if (!id) continue;
 
+          // Upline and Sponsor are usually in format "900xxx (Name)"
+          const uplineRaw = String(row[10] || '');
+          const upline = uplineRaw.split(' ')[0].trim();
+          const uplineName = uplineRaw.includes('(') ? uplineRaw.split('(')[1].replace(')', '').trim() : upline;
+
+          const sponsorRaw = String(row[11] || '');
+          const sponsor = sponsorRaw.split(' ')[0].trim();
+          const sponsorName = sponsorRaw.includes('(') ? sponsorRaw.split('(')[1].replace(')', '').trim() : sponsor;
+
           let volL = row[16];
           let volR = row[17];
           if (typeof volL === 'string') volL = parseFloat(volL.replace(/,/g, ''));
@@ -728,11 +727,11 @@ document.addEventListener('DOMContentLoaded', () => {
             id, name,
             level: parseInt(row[0]) || 0,
             regDate: String(row[2] || ''),
-            pos: String(row[3] || ''),
-            upline: String(row[4] || ''),
-            uplineName: String(row[5] || ''),
-            sponsor: String(row[6] || ''),
-            sponsorName: String(row[7] || ''),
+            pos: String(row[3] || ''), // Rank column
+            upline,
+            uplineName,
+            sponsor,
+            sponsorName,
             volL: volL || 0,
             volR: volR || 0
           };

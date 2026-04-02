@@ -93,15 +93,15 @@ export function analyzeDownline(members, rootId) {
   dfsAnalyzed.push(rootNode);
 
   if (rootNode.children.length > 0) {
-    rootNode.children.forEach(child => {
+    rootNode.children.forEach((child, index) => {
+      // Heuristic: First child is Left, Second is Right
+      // (Override if pos explicitly contains side, though uncommon in this report)
       const p = String(child.pos || '').toLowerCase();
-      let side = 'Left'; // Default
+      let side = (index === 0) ? 'Left' : 'Right';
+      
       if (p.includes('ขวา') || p.includes('right') || p === 'r') side = 'Right';
       else if (p.includes('ซ้าย') || p.includes('left') || p === 'l') side = 'Left';
-      else {
-        // Fallback for messy data: use simple index-based heuristic for root
-        // (but usually Excel has 'ซ้าย'/'ขวา')
-      }
+      
       traverseAndAnalyze(child, side);
     });
   }
