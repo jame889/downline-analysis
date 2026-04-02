@@ -7,7 +7,18 @@ import {
 import PositionBadge from '@/components/PositionBadge'
 import VolLRChart from '@/components/VolLRChart'
 import Link from 'next/link'
-import type { AnalyzeNode } from '@/lib/analyzer'
+
+interface AnalyzeNode {
+  id: string
+  name: string
+  level: number
+  depth: number
+  highest_position: string
+  is_active: boolean
+  monthly_bv: number
+  total_vol_left: number
+  total_vol_right: number
+}
 
 interface HistoryRow {
   month: string
@@ -80,6 +91,75 @@ function rankIndex(pos: string) {
   return i === -1 ? RANK_ORDER.length : i
 }
 
+
+/** Client-side equivalent of analyzeDownline — no API call needed. */
+function buildTeamFocusClientSide(
+  focusId: string,
+  treeNodes: TreeNode[],
+): { left: AnalyzeNode[]; right: AnalyzeNode[] } {
+  const nodeMap = new Map<string, TreeNode>()
+  for (const n of treeNodes) nodeMap.set(n.id, n)
+
+  const childMap = new Map<string, string[]>()
+  childMap.set(focusId, [])
+
+  // Process level-ascending so closer-to-root nodes are placed first
+  const sorted = treeNodes.filter((n) => n.id !== focusId).sort((a, b) => a.level - b.level)
+
+  for (const n of sorted) {
+    let curr: string | null = n.upline_id
+    let parentId: string | null = null
+    while (curr) {
+      if (curr === focusId || childMap.has(curr)) {
+        parentId = curr
+        break
+      }
+      // Walk up via treeNodes — never use sponsor_id
+      const currNode = nodeMap.get(curr)
+      if (!currNode) break
+      curr = currNode.upline_id
+    }
+    if (parentId) {
+      const arr = childMap.get(parentId) ?? []
+      arr.push(n.id)
+      childMap.set(parentId, arr)
+    }
+  }
+
+  const directKids = childMap.get(focusId) ?? []
+  const leftRootId  = directKids[0] ?? null
+  const rightRootId = directKids[1] ?? null
+
+  function collectSubtree(startId: string | null): AnalyzeNode[] {
+    if (!startId) return []
+    const result: AnalyzeNode[] = []
+    const queue: [string, number][] = [[startId, 0]]
+    while (queue.length) {
+      const [id, depth] = queue.shift()!
+      const node = nodeMap.get(id)
+      if (node) {
+        result.push({
+          id:               node.id,
+          name:             node.name,
+          level:            node.level,
+          depth,
+          highest_position: node.highest_position,
+          is_active:        node.is_active === 1,
+          monthly_bv:       node.monthly_bv,
+          total_vol_left:   0,
+          total_vol_right:  0,
+        })
+        for (const childId of childMap.get(id) ?? []) queue.push([childId, depth + 1])
+      }
+    }
+    return result
+  }
+
+  return {
+    left:  collectSubtree(leftRootId),
+    right: collectSubtree(rightRootId),
+  }
+}
 
 function getLegMembers(myId: string, nodes: TreeNode[]): { left: TreeNode[]; right: TreeNode[] } {
   const nodeMap = new Map<string, TreeNode>()
@@ -154,7 +234,6 @@ export default function MyPage() {
   const [focusMemberId, setFocusMemberId] = useState<string | null>(null)
   const [focusMemberName, setFocusMemberName] = useState<string>('')
   const [teamFocus, setTeamFocus] = useState<{ left: AnalyzeNode[]; right: AnalyzeNode[] } | null>(null)
-  const [teamFocusLoading, setTeamFocusLoading] = useState(false)
 
   function fetchData(month: string) {
     setLoading(true)
@@ -184,16 +263,9 @@ export default function MyPage() {
     }
     setFocusMemberId(memberId)
     setFocusMemberName(memberName)
-    setTeamFocus(null)
-    setTeamFocusLoading(true)
-    const month = selectedMonth
-    fetch(`/api/team-focus?member=${memberId}&month=${encodeURIComponent(month)}`)
-      .then((r) => r.json())
-      .then((d) => {
-        setTeamFocus({ left: d.left ?? [], right: d.right ?? [] })
-        setTeamFocusLoading(false)
-      })
-      .catch(() => setTeamFocusLoading(false))
+    // Compute client-side from already-loaded treeNodes (no API call needed)
+    const result = buildTeamFocusClientSide(memberId, treeNodes)
+    setTeamFocus(result)
   }
 
   useEffect(() => {
@@ -511,9 +583,7 @@ export default function MyPage() {
             </button>
           </div>
 
-          {teamFocusLoading ? (
-            <div className="py-8 text-center text-slate-400 text-sm">กำลังวิเคราะห์...</div>
-          ) : teamFocus ? (
+          {teamFocus ? (
             <div className="grid md:grid-cols-2 divide-y md:divide-y-0 md:divide-x divide-slate-800">
               {/* Left Team Focus */}
               <div className="p-4">
