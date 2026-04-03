@@ -1,5 +1,5 @@
 'use client'
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useMemo } from 'react'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -78,6 +78,143 @@ interface Placement {
   side: 'left' | 'right'
 }
 
+// ── Sim Tree ──────────────────────────────────────────────────────────────────
+
+interface SimNode {
+  id: string
+  name: string
+  upline_id: string | null
+  is_active: number
+  monthly_bv: number
+  isSimulated?: boolean
+  simBv?: number
+  simLabel?: string
+  children: SimNode[]
+}
+
+function buildSimTree(
+  treeNodes: TreeNode[],
+  rootId: string,
+  placements: Placement[]
+): SimNode | null {
+  const map = new Map<string, SimNode>()
+  treeNodes.forEach((n) =>
+    map.set(n.id, {
+      id: n.id, name: n.name, upline_id: n.upline_id,
+      is_active: n.is_active, monthly_bv: n.monthly_bv, children: [],
+    })
+  )
+  map.forEach((n) => {
+    if (n.upline_id && map.has(n.upline_id)) {
+      map.get(n.upline_id)!.children.push(n)
+    }
+  })
+  placements.forEach((p, i) => {
+    const parent = map.get(p.uplineId)
+    if (!parent) return
+    parent.children.push({
+      id: `sim-${i + 1}`,
+      name: `ใหม่ #${i + 1}`,
+      upline_id: p.uplineId,
+      is_active: 1,
+      monthly_bv: p.packBv,
+      isSimulated: true,
+      simBv: p.packBv,
+      simLabel: p.packLabel,
+      children: [],
+    })
+  })
+  return map.get(rootId) ?? null
+}
+
+function SimNodeCard({
+  node,
+  depth = 0,
+  onSelect,
+}: {
+  node: SimNode
+  depth?: number
+  onSelect?: (id: string) => void
+}) {
+  const [expanded, setExpanded] = useState(depth < 2)
+  const hasChildren = node.children.length > 0
+
+  function handleClick() {
+    if (!node.isSimulated && onSelect) onSelect(node.id)
+    if (hasChildren) setExpanded((v) => !v)
+  }
+
+  return (
+    <div className="flex flex-col items-center shrink-0">
+      <div
+        onClick={handleClick}
+        className={`relative rounded-xl p-2.5 w-40 select-none cursor-pointer transition-all
+          ${node.isSimulated
+            ? 'border-2 border-dashed border-green-500 bg-green-900/20'
+            : node.is_active
+              ? 'border border-slate-700 bg-slate-900 hover:border-brand-500'
+              : 'border border-slate-800 bg-slate-900 opacity-40'}`}
+      >
+        {node.isSimulated && (
+          <span className="absolute -top-2 -right-2 text-[10px] bg-green-500 text-white rounded-full px-1.5 py-0.5 font-bold leading-none">
+            SIM
+          </span>
+        )}
+        <p className={`text-xs font-mono font-bold truncate ${node.isSimulated ? 'text-green-300' : 'text-brand-400'}`}>
+          {node.isSimulated ? node.name : node.id}
+        </p>
+        {!node.isSimulated && (
+          <p className="text-xs text-slate-400 truncate">{node.name.split(' ')[0]}</p>
+        )}
+        <div className="flex items-center justify-between mt-1 text-xs">
+          <span className={node.isSimulated ? 'text-green-400 font-bold' : 'text-slate-500'}>
+            {node.isSimulated ? `+${node.simBv} BV` : `${node.monthly_bv} BV`}
+          </span>
+          {!node.isSimulated && (
+            <span className={node.is_active ? 'text-green-400' : 'text-slate-600'}>
+              {node.is_active ? '●' : '○'}
+            </span>
+          )}
+        </div>
+        {hasChildren && !node.isSimulated && (
+          <div className="text-[10px] text-slate-600 text-right mt-0.5">
+            {node.children.length} · {expanded ? '▲' : '▼'}
+          </div>
+        )}
+      </div>
+
+      {hasChildren && expanded && (
+        <div className="flex flex-col items-center">
+          <div className="w-px h-4 bg-slate-700" />
+          {node.children.length === 1 ? (
+            <div className="flex flex-col items-center">
+              <div className="w-px h-3 bg-slate-700" />
+              <SimNodeCard node={node.children[0]} depth={depth + 1} onSelect={onSelect} />
+            </div>
+          ) : (
+            <div className="relative flex">
+              {node.children.map((child) => (
+                <div key={child.id} className="flex flex-col items-center px-2">
+                  <div className="w-px h-3 bg-slate-700" />
+                  <SimNodeCard node={child} depth={depth + 1} onSelect={onSelect} />
+                </div>
+              ))}
+              <div
+                className="absolute top-0 bg-slate-700"
+                style={{
+                  height: '1px',
+                  left: `calc(50% / ${node.children.length})`,
+                  right: `calc(50% / ${node.children.length})`,
+                }}
+              />
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ── Balance Bar ───────────────────────────────────────────────────────────────
 
 function BalanceBar({ left, right, label }: { left: number; right: number; label: string }) {
@@ -139,6 +276,11 @@ export default function SimulatorPage() {
   // Placements list
   const [placements, setPlacements] = useState<Placement[]>([])
   const [nextId, setNextId] = useState(1)
+
+  const simRoot = useMemo(
+    () => (myId && treeNodes.length ? buildSimTree(treeNodes, myId, placements) : null),
+    [treeNodes, myId, placements]
+  )
 
   useEffect(() => {
     Promise.all([
@@ -437,6 +579,42 @@ export default function SimulatorPage() {
             </div>
           )}
 
+          {/* Binary Tree View */}
+          {simRoot && (
+            <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 space-y-3">
+              <div className="flex items-center justify-between flex-wrap gap-2">
+                <h2 className="text-base font-semibold text-white flex items-center gap-2">
+                  <span>🌳</span> ผังโครงสร้าง Binary
+                </h2>
+                <div className="flex items-center gap-3 text-xs text-slate-500">
+                  {placements.length > 0 && (
+                    <span className="flex items-center gap-1 text-green-400 border border-green-800 rounded-full px-2 py-0.5">
+                      <span className="w-2 h-2 border border-dashed border-green-400 rounded-sm inline-block" />
+                      SIM = คนที่จำลอง
+                    </span>
+                  )}
+                  <span>คลิก card → เลือกเป็น Upline</span>
+                </div>
+              </div>
+              <div
+                className="overflow-auto bg-slate-950 rounded-xl pt-5 pb-8 px-4"
+                style={{ maxHeight: '420px' }}
+              >
+                <div className="min-w-max mx-auto">
+                  <SimNodeCard
+                    node={simRoot}
+                    depth={0}
+                    onSelect={(id) => {
+                      setUplineInput(id)
+                      setUplineError('')
+                    }}
+                  />
+                </div>
+              </div>
+              <p className="text-xs text-slate-600">← เลื่อนซ้าย/ขวาเพื่อดูทั้งหมด · คลิก card ที่มีลูกเพื่อขยาย/ยุบ</p>
+            </div>
+          )}
+
           {/* Result Card */}
           {hasResults && (
             <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 space-y-5">
@@ -507,10 +685,30 @@ export default function SimulatorPage() {
                 </div>
               </div>
 
-              {/* Balance bars */}
-              <div className="space-y-3">
-                <BalanceBar left={beforeLeft} right={beforeRight} label="ก่อน" />
-                <BalanceBar left={afterLeft} right={afterRight} label="หลัง" />
+              {/* Balance summary (compact) */}
+              <div className="grid grid-cols-2 gap-2 text-xs">
+                <div className="bg-slate-800 rounded-lg p-2.5 space-y-1">
+                  <p className="text-slate-500">ก่อน</p>
+                  <div className="flex justify-between">
+                    <span className="text-sky-400">ซ้าย {beforeLeft.toLocaleString()}</span>
+                    <span className="text-purple-400">ขวา {beforeRight.toLocaleString()}</span>
+                  </div>
+                  <div className="flex h-2 rounded-full overflow-hidden gap-px">
+                    <div className="bg-sky-500 rounded-l-full" style={{ width: `${Math.round((beforeLeft / (beforeLeft + beforeRight || 1)) * 100)}%` }} />
+                    <div className="bg-purple-500 rounded-r-full flex-1" />
+                  </div>
+                </div>
+                <div className="bg-slate-800 rounded-lg p-2.5 space-y-1">
+                  <p className="text-slate-500">หลัง (จำลอง)</p>
+                  <div className="flex justify-between">
+                    <span className="text-sky-400">ซ้าย {afterLeft.toLocaleString()}</span>
+                    <span className="text-purple-400">ขวา {afterRight.toLocaleString()}</span>
+                  </div>
+                  <div className="flex h-2 rounded-full overflow-hidden gap-px">
+                    <div className="bg-sky-500 rounded-l-full" style={{ width: `${Math.round((afterLeft / (afterLeft + afterRight || 1)) * 100)}%` }} />
+                    <div className="bg-purple-500 rounded-r-full flex-1" />
+                  </div>
+                </div>
               </div>
 
               {/* Rank impact */}
