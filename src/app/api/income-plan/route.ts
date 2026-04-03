@@ -298,6 +298,7 @@ export async function GET(req: NextRequest) {
     // Target plan
     plan: {
       ...plan,
+      months_to_target: milestones.length > 0 ? milestones[milestones.length - 1].monthsFromNow : 0,
       recommendedRank: {
         rank: plan.recommendedRank.rank,
         rankTH: plan.recommendedRank.rankTH,
