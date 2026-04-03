@@ -46,6 +46,7 @@ interface IncomePlanData {
     targetMonthly: number; total: number; breakdown: { source: string; amount: number; pct: number }[]
     recommendedRank: { rank: string; rankTH: string; minorBVRequired: number; activeFARequired: number; oneTimeBonus: number }
     teamCommission: number; matchingBonus: number; referralBonus: number
+    months_to_target: number
   }
   gap: { gapMinorBV: number; gapActiveFA: number; gapIncome: number; incomeProgressPct: number }
   milestones: Milestone[]
@@ -390,6 +391,11 @@ export default function IncomePlanPage() {
                         <div className="border border-green-600/60 bg-green-900/10 rounded-xl p-3">
                           <p className="font-bold text-green-400">เป้าหมายสำเร็จ!</p>
                           <p className="text-xs text-slate-400">{fmtThb(goal)}/เดือน · {selectedGoal.sublabel}</p>
+                          {data.plan.months_to_target > 0 && (
+                            <p className="text-xs text-green-300 mt-1">
+                              ประมาณ ~{data.plan.months_to_target} เดือน ({Math.ceil(data.plan.months_to_target / 12)} ปี {data.plan.months_to_target % 12 > 0 ? `${data.plan.months_to_target % 12} เดือน` : ''})
+                            </p>
+                          )}
                         </div>
                       </div>
                     )}
