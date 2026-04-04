@@ -409,20 +409,29 @@ export function TreeVizSection({
     })
 
     const rootKids = childMap.get(myId) ?? []
-    const leftStartId = rootKids[0]?.id ?? null
-    const rightStartId = rootKids[1]?.id ?? null
+    if (rootKids.length === 0) return { leftRoots: [], rightRoots: [] }
 
-    function buildLeg(startId: string | null): VizNode[] {
-      if (!startId) return []
-      const roots = buildFull([startId], nodeMap, childMap, 0)
-      if (roots.length === 0) return []
-      layoutForest(roots)
-      return roots
-    }
+    // Build each child's subtree and measure size
+    const legInfos = rootKids
+      .map((kid) => {
+        const roots = buildFull([kid.id], nodeMap, childMap, 0)
+        return { roots, count: flatNodes(roots).length }
+      })
+      .filter((l) => l.roots.length > 0)
+
+    if (legInfos.length === 0) return { leftRoots: [], rightRoots: [] }
+
+    // Largest subtree → right leg; everything else → left leg (shown as forest)
+    const sorted = [...legInfos].sort((a, b) => b.count - a.count)
+    const rightForest = sorted[0].roots
+    const leftForest = sorted.slice(1).flatMap((l) => l.roots)
+
+    layoutForest(rightForest)
+    if (leftForest.length > 0) layoutForest(leftForest)
 
     return {
-      leftRoots: buildLeg(leftStartId),
-      rightRoots: buildLeg(rightStartId),
+      leftRoots: leftForest,
+      rightRoots: rightForest,
     }
   }, [treeNodes, myId])
 
