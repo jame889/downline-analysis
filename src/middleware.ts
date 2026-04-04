@@ -10,8 +10,8 @@ const ROOT_MEMBER_ID = process.env.NEXT_PUBLIC_ROOT_MEMBER_ID ?? '900057'
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl
 
-  // Always allow static assets and auth endpoints
-  if (pathname.startsWith('/_next') || pathname.startsWith('/api/auth')) {
+  // Always allow static assets, auth endpoints, and chat API
+  if (pathname.startsWith('/_next') || pathname.startsWith('/api/auth') || pathname.startsWith('/api/chat')) {
     return NextResponse.next()
   }
 
