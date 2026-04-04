@@ -1,5 +1,5 @@
 'use client'
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import {
   RadarChart, Radar, PolarGrid, PolarAngleAxis, ResponsiveContainer,
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Cell
@@ -66,6 +66,325 @@ function ActionCard({ action }: { action: Action }) {
           </div>
           <p className="text-sm font-semibold text-white">{action.title}</p>
           <p className="text-xs text-slate-400 mt-1 leading-relaxed">{action.detail}</p>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ── Inline Charts for Chat ────────────────────────────────────────────────────
+
+function ChatChartBalance({ balance }: { balance: CoachData['balance'] }) {
+  const lPct = balance.total > 0 ? (balance.L / balance.total) * 100 : 50
+  const rPct = 100 - lPct
+  const urgencyColor = { critical: '#f87171', warning: '#fbbf24', good: '#4ade80' }[balance.urgency]
+  return (
+    <div className="bg-slate-900 border border-slate-700 rounded-xl p-3 mt-2 text-xs space-y-2">
+      <p className="text-slate-300 font-semibold">📊 Balance ซ้าย / ขวา</p>
+      <div className="grid grid-cols-3 gap-2 text-center">
+        <div><p className="text-sky-400 font-bold text-base">{balance.L.toLocaleString()}</p><p className="text-slate-500">Vol ซ้าย</p></div>
+        <div><p className="font-bold text-base" style={{ color: urgencyColor }}>{balance.weakVol.toLocaleString()}</p><p className="text-slate-500">Weak Leg</p></div>
+        <div><p className="text-purple-400 font-bold text-base">{balance.R.toLocaleString()}</p><p className="text-slate-500">Vol ขวา</p></div>
+      </div>
+      <div className="flex rounded-full overflow-hidden h-5">
+        <div className="bg-sky-500 flex items-center justify-center text-white font-medium" style={{ width: `${lPct}%` }}>
+          {lPct > 8 ? `${lPct.toFixed(0)}%` : ''}
+        </div>
+        <div className="flex-1 bg-purple-500 flex items-center justify-center text-white font-medium">
+          {rPct > 8 ? `${rPct.toFixed(0)}%` : ''}
+        </div>
+      </div>
+      {balance.gapToBalance > 0 && (
+        <p className="text-slate-400 text-center">ต้องเพิ่มสาย{balance.weakSide === 'L' ? 'ซ้าย' : 'ขวา'}อีก <span className="text-white font-bold">{balance.gapToBalance.toLocaleString()}</span> BV</p>
+      )}
+    </div>
+  )
+}
+
+function ChatChartLevels({ byLevel }: { byLevel: CoachData['byLevel'] }) {
+  const data = Object.entries(byLevel)
+    .sort((a, b) => Number(a[0]) - Number(b[0]))
+    .map(([lv, { total, active }]) => ({
+      level: `L${lv}`,
+      active,
+      inactive: total - active,
+      pct: total > 0 ? Math.round((active / total) * 100) : 0,
+    }))
+  return (
+    <div className="bg-slate-900 border border-slate-700 rounded-xl p-3 mt-2">
+      <p className="text-xs text-slate-300 font-semibold mb-2">📊 Active Rate ตามชั้น</p>
+      <ResponsiveContainer width="100%" height={140}>
+        <BarChart data={data} barGap={2}>
+          <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
+          <XAxis dataKey="level" tick={{ fill: '#64748b', fontSize: 10 }} />
+          <YAxis tick={{ fill: '#64748b', fontSize: 10 }} />
+          <Tooltip
+            contentStyle={{ background: '#0f172a', border: '1px solid #1e293b', borderRadius: 8, fontSize: 11 }}
+            formatter={(v: number, name: string) => [v, name === 'active' ? 'Active' : 'Inactive']}
+          />
+          <Bar dataKey="active" name="active" stackId="a" fill="#22c55e" />
+          <Bar dataKey="inactive" name="inactive" stackId="a" fill="#334155" radius={[3, 3, 0, 0]} />
+        </BarChart>
+      </ResponsiveContainer>
+      <div className="flex flex-wrap gap-2 mt-1">
+        {data.map((d) => (
+          <span key={d.level} className="text-xs text-slate-400">
+            {d.level}: <span className={d.pct >= 50 ? 'text-green-400' : d.pct >= 30 ? 'text-amber-400' : 'text-red-400'}>{d.pct}%</span>
+          </span>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+function ChatChartSafezone({ gen1 }: { gen1: CoachData['gen1'] }) {
+  return (
+    <div className="bg-slate-900 border border-slate-700 rounded-xl p-3 mt-2">
+      <p className="text-xs text-slate-300 font-semibold mb-2">📊 Safe Zone Status (Gen1)</p>
+      <div className="grid grid-cols-2 gap-2">
+        {gen1.map((g) => (
+          <div key={g.id} className={`rounded-lg p-2 border text-xs ${g.is_safe_zone ? 'border-green-700/50 bg-green-900/20' : 'border-slate-700 bg-slate-800/40'}`}>
+            <div className="flex items-center justify-between">
+              <span className="text-slate-300 font-medium truncate">{g.name.split(' ')[0]}</span>
+              <span className={g.is_safe_zone ? 'text-green-400 font-bold' : 'text-slate-500'}>
+                {g.is_safe_zone ? '✓' : '○'}
+              </span>
+            </div>
+            <p className="text-slate-500 mt-0.5">ลึก {g.depth} ชั้น · {g.active_in_sub} active</p>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+function ChatChartNewMembers({ newMembers }: { newMembers: CoachData['newMembers'] }) {
+  return (
+    <div className="bg-slate-900 border border-slate-700 rounded-xl p-3 mt-2">
+      <p className="text-xs text-slate-300 font-semibold mb-2">📊 สมาชิกใหม่ ({newMembers.length} คน)</p>
+      <div className="space-y-1">
+        {newMembers.map((m) => (
+          <div key={m.id} className={`flex items-center justify-between rounded-lg px-2 py-1.5 text-xs ${m.is_tapped ? 'bg-green-900/20 border border-green-800/40' : 'bg-amber-900/20 border border-amber-700/40'}`}>
+            <span className={m.is_tapped ? 'text-green-400' : 'text-amber-400'}>{m.is_tapped ? '✓' : '⏳'}</span>
+            <span className="text-slate-300 flex-1 mx-2 truncate">{m.name}</span>
+            <span className={m.is_tapped ? 'text-green-400' : 'text-amber-400'}>{m.is_tapped ? 'ขุดลึกแล้ว' : 'ยังไม่ได้'}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+const CHART_TAG = /\[CHART:(balance|levels|safezone|newmembers)\]/g
+
+function MessageContent({ content, coachData }: { content: string; coachData: CoachData }) {
+  const parts = content.split(CHART_TAG)
+  const tags: string[] = []
+  let m: RegExpExecArray | null
+  const re = new RegExp(CHART_TAG.source, 'g')
+  while ((m = re.exec(content)) !== null) tags.push(m[1])
+  const result: React.ReactNode[] = []
+  let tagIdx = 0
+  parts.forEach((part, i) => {
+    if (part) result.push(<span key={`t${i}`} className="whitespace-pre-wrap">{part}</span>)
+    if (tagIdx < tags.length) {
+      const tag = tags[tagIdx++]
+      if (tag === 'balance') result.push(<ChatChartBalance key={`c${i}`} balance={coachData.balance} />)
+      else if (tag === 'levels') result.push(<ChatChartLevels key={`c${i}`} byLevel={coachData.byLevel} />)
+      else if (tag === 'safezone') result.push(<ChatChartSafezone key={`c${i}`} gen1={coachData.gen1} />)
+      else if (tag === 'newmembers') result.push(<ChatChartNewMembers key={`c${i}`} newMembers={coachData.newMembers} />)
+    }
+  })
+  return <>{result}</>
+}
+
+// ── Chat types ────────────────────────────────────────────────────────────────
+
+interface ChatMessage {
+  role: 'user' | 'assistant'
+  content: string
+}
+
+// ── ChatBot component ─────────────────────────────────────────────────────────
+
+function ChatBot({ coachData }: { coachData: CoachData }) {
+  const [messages, setMessages] = useState<ChatMessage[]>([])
+  const [input, setInput] = useState('')
+  const [streaming, setStreaming] = useState(false)
+  const bottomRef = useRef<HTMLDivElement>(null)
+  const inputRef = useRef<HTMLTextAreaElement>(null)
+
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
+  }, [messages])
+
+  async function send() {
+    const text = input.trim()
+    if (!text || streaming) return
+    setInput('')
+
+    const userMsg: ChatMessage = { role: 'user', content: text }
+    const newMessages = [...messages, userMsg]
+    setMessages(newMessages)
+    setStreaming(true)
+
+    const assistantMsg: ChatMessage = { role: 'assistant', content: '' }
+    setMessages([...newMessages, assistantMsg])
+
+    try {
+      const res = await fetch('/api/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          messages: newMessages,
+          coachData,
+        }),
+      })
+
+      if (!res.ok || !res.body) throw new Error('Failed')
+
+      const reader = res.body.getReader()
+      const decoder = new TextDecoder()
+      let buffer = ''
+
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+        buffer += decoder.decode(value, { stream: true })
+        const lines = buffer.split('\n')
+        buffer = lines.pop() ?? ''
+
+        for (const line of lines) {
+          if (!line.trim()) continue
+          try {
+            const json = JSON.parse(line)
+            const token = json.message?.content ?? ''
+            if (token) {
+              setMessages(prev => {
+                const copy = [...prev]
+                copy[copy.length - 1] = {
+                  ...copy[copy.length - 1],
+                  content: copy[copy.length - 1].content + token,
+                }
+                return copy
+              })
+            }
+          } catch { /* skip malformed */ }
+        }
+      }
+    } catch {
+      setMessages(prev => {
+        const copy = [...prev]
+        copy[copy.length - 1] = { ...copy[copy.length - 1], content: 'เกิดข้อผิดพลาด กรุณาลองใหม่' }
+        return copy
+      })
+    } finally {
+      setStreaming(false)
+    }
+  }
+
+  function handleKey(e: React.KeyboardEvent) {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault()
+      send()
+    }
+  }
+
+  const suggestions = [
+    'สายไหนควรโฟกัสตอนนี้?',
+    'ทำยังไงให้ Balance เร็วที่สุด?',
+    'สมาชิกใหม่คนไหนต้อง การขุดลึก ด่วน?',
+    'สรุปสิ่งที่ต้องทำเดือนนี้',
+  ]
+
+  return (
+    <div className="bg-slate-900 border border-slate-700 rounded-2xl overflow-hidden">
+      {/* Header */}
+      <div className="px-5 py-4 bg-slate-800/60 border-b border-slate-700 flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <div className="w-9 h-9 rounded-full bg-gradient-to-br from-brand-500 to-purple-600 flex items-center justify-center text-white font-bold text-sm">
+            J
+          </div>
+          <div>
+            <p className="text-sm font-semibold text-white">Coach JOE AI</p>
+            <p className="text-xs text-slate-400">llama3.2 · รู้ข้อมูลของคุณ · ตอบภาษาไทย</p>
+          </div>
+        </div>
+        <span className="flex items-center gap-1.5 text-xs text-green-400">
+          <span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />
+          Online
+        </span>
+      </div>
+
+      {/* Messages */}
+      <div className="h-80 overflow-y-auto p-4 space-y-3 scroll-smooth">
+        {messages.length === 0 && (
+          <div className="h-full flex flex-col items-center justify-center gap-4">
+            <p className="text-slate-500 text-sm">สวัสดีครับ! ถามอะไรก็ได้เกี่ยวกับสายงานของคุณ</p>
+            <div className="flex flex-wrap gap-2 justify-center">
+              {suggestions.map((s) => (
+                <button
+                  key={s}
+                  onClick={() => { setInput(s); inputRef.current?.focus() }}
+                  className="text-xs bg-slate-800 hover:bg-slate-700 text-slate-300 px-3 py-1.5 rounded-full border border-slate-700 transition-colors"
+                >
+                  {s}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {messages.map((m, i) => (
+          <div key={i} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'} gap-2`}>
+            {m.role === 'assistant' && (
+              <div className="w-7 h-7 rounded-full bg-gradient-to-br from-brand-500 to-purple-600 flex items-center justify-center text-white font-bold text-xs shrink-0 mt-0.5">
+                J
+              </div>
+            )}
+            <div
+              className={`max-w-[85%] rounded-2xl px-4 py-2.5 text-sm leading-relaxed
+                ${m.role === 'user'
+                  ? 'bg-brand-600 text-white rounded-br-sm whitespace-pre-wrap'
+                  : 'bg-slate-800 text-slate-100 rounded-bl-sm border border-slate-700'}`}
+            >
+              {m.role === 'assistant'
+                ? <MessageContent content={m.content} coachData={coachData} />
+                : m.content}
+              {m.role === 'assistant' && streaming && i === messages.length - 1 && !m.content && (
+                <span className="inline-flex gap-1 items-center">
+                  <span className="w-1.5 h-1.5 bg-slate-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
+                  <span className="w-1.5 h-1.5 bg-slate-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
+                  <span className="w-1.5 h-1.5 bg-slate-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+                </span>
+              )}
+            </div>
+          </div>
+        ))}
+        <div ref={bottomRef} />
+      </div>
+
+      {/* Input */}
+      <div className="px-4 pb-4 pt-2 border-t border-slate-800">
+        <div className="flex gap-2 items-end">
+          <textarea
+            ref={inputRef}
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            onKeyDown={handleKey}
+            placeholder="ถามอะไรก็ได้... (Enter ส่ง, Shift+Enter ขึ้นบรรทัดใหม่)"
+            rows={1}
+            disabled={streaming}
+            className="flex-1 bg-slate-800 border border-slate-700 rounded-xl px-4 py-2.5 text-sm text-white placeholder-slate-500 resize-none focus:outline-none focus:border-brand-500 disabled:opacity-50 transition-colors"
+            style={{ maxHeight: 120 }}
+          />
+          <button
+            onClick={send}
+            disabled={!input.trim() || streaming}
+            className="bg-brand-600 hover:bg-brand-500 disabled:opacity-40 disabled:cursor-not-allowed text-white rounded-xl px-4 py-2.5 text-sm font-medium transition-colors shrink-0"
+          >
+            {streaming ? '...' : 'ส่ง'}
+          </button>
         </div>
       </div>
     </div>
@@ -246,13 +565,13 @@ export default function CoachPage() {
         </div>
       </div>
 
-      {/* ── New members / 48hr Taproot ── */}
+      {/* ── New members / 48hr การขุดลึก ── */}
       {newMembers.length > 0 && (
         <div className="bg-slate-900 border border-slate-800 rounded-xl p-5">
           <h2 className="text-sm font-semibold text-slate-300 mb-1">
-            สมาชิกใหม่เดือนนี้ ({newMembers.length} คน) — Taproot ภายใน 48 ชั่วโมง
+            สมาชิกใหม่เดือนนี้ ({newMembers.length} คน) — การขุดลึก ภายใน 48 ชั่วโมง
           </h2>
-          <p className="text-xs text-slate-500 mb-4">ทำ Work Plan ทันทีหลังสปอนเซอร์ได้ — ขุดลึกคนแรกให้เป็น "ความลึก" ทันที</p>
+          <p className="text-xs text-slate-500 mb-4">ทำ Start Up ทันทีหลังสปอนเซอร์ได้ — ขุดลึกคนแรกให้เป็น "ความลึก" ทันที</p>
           <div className="space-y-2">
             {newMembers.map((m) => (
               <div key={m.id} className={`flex items-center justify-between rounded-lg px-3 py-2 text-xs
@@ -268,15 +587,15 @@ export default function CoachPage() {
                 <div className="flex items-center gap-3 text-slate-400">
                   <span>Level {m.level}</span>
                   <span className={m.is_tapped ? 'text-green-400' : 'text-amber-400'}>
-                    {m.is_tapped ? `Taprooted (${m.depth} ชั้น)` : 'ยังไม่ได้ Taproot'}
+                    {m.is_tapped ? `ขุดลึกแล้ว (${m.depth} ชั้น)` : 'ยังไม่ได้ขุดลึก'}
                   </span>
                 </div>
               </div>
             ))}
           </div>
           <div className="mt-3 bg-slate-900/60 rounded-lg p-3 text-xs text-slate-400 border border-slate-800">
-            <p className="font-semibold text-slate-300 mb-1">📖 Hybrid Step 2: The Taproot</p>
-            <p>รีบทำ "Work Plan" เพื่อดึงรายชื่อผู้มุ่งหวังออกจากมือเขา และส่งไปช่วยเขาสปอนเซอร์ "คนแรก" ให้ภายใน 48-72 ชั่วโมง</p>
+            <p className="font-semibold text-slate-300 mb-1">📖 Hybrid Step 2: The การขุดลึก</p>
+            <p>รีบทำ "Start Up" เพื่อดึงรายชื่อผู้มุ่งหวังออกจากมือเขา และส่งไปช่วยเขาสปอนเซอร์ "คนแรก" ให้ภายใน 48-72 ชั่วโมง</p>
           </div>
         </div>
       )}
@@ -310,6 +629,9 @@ export default function CoachPage() {
         </div>
       </div>
 
+      {/* ── Chat JOE AI ── */}
+      <ChatBot coachData={data} />
+
       {/* ── Hybrid 20/80 Framework ── */}
       <div className="bg-slate-900 border border-slate-800 rounded-xl p-5">
         <h2 className="text-sm font-semibold text-slate-300 mb-4">Hybrid Strategy 20/80 — สูตรสมบูรณ์แบบ</h2>
@@ -336,11 +658,11 @@ export default function CoachPage() {
           <div className="bg-blue-900/20 border border-blue-700/40 rounded-xl p-4">
             <div className="flex items-center gap-2 mb-2">
               <span className="text-blue-400 font-bold text-lg">80%</span>
-              <span className="text-sm font-semibold text-blue-300">Taprooting (Stability)</span>
+              <span className="text-sm font-semibold text-blue-300">การขุดลึก (Stability)</span>
             </div>
             <ul className="text-xs text-slate-300 space-y-1.5">
               <li className="flex gap-2"><span className="text-blue-400">•</span>ขุดลึกในสาย Weak Leg ทันที</li>
-              <li className="flex gap-2"><span className="text-blue-400">•</span>Work Plan กับสมาชิกใหม่ 48hr</li>
+              <li className="flex gap-2"><span className="text-blue-400">•</span>Start Up กับสมาชิกใหม่ 48hr</li>
               <li className="flex gap-2"><span className="text-blue-400">•</span>ปลุกผู้นำในชั้นลึกให้ active</li>
             </ul>
             <div className="mt-3 pt-3 border-t border-blue-800/40">
@@ -355,7 +677,7 @@ export default function CoachPage() {
         <div className="mt-4 grid md:grid-cols-3 gap-3">
           {[
             { step: 1, title: 'The Spark', icon: '⚡', desc: 'สปอนเซอร์ส่วนตัว Lead by Example ป้องกันทีมภาวะน้ำนิ่ง', color: 'border-orange-700/40 bg-orange-900/10' },
-            { step: 2, title: 'The Taproot', icon: '🌱', desc: 'Work Plan ภายใน 48 ชม. เปลี่ยนคนใหม่ 1 คนให้เป็นความลึกทันที', color: 'border-green-700/40 bg-green-900/10' },
+            { step: 2, title: 'The การขุดลึก', icon: '🌱', desc: 'Start Up ภายใน 48 ชม. เปลี่ยนคนใหม่ 1 คนให้เป็นความลึกทันที', color: 'border-green-700/40 bg-green-900/10' },
             { step: 3, title: 'Stop Digging', icon: '🛑', desc: 'หยุดขุดเมื่อถึง Level 3-4 มีผู้นำตัวจริง 2-3 คนซ้อนในสายแล้ว', color: 'border-blue-700/40 bg-blue-900/10' },
           ].map((s) => (
             <div key={s.step} className={`rounded-xl p-3 border ${s.color}`}>

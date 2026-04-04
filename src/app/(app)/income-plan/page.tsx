@@ -767,7 +767,7 @@ export default function IncomePlanPage() {
                 <div className="space-y-2">
                   {[
                     { day: 'จ-อ', action: 'ชวนสมาชิกใหม่ 1-2 คน (Referral Bonus ฿2,500-5,000 ทันที)', icon: '📞' },
-                    { day: 'พ-พฤ', action: 'ติดตาม Gen 1 Inactive — ทำ Work Plan ร่วมกัน เพิ่ม Matching Bonus', icon: '🤝' },
+                    { day: 'พ-พฤ', action: 'ติดตาม Gen 1 Inactive — ทำ Start Up ร่วมกัน เพิ่ม Matching Bonus', icon: '🤝' },
                     { day: 'ศ-ส', action: `โฟกัส Weak Leg (สาย${Math.min(data.current.currMonthL, data.current.currMonthR) === data.current.currMonthL ? 'ซ้าย' : 'ขวา'}) ช่วย downline ทำ BV`, icon: '📊' },
                     { day: 'อา', action: 'ดู Dashboard ตรวจ Vol L/R · วางแผนสัปดาห์ถัดไป', icon: '🎯' },
                   ].map((item) => (

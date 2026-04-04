@@ -69,7 +69,7 @@ export async function GET(req: NextRequest) {
   const session = await getSession()
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const months = getAvailableMonths()
+  const months = await getAvailableMonths()
   const latestMonth = months[0]
   const prevMonth = months[1]
 
@@ -122,7 +122,7 @@ export async function GET(req: NextRequest) {
   const safeLines = gen1Detail.filter((g) => g.is_safe_zone).length
   const unsafeLines = gen1Detail.filter((g) => !g.is_safe_zone).length
 
-  // ── 4. New members this month (need 48hr taprooting) ─────────────────────────
+  // ── 4. New members this month (need 48hr การขุดลึก) ─────────────────────────
   const prevIds = new Set(prevRepMap.keys())
   const newMembers = Array.from(repMap.values())
     .filter((r) => !prevIds.has(r.member_id))
@@ -136,7 +136,7 @@ export async function GET(req: NextRequest) {
         join_date: m?.join_date,
         level: r.level,
         depth: sub.size > 1 ? Math.max(...Array.from(sub.values())) : 0,
-        is_tapped: sub.size > 1, // Has been taprooted if they have downlines
+        is_tapped: sub.size > 1, // Has been การขุดลึกed if they have downlines
       }
     })
     .filter((r) => {
@@ -170,7 +170,7 @@ export async function GET(req: NextRequest) {
       priority: 'high',
       category: 'Balance',
       title: `สาย${weakSide === 'L' ? 'ซ้าย' : 'ขวา'}วิกฤต! ต้องเร่งด่วน`,
-      detail: `Vol ${weakSide === 'L' ? 'ซ้าย' : 'ขวา'} คิดเป็นแค่ ${weakPct}% ของทั้งหมด ต้องเพิ่ม ${gapToBalance.toLocaleString()} BV เพื่อ balance ควรเน้น Taprooting ในสาย${weakSide === 'L' ? 'ซ้าย' : 'ขวา'}ทันที`,
+      detail: `Vol ${weakSide === 'L' ? 'ซ้าย' : 'ขวา'} คิดเป็นแค่ ${weakPct}% ของทั้งหมด ต้องเพิ่ม ${gapToBalance.toLocaleString()} BV เพื่อ balance ควรเน้น การขุดลึก ในสาย${weakSide === 'L' ? 'ซ้าย' : 'ขวา'}ทันที`,
     })
   }
 
@@ -178,9 +178,9 @@ export async function GET(req: NextRequest) {
   if (untappedNew.length > 0) {
     actions.push({
       priority: 'high',
-      category: 'Taproot 48hr',
-      title: `${untappedNew.length} คนใหม่ยังไม่ถูก Taproot!`,
-      detail: `ตาม Hybrid Step 2 ต้องทำ Work Plan ภายใน 48 ชั่วโมง: ${untappedNew.map((m) => m.name.split(' ')[0]).join(', ')}`,
+      category: 'การขุดลึก 48hr',
+      title: `${untappedNew.length} คนใหม่ยังไม่ถูก การขุดลึก!`,
+      detail: `ตาม Hybrid Step 2 ต้องทำ Start Up ภายใน 48 ชั่วโมง: ${untappedNew.map((m) => m.name.split(' ')[0]).join(', ')}`,
     })
   }
 
