@@ -24,11 +24,13 @@ interface VizNode {
   total_vol_left: number
   total_vol_right: number
   subtreeCount: number
+  hasChildren: boolean   // true if node has children in original tree
   children: VizNode[]
   // layout
   x: number
   y: number
   subtreeWidth: number
+  depthLevel: number     // original depth (for re-layout after collapse)
 }
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -99,9 +101,11 @@ function buildFull(
       total_vol_left: n.total_vol_left,
       total_vol_right: n.total_vol_right,
       subtreeCount,
+      hasChildren: childIds.length > 0,
       children,
       x: 0,
       y: depth,
+      depthLevel: depth,
       subtreeWidth: 0,
     })
   }
@@ -140,6 +144,28 @@ function layoutForest(nodes: VizNode[]) {
   assignPositions(nodes, 0, 0)
 }
 
+// ── Clone + prune helpers (for collapse/expand) ───────────────────────────────
+
+function cloneTree(nodes: VizNode[]): VizNode[] {
+  return nodes.map((n) => ({
+    ...n,
+    y: n.depthLevel,   // reset to raw depth for re-layout
+    x: 0,
+    subtreeWidth: 0,
+    children: cloneTree(n.children),
+  }))
+}
+
+function pruneCollapsed(nodes: VizNode[], collapsed: Set<string>) {
+  for (const n of nodes) {
+    if (collapsed.has(n.id)) {
+      n.children = []
+    } else {
+      pruneCollapsed(n.children, collapsed)
+    }
+  }
+}
+
 // ── Flatten helpers ───────────────────────────────────────────────────────────
 
 function flatNodes(nodes: VizNode[]): VizNode[] {
@@ -172,7 +198,14 @@ function flatEdges(nodes: VizNode[]): { x1: number; y1: number; x2: number; y2: 
 
 // ── Card Node ─────────────────────────────────────────────────────────────────
 
-function CardNode({ n, isHov }: { n: VizNode; isHov: boolean }) {
+function CardNode({
+  n, isHov, isCollapsed, onToggle,
+}: {
+  n: VizNode
+  isHov: boolean
+  isCollapsed: boolean
+  onToggle: () => void
+}) {
   const active = n.is_active === 1
   const c = active ? posColor(n.highest_position) : { fill: '#0f172a', stroke: '#334155', text: '#475569' }
   const rank = shortRank(n.highest_position)
@@ -288,6 +321,34 @@ function CardNode({ n, isHov }: { n: VizNode; isHov: boolean }) {
       <text x={cx + 6} y={cy + 64} fill="#64748b" fontSize={7} style={{ userSelect: 'none' }}>
         {`${n.subtreeCount} คน`}
       </text>
+
+      {/* Collapse/Expand button — only when node has children */}
+      {n.hasChildren && (
+        <g
+          onClick={(e) => { e.stopPropagation(); onToggle() }}
+          style={{ cursor: 'pointer' }}
+        >
+          <circle
+            cx={cx + CARD_W / 2}
+            cy={cy + CARD_H + 7}
+            r={7}
+            fill="#1e293b"
+            stroke={isCollapsed ? '#4ade80' : '#475569'}
+            strokeWidth={1.2}
+          />
+          <text
+            x={cx + CARD_W / 2}
+            y={cy + CARD_H + 10.5}
+            textAnchor="middle"
+            fill={isCollapsed ? '#4ade80' : '#94a3b8'}
+            fontSize={9}
+            fontWeight="700"
+            style={{ userSelect: 'none' }}
+          >
+            {isCollapsed ? '+' : '−'}
+          </text>
+        </g>
+      )}
     </g>
   )
 }
@@ -304,6 +365,31 @@ function LegSvg({
   color: string
 }) {
   const [hovered, setHovered] = useState<string | null>(null)
+  const [collapsed, setCollapsed] = useState<Set<string>>(new Set())
+
+  const { allNodes, edges, svgW, svgH } = useMemo(() => {
+    if (roots.length === 0) return { allNodes: [], edges: [], svgW: 0, svgH: 0 }
+    const cloned = cloneTree(roots)
+    pruneCollapsed(cloned, collapsed)
+    layoutForest(cloned)
+    const allNodes = flatNodes(cloned)
+    const edges = flatEdges(cloned)
+    const totalUnits = cloned.reduce((s, n) => s + n.subtreeWidth, 0)
+    const svgW = Math.max(CARD_W + 16, totalUnits * H_SPACING + CARD_W)
+    const maxY = allNodes.length ? Math.max(...allNodes.map((n) => n.y)) : 0
+    // Extra space for toggle buttons (14px circle below card)
+    const svgH = maxY + CARD_H / 2 + 48
+    return { allNodes, edges, svgW, svgH }
+  }, [roots, collapsed])
+
+  const toggleCollapse = (id: string) => {
+    setCollapsed((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
 
   if (roots.length === 0) {
     return (
@@ -316,20 +402,14 @@ function LegSvg({
     )
   }
 
-  const allNodes = flatNodes(roots)
-  const edges = flatEdges(roots)
-
-  const totalUnits = roots.reduce((s, n) => s + n.subtreeWidth, 0)
-  const svgW = Math.max(CARD_W + 16, totalUnits * H_SPACING + CARD_W)
-  const maxY = Math.max(...allNodes.map((n) => n.y))
-  const svgH = maxY + CARD_H / 2 + 32
+  const totalNodes = flatNodes(cloneTree(roots))
 
   return (
     <div className="flex-1 min-w-0">
       <div className="flex items-center justify-between mb-2">
         <p className="text-xs font-semibold" style={{ color }}>{label}</p>
         <p className="text-xs text-slate-500">
-          {allNodes.filter(n => n.is_active === 1).length} active / {allNodes.length} คน
+          {totalNodes.filter(n => n.is_active === 1).length} active / {totalNodes.length} คน
         </p>
       </div>
       <div className="bg-slate-800/40 border border-slate-700/50 rounded-xl overflow-x-auto">
@@ -357,7 +437,12 @@ function LegSvg({
               onMouseEnter={() => setHovered(n.id)}
               onMouseLeave={() => setHovered(null)}
             >
-              <CardNode n={n} isHov={hovered === n.id} />
+              <CardNode
+                n={n}
+                isHov={hovered === n.id}
+                isCollapsed={collapsed.has(n.id)}
+                onToggle={() => toggleCollapse(n.id)}
+              />
             </g>
           ))}
         </svg>
@@ -426,9 +511,7 @@ export function TreeVizSection({
     const rightForest = sorted[0].roots
     const leftForest = sorted.slice(1).flatMap((l) => l.roots)
 
-    layoutForest(rightForest)
-    if (leftForest.length > 0) layoutForest(leftForest)
-
+    // NOTE: layout is handled inside LegSvg (supports collapse/expand)
     return {
       leftRoots: leftForest,
       rightRoots: rightForest,
