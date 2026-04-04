@@ -73,9 +73,9 @@ function fmt(n: number): string {
   return n.toLocaleString()
 }
 
-// ── Active-tree builder ────────────────────────────────────────────────────────
+// ── Full-tree builder (active + inactive) ────────────────────────────────────
 
-function buildActive(
+function buildFull(
   ids: string[],
   nodeMap: Map<string, TreeNode>,
   childMap: Map<string, TreeNode[]>,
@@ -88,27 +88,22 @@ function buildActive(
     const n = nodeMap.get(id)
     if (!n) continue
     const childIds = (childMap.get(id) ?? []).map((c) => c.id)
-    if (n.is_active === 1) {
-      const children = buildActive(childIds, nodeMap, childMap, depth + 1, maxDepth)
-      const subtreeCount = countNodes(children)
-      result.push({
-        id: n.id,
-        name: n.name,
-        monthly_bv: n.monthly_bv,
-        highest_position: n.highest_position,
-        is_active: n.is_active,
-        total_vol_left: n.total_vol_left,
-        total_vol_right: n.total_vol_right,
-        subtreeCount,
-        children,
-        x: 0,
-        y: depth,
-        subtreeWidth: 0,
-      })
-    } else {
-      const skipped = buildActive(childIds, nodeMap, childMap, depth, maxDepth)
-      result.push(...skipped)
-    }
+    const children = buildFull(childIds, nodeMap, childMap, depth + 1, maxDepth)
+    const subtreeCount = countNodes(children)
+    result.push({
+      id: n.id,
+      name: n.name,
+      monthly_bv: n.monthly_bv,
+      highest_position: n.highest_position,
+      is_active: n.is_active,
+      total_vol_left: n.total_vol_left,
+      total_vol_right: n.total_vol_right,
+      subtreeCount,
+      children,
+      x: 0,
+      y: depth,
+      subtreeWidth: 0,
+    })
   }
   return result
 }
@@ -178,16 +173,22 @@ function flatEdges(nodes: VizNode[]): { x1: number; y1: number; x2: number; y2: 
 // ── Card Node ─────────────────────────────────────────────────────────────────
 
 function CardNode({ n, isHov }: { n: VizNode; isHov: boolean }) {
-  const c = posColor(n.highest_position)
+  const active = n.is_active === 1
+  const c = active ? posColor(n.highest_position) : { fill: '#0f172a', stroke: '#334155', text: '#475569' }
   const rank = shortRank(n.highest_position)
   const cx = n.x - CARD_W / 2
   const cy = n.y - CARD_H / 2
 
-  // Measure rank badge width (approx 6px per char + 8px padding)
   const badgeW = Math.max(36, rank.length * 5.5 + 8)
+  const dimText = active ? '#94a3b8' : '#334155'
+  const nameColor = active ? 'white' : '#475569'
+  const bvColor = active ? '#4ade80' : '#334155'
+  const statusColor = active ? '#4ade80' : '#ef4444'
+  const volLColor = active ? '#38bdf8' : '#334155'
+  const volRColor = active ? '#c084fc' : '#334155'
 
   return (
-    <g style={{ cursor: 'pointer' }}>
+    <g style={{ cursor: 'pointer' }} opacity={active ? 1 : 0.65}>
       {/* Glow on hover */}
       {isHov && (
         <rect
@@ -211,10 +212,11 @@ function CardNode({ n, isHov }: { n: VizNode; isHov: boolean }) {
         fill={c.fill}
         stroke={c.stroke}
         strokeWidth={isHov ? 2 : 1.2}
+        strokeDasharray={active ? undefined : '3 2'}
       />
 
       {/* ID */}
-      <text x={cx + 6} y={cy + 13} fill="#94a3b8" fontSize={8} style={{ userSelect: 'none' }}>
+      <text x={cx + 6} y={cy + 13} fill={dimText} fontSize={8} style={{ userSelect: 'none' }}>
         {n.id}
       </text>
 
@@ -245,7 +247,7 @@ function CardNode({ n, isHov }: { n: VizNode; isHov: boolean }) {
       <text
         x={cx + 6}
         y={cy + 27}
-        fill="white"
+        fill={nameColor}
         fontSize={8.5}
         fontWeight="700"
         style={{ userSelect: 'none' }}
@@ -253,29 +255,29 @@ function CardNode({ n, isHov }: { n: VizNode; isHov: boolean }) {
         {shortName(n.name)}
       </text>
 
-      {/* BV + Active */}
-      <text x={cx + 6} y={cy + 40} fill="#4ade80" fontSize={7.5} style={{ userSelect: 'none' }}>
+      {/* BV + Active/Inactive */}
+      <text x={cx + 6} y={cy + 40} fill={bvColor} fontSize={7.5} style={{ userSelect: 'none' }}>
         {`BV: ${n.monthly_bv.toLocaleString()}`}
       </text>
       <text
         x={cx + CARD_W - 6}
         y={cy + 40}
         textAnchor="end"
-        fill="#4ade80"
+        fill={statusColor}
         fontSize={7}
         style={{ userSelect: 'none' }}
       >
-        Active
+        {active ? 'Active' : 'Inactive'}
       </text>
 
       {/* L / R vol */}
-      <text x={cx + 6} y={cy + 52} fill="#38bdf8" fontSize={7} style={{ userSelect: 'none' }}>
+      <text x={cx + 6} y={cy + 52} fill={volLColor} fontSize={7} style={{ userSelect: 'none' }}>
         {`L: ${fmt(n.total_vol_left)}`}
       </text>
       <text
         x={cx + CARD_W / 2 + 2}
         y={cy + 52}
-        fill="#c084fc"
+        fill={volRColor}
         fontSize={7}
         style={{ userSelect: 'none' }}
       >
@@ -308,7 +310,7 @@ function LegSvg({
       <div className="flex-1 min-w-0">
         <p className="text-xs font-semibold mb-2" style={{ color }}>{label}</p>
         <div className="bg-slate-800/50 rounded-xl p-6 text-center text-slate-500 text-sm">
-          ไม่มีสมาชิก active
+          ไม่มีสมาชิก
         </div>
       </div>
     )
@@ -326,7 +328,9 @@ function LegSvg({
     <div className="flex-1 min-w-0">
       <div className="flex items-center justify-between mb-2">
         <p className="text-xs font-semibold" style={{ color }}>{label}</p>
-        <p className="text-xs text-slate-500">{allNodes.length} คน active</p>
+        <p className="text-xs text-slate-500">
+          {allNodes.filter(n => n.is_active === 1).length} active / {allNodes.length} คน
+        </p>
       </div>
       <div className="bg-slate-800/40 border border-slate-700/50 rounded-xl overflow-x-auto">
         <svg
@@ -410,7 +414,7 @@ export function TreeVizSection({
 
     function buildLeg(startId: string | null): VizNode[] {
       if (!startId) return []
-      const roots = buildActive([startId], nodeMap, childMap, 0)
+      const roots = buildFull([startId], nodeMap, childMap, 0)
       if (roots.length === 0) return []
       layoutForest(roots)
       return roots
@@ -427,10 +431,10 @@ export function TreeVizSection({
       {/* Header */}
       <div className="px-5 py-4 bg-slate-800/60 border-b border-slate-700">
         <h2 className="text-base font-semibold text-white flex items-center gap-2">
-          <span>🌿</span> สายงาน 2 ขา (Active Members Only)
+          <span>🌿</span> สายงาน 2 ขา (ทุกคน)
         </h2>
         <p className="text-xs text-slate-400 mt-0.5">
-          วงกลมเรียงตาม upline ที่ active — upline ไม่ active จะเลื่อนขึ้นหา active ชั้นบน
+          สมาชิก Active แสดงสีปกติ — Inactive แสดงสีเทา เส้นประ
         </p>
       </div>
 
