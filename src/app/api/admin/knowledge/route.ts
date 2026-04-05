@@ -61,9 +61,10 @@ export async function POST(req: NextRequest) {
     const buffer = Buffer.from(await file.arrayBuffer())
 
     // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const pdfParse = require('pdf-parse')
-    const parsed = await pdfParse(buffer)
-    const content: string = parsed.text ?? ''
+    const { PDFParse } = require('pdf-parse')
+    const parser = new PDFParse({ data: buffer })
+    const result = await parser.getText()
+    const content: string = result.text ?? ''
 
     if (!content.trim()) {
       return Response.json({ error: 'ไม่สามารถแกะข้อความจาก PDF ได้ (PDF อาจเป็นรูปภาพ)' }, { status: 400 })
