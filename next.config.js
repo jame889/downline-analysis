@@ -3,7 +3,7 @@ const isGithubPages = process.env.GITHUB_PAGES === 'true'
 
 const nextConfig = {
   experimental: {
-    serverComponentsExternalPackages: ['ws', 'msedge-tts', 'bufferutil', 'utf-8-validate'],
+    serverComponentsExternalPackages: ['ws', 'msedge-tts', 'bufferutil', 'utf-8-validate', 'pdf-parse'],
   },
   ...(isGithubPages && {
     output: 'export',

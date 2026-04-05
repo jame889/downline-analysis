@@ -60,9 +60,8 @@ export async function POST(req: NextRequest) {
 
     const buffer = Buffer.from(await file.arrayBuffer())
 
-    // Dynamic import to avoid Next.js build issues with pdf-parse
     // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const pdfParse = require('pdf-parse/lib/pdf-parse.js')
+    const pdfParse = require('pdf-parse')
     const parsed = await pdfParse(buffer)
     const content: string = parsed.text ?? ''
 
