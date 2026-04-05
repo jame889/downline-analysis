@@ -205,18 +205,60 @@ interface ChatMessage {
   content: string
 }
 
-// ── ChatBot component ─────────────────────────────────────────────────────────
+// ── TTS helpers ───────────────────────────────────────────────────────────────
 
 function ChatBot({ coachData }: { coachData: CoachData }) {
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [input, setInput] = useState('')
   const [streaming, setStreaming] = useState(false)
+  const [ttsEnabled, setTtsEnabled] = useState(false)
+  const [speaking, setSpeaking] = useState(false)
   const bottomRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
+  const prevStreamingRef = useRef(false)
+  const audioRef = useRef<HTMLAudioElement | null>(null)
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages])
+
+  // Auto-speak when streaming finishes
+  useEffect(() => {
+    if (prevStreamingRef.current && !streaming && ttsEnabled && messages.length > 0) {
+      const last = messages[messages.length - 1]
+      if (last.role === 'assistant' && last.content) {
+        speakText(last.content)
+      }
+    }
+    prevStreamingRef.current = streaming
+  }, [streaming]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  async function speakText(text: string) {
+    stopSpeaking()
+    setSpeaking(true)
+    try {
+      const res = await fetch('/api/tts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text }),
+      })
+      if (!res.ok) throw new Error('TTS failed')
+      const blob = await res.blob()
+      const url = URL.createObjectURL(blob)
+      const audio = new Audio(url)
+      audioRef.current = audio
+      audio.onended = () => { setSpeaking(false); URL.revokeObjectURL(url) }
+      audio.onerror = () => { setSpeaking(false); URL.revokeObjectURL(url) }
+      await audio.play()
+    } catch {
+      setSpeaking(false)
+    }
+  }
+
+  function stopSpeaking() {
+    if (audioRef.current) { audioRef.current.pause(); audioRef.current = null }
+    setSpeaking(false)
+  }
 
   async function send() {
     const text = input.trim()
@@ -310,10 +352,26 @@ function ChatBot({ coachData }: { coachData: CoachData }) {
             <p className="text-xs text-slate-400">llama3.2 · รู้ข้อมูลของคุณ · ตอบภาษาไทย</p>
           </div>
         </div>
-        <span className="flex items-center gap-1.5 text-xs text-green-400">
-          <span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />
-          Online
-        </span>
+        <div className="flex items-center gap-3">
+          <button
+            onClick={() => { setTtsEnabled(p => !p); if (speaking) stopSpeaking() }}
+            title={ttsEnabled ? 'ปิดเสียง' : 'เปิดเสียง Niwat TTS'}
+            className={`flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full border transition-colors ${
+              ttsEnabled
+                ? 'border-brand-500 bg-brand-900/30 text-brand-400'
+                : 'border-slate-700 bg-slate-800/60 text-slate-500 hover:text-slate-300'
+            }`}
+          >
+            {speaking
+              ? <span className="animate-pulse">🔊</span>
+              : ttsEnabled ? '🔊' : '🔇'}
+            <span>{ttsEnabled ? 'เสียงเปิด' : 'เสียงปิด'}</span>
+          </button>
+          <span className="flex items-center gap-1.5 text-xs text-green-400">
+            <span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />
+            Online
+          </span>
+        </div>
       </div>
 
       {/* Messages */}
@@ -342,21 +400,32 @@ function ChatBot({ coachData }: { coachData: CoachData }) {
                 J
               </div>
             )}
-            <div
-              className={`max-w-[85%] rounded-2xl px-4 py-2.5 text-sm leading-relaxed
-                ${m.role === 'user'
-                  ? 'bg-brand-600 text-white rounded-br-sm whitespace-pre-wrap'
-                  : 'bg-slate-800 text-slate-100 rounded-bl-sm border border-slate-700'}`}
-            >
-              {m.role === 'assistant'
-                ? <MessageContent content={m.content} coachData={coachData} />
-                : m.content}
-              {m.role === 'assistant' && streaming && i === messages.length - 1 && !m.content && (
-                <span className="inline-flex gap-1 items-center">
-                  <span className="w-1.5 h-1.5 bg-slate-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
-                  <span className="w-1.5 h-1.5 bg-slate-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
-                  <span className="w-1.5 h-1.5 bg-slate-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
-                </span>
+            <div className="flex flex-col gap-1 max-w-[85%]">
+              <div
+                className={`rounded-2xl px-4 py-2.5 text-sm leading-relaxed
+                  ${m.role === 'user'
+                    ? 'bg-brand-600 text-white rounded-br-sm whitespace-pre-wrap'
+                    : 'bg-slate-800 text-slate-100 rounded-bl-sm border border-slate-700'}`}
+              >
+                {m.role === 'assistant'
+                  ? <MessageContent content={m.content} coachData={coachData} />
+                  : m.content}
+                {m.role === 'assistant' && streaming && i === messages.length - 1 && !m.content && (
+                  <span className="inline-flex gap-1 items-center">
+                    <span className="w-1.5 h-1.5 bg-slate-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
+                    <span className="w-1.5 h-1.5 bg-slate-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
+                    <span className="w-1.5 h-1.5 bg-slate-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+                  </span>
+                )}
+              </div>
+              {m.role === 'assistant' && m.content && !streaming && (
+                <button
+                  onClick={() => speakText(m.content)}
+                  title="อ่านข้อความนี้"
+                  className="self-start ml-1 text-xs text-slate-600 hover:text-slate-300 transition-colors"
+                >
+                  🔊
+                </button>
               )}
             </div>
           </div>

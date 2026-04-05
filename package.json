@@ -15,10 +15,13 @@
     "clsx": "^2.1.1",
     "jose": "^6.2.2",
     "lucide-react": "^0.400.0",
+    "msedge-tts": "^2.0.4",
     "next": "14.2.5",
+    "pdf-parse": "^2.4.5",
     "react": "^18",
     "react-dom": "^18",
-    "recharts": "^2.12.7"
+    "recharts": "^2.12.7",
+    "xlsx": "^0.18.5"
   },
   "devDependencies": {
     "@types/node": "^20",

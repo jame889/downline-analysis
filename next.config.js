@@ -2,6 +2,9 @@
 const isGithubPages = process.env.GITHUB_PAGES === 'true'
 
 const nextConfig = {
+  experimental: {
+    serverComponentsExternalPackages: ['ws', 'msedge-tts', 'bufferutil', 'utf-8-validate'],
+  },
   ...(isGithubPages && {
     output: 'export',
     trailingSlash: true,
