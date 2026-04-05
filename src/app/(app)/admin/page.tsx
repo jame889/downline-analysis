@@ -187,8 +187,10 @@ function KnowledgeBase() {
   const [docs, setDocs] = useState<KnowledgeDoc[]>([])
   const [loading, setLoading] = useState(true)
   const [uploading, setUploading] = useState(false)
+  const [mode, setMode] = useState<'pdf' | 'text'>('pdf')
   const [title, setTitle] = useState('')
   const [file, setFile] = useState<File | null>(null)
+  const [textContent, setTextContent] = useState('')
   const [msg, setMsg] = useState<{ text: string; ok: boolean } | null>(null)
   const fileRef = useRef<HTMLInputElement>(null)
 
@@ -225,6 +227,27 @@ function KnowledgeBase() {
     setUploading(false)
   }
 
+  async function addText() {
+    if (!textContent.trim()) return
+    setUploading(true)
+    setMsg(null)
+    const r = await fetch('/api/admin/knowledge', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ title, content: textContent }),
+    })
+    const d = await r.json()
+    if (r.ok) {
+      setMsg({ text: `บันทึก "${d.title}" สำเร็จ (${(d.chars / 1000).toFixed(1)}k ตัวอักษร)`, ok: true })
+      setTextContent('')
+      setTitle('')
+      load()
+    } else {
+      setMsg({ text: d.error ?? 'เกิดข้อผิดพลาด', ok: false })
+    }
+    setUploading(false)
+  }
+
   async function remove(id: string, name: string) {
     if (!confirm(`ลบ "${name}"?`)) return
     await fetch('/api/admin/knowledge', { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id }) })
@@ -241,12 +264,27 @@ function KnowledgeBase() {
     <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 space-y-5">
       <div>
         <h2 className="text-base font-semibold text-white mb-1">🧠 ฐานความรู้ Coach JOE</h2>
-        <p className="text-xs text-slate-500">อัพโหลด PDF เนื้อหาความรู้ด้านธุรกิจเครือข่าย Binary · Coach JOE จะใช้ข้อมูลนี้ตอบคำถามอัตโนมัติ</p>
+        <p className="text-xs text-slate-500">เพิ่มความรู้ให้ Coach JOE ผ่าน PDF หรือพิมพ์ข้อความโดยตรง</p>
       </div>
 
-      {/* Upload form */}
+      {/* Mode tabs */}
+      <div className="flex gap-2">
+        <button
+          onClick={() => { setMode('pdf'); setMsg(null) }}
+          className={`flex-1 py-2 rounded-lg text-sm font-medium transition-colors ${mode === 'pdf' ? 'bg-brand-600 text-white' : 'bg-slate-800 text-slate-400 hover:text-white'}`}
+        >
+          📄 อัพโหลด PDF
+        </button>
+        <button
+          onClick={() => { setMode('text'); setMsg(null) }}
+          className={`flex-1 py-2 rounded-lg text-sm font-medium transition-colors ${mode === 'text' ? 'bg-brand-600 text-white' : 'bg-slate-800 text-slate-400 hover:text-white'}`}
+        >
+          ✏️ เพิ่มข้อความ
+        </button>
+      </div>
+
+      {/* Form */}
       <div className="bg-slate-800/50 border border-slate-700 rounded-xl p-4 space-y-3">
-        <p className="text-xs font-semibold text-slate-300">เพิ่มเอกสารใหม่</p>
         <input
           type="text"
           value={title}
@@ -254,40 +292,52 @@ function KnowledgeBase() {
           placeholder="ชื่อเอกสาร (ไม่บังคับ)"
           className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-brand-500"
         />
-        <div
-          className="border-2 border-dashed border-slate-600 hover:border-brand-500 rounded-xl p-6 text-center cursor-pointer transition-colors"
-          onClick={() => fileRef.current?.click()}
-        >
-          {file ? (
-            <div>
-              <p className="text-sm text-white font-medium">📄 {file.name}</p>
-              <p className="text-xs text-slate-400 mt-1">{fmt(file.size)}</p>
-            </div>
-          ) : (
-            <div>
-              <p className="text-slate-400 text-sm">คลิกเพื่อเลือกไฟล์ PDF</p>
-              <p className="text-slate-500 text-xs mt-1">ขนาดสูงสุด 10 MB</p>
-            </div>
-          )}
-          <input
-            ref={fileRef}
-            type="file"
-            accept=".pdf"
-            className="hidden"
-            onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+
+        {mode === 'pdf' ? (
+          <div
+            className="border-2 border-dashed border-slate-600 hover:border-brand-500 rounded-xl p-6 text-center cursor-pointer transition-colors"
+            onClick={() => fileRef.current?.click()}
+          >
+            {file ? (
+              <div>
+                <p className="text-sm text-white font-medium">📄 {file.name}</p>
+                <p className="text-xs text-slate-400 mt-1">{fmt(file.size)}</p>
+              </div>
+            ) : (
+              <div>
+                <p className="text-slate-400 text-sm">คลิกเพื่อเลือกไฟล์ PDF</p>
+                <p className="text-slate-500 text-xs mt-1">ขนาดสูงสุด 10 MB · รองรับ PDF รูปภาพ (OCR)</p>
+              </div>
+            )}
+            <input
+              ref={fileRef}
+              type="file"
+              accept=".pdf"
+              className="hidden"
+              onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+            />
+          </div>
+        ) : (
+          <textarea
+            value={textContent}
+            onChange={(e) => setTextContent(e.target.value)}
+            placeholder="พิมพ์หรือวางข้อความที่ต้องการให้ Coach JOE รู้..."
+            rows={8}
+            className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-brand-500 resize-y"
           />
-        </div>
+        )}
+
         {msg && (
           <p className={`text-xs ${msg.ok ? 'text-green-400' : 'text-red-400'}`}>
             {msg.ok ? '✓ ' : '✕ '}{msg.text}
           </p>
         )}
         <button
-          onClick={upload}
-          disabled={!file || uploading}
+          onClick={mode === 'pdf' ? upload : addText}
+          disabled={mode === 'pdf' ? (!file || uploading) : (!textContent.trim() || uploading)}
           className="w-full bg-brand-600 hover:bg-brand-500 disabled:opacity-40 disabled:cursor-not-allowed text-white rounded-lg py-2.5 text-sm font-medium transition-colors"
         >
-          {uploading ? 'กำลังประมวลผล...' : 'อัพโหลด PDF'}
+          {uploading ? 'กำลังประมวลผล...' : mode === 'pdf' ? 'อัพโหลด PDF' : 'บันทึกข้อความ'}
         </button>
       </div>
 

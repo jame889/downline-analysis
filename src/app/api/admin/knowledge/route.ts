@@ -71,12 +71,34 @@ export async function GET() {
   return Response.json({ docs })
 }
 
-// POST: upload PDF
+// POST: upload PDF or add text directly
 export async function POST(req: NextRequest) {
   const session = await getSession()
   if (!session) return Response.json({ error: 'Unauthorized' }, { status: 401 })
 
   try {
+    const contentType = req.headers.get('content-type') ?? ''
+
+    // ── Text mode ──────────────────────────────────────────────────────────────
+    if (contentType.includes('application/json')) {
+      const { title, content } = await req.json()
+      if (!content?.trim()) return Response.json({ error: 'ไม่มีเนื้อหา' }, { status: 400 })
+
+      ensureDir()
+      const id = randomUUID()
+      const doc: KnowledgeDoc = {
+        id,
+        filename: 'text',
+        title: title?.trim() || 'ข้อความ ' + new Date().toLocaleDateString('th-TH'),
+        content: content.trim(),
+        size: Buffer.byteLength(content, 'utf-8'),
+        uploadedAt: new Date().toISOString(),
+      }
+      fs.writeFileSync(path.join(KNOWLEDGE_DIR, `${id}.json`), JSON.stringify(doc, null, 2), 'utf-8')
+      return Response.json({ ok: true, id, title: doc.title, chars: content.length })
+    }
+
+    // ── PDF mode ───────────────────────────────────────────────────────────────
     const form = await req.formData()
     const file = form.get('file') as File | null
     const title = (form.get('title') as string | null)?.trim() || ''
@@ -119,7 +141,6 @@ export async function POST(req: NextRequest) {
     }
 
     fs.writeFileSync(path.join(KNOWLEDGE_DIR, `${id}.json`), JSON.stringify(doc, null, 2), 'utf-8')
-
     return Response.json({ ok: true, id, title: doc.title, chars: content.length })
   } catch (e) {
     return Response.json({ error: String(e) }, { status: 500 })
