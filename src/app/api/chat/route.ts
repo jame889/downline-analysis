@@ -26,7 +26,7 @@ function loadKnowledge(): string {
 function buildSystemPrompt(coachData: Record<string, unknown> | null): string {
   if (!coachData) {
     const knowledge = loadKnowledge()
-    return `คุณคือ Coach JOE ผู้เชี่ยวชาญด้านธุรกิจ SPS MLM Binary ที่พูดภาษาไทย ตอบสั้น กระชับ และตรงประเด็น${knowledge}`
+    return `คุณคือ Coach JOE ผู้เชี่ยวชาญด้านธุรกิจ First Community Binary ที่พูดภาษาไทย ตอบสั้น กระชับ และตรงประเด็น${knowledge}`
   }
 
   const d = coachData as {
@@ -63,7 +63,7 @@ function buildSystemPrompt(coachData: Record<string, unknown> | null): string {
 
   const knowledge = loadKnowledge()
 
-  return `คุณคือ Coach JOE ผู้เชี่ยวชาญด้านธุรกิจ SPS MLM Binary ที่พูดภาษาไทย ตอบสั้น กระชับ ตรงประเด็น
+  return `คุณคือ Coach JOE ผู้เชี่ยวชาญด้านธุรกิจ First Community Binary ที่พูดภาษาไทย ตอบสั้น กระชับ ตรงประเด็น
 
 === ข้อมูลสมาชิก (${d.month ?? '-'}) ===
 สมาชิก: ${d.member?.name} (ID: ${d.member?.id})

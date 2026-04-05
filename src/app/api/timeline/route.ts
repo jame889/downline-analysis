@@ -27,12 +27,12 @@ export async function GET(request: NextRequest) {
     const { searchParams } = request.nextUrl
     const memberId = searchParams.get('id') ?? session.memberId
 
-    const member = getMember(memberId)
+    const member = await getMember(memberId)
     if (!member) {
       return NextResponse.json({ error: 'Member not found' }, { status: 404 })
     }
 
-    const history = getMemberHistory(memberId)
+    const history = await getMemberHistory(memberId)
     const events: TimelineEvent[] = []
 
     // Join event
@@ -40,8 +40,8 @@ export async function GET(request: NextRequest) {
       events.push({
         date: member.join_date,
         type: 'join',
-        title: 'เข้าร่วม SPS',
-        detail: `สมัครเป็นสมาชิก SPS (ID: ${member.id})`,
+        title: 'เข้าร่วม First Community',
+        detail: `สมัครเป็นสมาชิก First Community (ID: ${member.id})`,
         icon: '🎉',
       })
     }
@@ -131,11 +131,11 @@ export async function GET(request: NextRequest) {
     }
 
     // Check for new downlines each month
-    const months = getAvailableMonths().slice().sort()
+    const months = (await getAvailableMonths()).slice().sort()
     const seenDownlines = new Set<string>()
 
     for (const month of months) {
-      const data = getMembersForMonth(month)
+      const data = await getMembersForMonth(month)
       for (const m of data) {
         if (m.upline_id === memberId && !seenDownlines.has(m.id)) {
           seenDownlines.add(m.id)

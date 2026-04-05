@@ -31,6 +31,8 @@ export default function Navbar() {
     { href: '/coach', label: 'Coach JOE' },
     { href: '/leaderboard', label: '🏆' },
     { href: '/simulator', label: '🧮' },
+    { href: '/profile', label: '👤' },
+    { href: '/telegram', label: '📱' },
     { href: '/admin', label: '⚙️ Admin' },
   ]
 
@@ -39,6 +41,7 @@ export default function Navbar() {
     { href: `/tree?member=${session?.memberId ?? ''}`, label: 'โครงสร้าง' },
     { href: '/income-plan', label: '💰 รายได้' },
     { href: '/coach', label: 'Coach JOE' },
+    { href: '/simulator', label: '🧮' },
     { href: '/profile', label: '👤' },
     { href: '/telegram', label: '📱' },
   ]
@@ -48,7 +51,7 @@ export default function Navbar() {
   return (
     <nav className="bg-slate-900 border-b border-slate-800">
       <div className="max-w-7xl mx-auto px-4 flex items-center gap-6 h-14">
-        <span className="text-brand-500 font-bold text-lg tracking-tight shrink-0">SPS Downline</span>
+        <span className="text-brand-500 font-bold text-lg tracking-tight shrink-0">First Community</span>
 
         <div className="flex items-center gap-5 flex-1">
           {links.map(({ href, label }) => (

@@ -37,7 +37,7 @@ export default function LoginPage() {
         {/* Logo area */}
         <div className="text-center mb-8">
           <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-brand-600 mb-4">
-            <span className="text-white font-bold text-xl">SPS</span>
+            <span className="text-white font-bold text-xl">First Community</span>
           </div>
           <h1 className="text-2xl font-bold text-white">Downline Analyzer</h1>
           <p className="text-slate-400 text-sm mt-1">เข้าสู่ระบบด้วยรหัสสมาชิก</p>

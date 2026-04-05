@@ -4,7 +4,7 @@ import { ThemeProvider } from '@/lib/theme'
 
 export const metadata: Metadata = {
   title: 'Downline Analyzer',
-  description: 'SPS Downline Analysis Dashboard',
+  description: 'First Community Downline Analysis Dashboard',
 }
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

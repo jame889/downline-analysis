@@ -6,6 +6,33 @@ import { randomUUID } from 'crypto'
 
 const KNOWLEDGE_DIR = path.join(process.cwd(), 'data', 'knowledge')
 
+// Detect if extracted text is meaningful (not just PDF page markers)
+function isMeaningfulText(text: string): boolean {
+  const cleaned = text.replace(/--\s*\d+\s*of\s*\d+\s*--/g, '').trim()
+  return cleaned.length >= 50
+}
+
+async function extractWithOCR(buffer: Buffer): Promise<string> {
+  // Dynamic import ESM modules
+  const mupdf = await import('mupdf')
+  const Tesseract = (await import('tesseract.js')).default
+
+  const doc = mupdf.Document.openDocument(buffer, 'application/pdf')
+  const numPages = doc.countPages()
+  const texts: string[] = []
+
+  for (let i = 0; i < numPages; i++) {
+    const page = doc.loadPage(i)
+    // Scale 2x for better OCR accuracy
+    const pixmap = page.toPixmap(mupdf.Matrix.scale(2, 2), mupdf.ColorSpace.DeviceRGB, false, true)
+    const pngBuf = Buffer.from(pixmap.asPNG())
+    const result = await Tesseract.recognize(pngBuf, 'tha+eng', { logger: () => {} })
+    texts.push(result.data.text.trim())
+  }
+
+  return texts.join('\n\n').trim()
+}
+
 function ensureDir() {
   if (!fs.existsSync(KNOWLEDGE_DIR)) fs.mkdirSync(KNOWLEDGE_DIR, { recursive: true })
 }
@@ -60,14 +87,24 @@ export async function POST(req: NextRequest) {
 
     const buffer = Buffer.from(await file.arrayBuffer())
 
+    // Try text extraction first (fast, works for text-based PDFs)
     // eslint-disable-next-line @typescript-eslint/no-require-imports
     const { PDFParse } = require('pdf-parse')
     const parser = new PDFParse({ data: buffer })
-    const result = await parser.getText()
-    const content: string = result.text ?? ''
+    const parsed = await parser.getText()
+    let content: string = parsed.text ?? ''
+
+    // Fallback to OCR if no meaningful text extracted (image-based PDF)
+    if (!isMeaningfulText(content)) {
+      try {
+        content = await extractWithOCR(buffer)
+      } catch (ocrErr) {
+        return Response.json({ error: `OCR ล้มเหลว: ${String(ocrErr)}` }, { status: 500 })
+      }
+    }
 
     if (!content.trim()) {
-      return Response.json({ error: 'ไม่สามารถแกะข้อความจาก PDF ได้ (PDF อาจเป็นรูปภาพ)' }, { status: 400 })
+      return Response.json({ error: 'ไม่สามารถแกะข้อความจาก PDF ได้ (ลองใช้ PDF ที่มีข้อความ)' }, { status: 400 })
     }
 
     ensureDir()

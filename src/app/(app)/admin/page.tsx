@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import ExcelUpload from '@/components/ExcelUpload'
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -173,6 +173,157 @@ function ConfirmDialog({ message, onConfirm, onCancel }: ConfirmDialogProps) {
   )
 }
 
+// ─── Knowledge Base Component ─────────────────────────────────────────────────
+
+interface KnowledgeDoc {
+  id: string
+  filename: string
+  title: string
+  size: number
+  uploadedAt: string
+}
+
+function KnowledgeBase() {
+  const [docs, setDocs] = useState<KnowledgeDoc[]>([])
+  const [loading, setLoading] = useState(true)
+  const [uploading, setUploading] = useState(false)
+  const [title, setTitle] = useState('')
+  const [file, setFile] = useState<File | null>(null)
+  const [msg, setMsg] = useState<{ text: string; ok: boolean } | null>(null)
+  const fileRef = useRef<HTMLInputElement>(null)
+
+  const load = useCallback(async () => {
+    setLoading(true)
+    const r = await fetch('/api/admin/knowledge')
+    if (r.ok) {
+      const d = await r.json()
+      setDocs(d.docs ?? [])
+    }
+    setLoading(false)
+  }, [])
+
+  useEffect(() => { load() }, [load])
+
+  async function upload() {
+    if (!file) return
+    setUploading(true)
+    setMsg(null)
+    const form = new FormData()
+    form.append('file', file)
+    form.append('title', title || file.name.replace(/\.pdf$/i, ''))
+    const r = await fetch('/api/admin/knowledge', { method: 'POST', body: form })
+    const d = await r.json()
+    if (r.ok) {
+      setMsg({ text: `อัพโหลด "${d.title}" สำเร็จ (${(d.chars / 1000).toFixed(1)}k ตัวอักษร)`, ok: true })
+      setFile(null)
+      setTitle('')
+      if (fileRef.current) fileRef.current.value = ''
+      load()
+    } else {
+      setMsg({ text: d.error ?? 'เกิดข้อผิดพลาด', ok: false })
+    }
+    setUploading(false)
+  }
+
+  async function remove(id: string, name: string) {
+    if (!confirm(`ลบ "${name}"?`)) return
+    await fetch('/api/admin/knowledge', { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id }) })
+    load()
+  }
+
+  function fmt(bytes: number) {
+    if (bytes < 1024) return `${bytes} B`
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
+    return `${(bytes / 1024 / 1024).toFixed(1)} MB`
+  }
+
+  return (
+    <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 space-y-5">
+      <div>
+        <h2 className="text-base font-semibold text-white mb-1">🧠 ฐานความรู้ Coach JOE</h2>
+        <p className="text-xs text-slate-500">อัพโหลด PDF เนื้อหาความรู้ด้านธุรกิจเครือข่าย Binary · Coach JOE จะใช้ข้อมูลนี้ตอบคำถามอัตโนมัติ</p>
+      </div>
+
+      {/* Upload form */}
+      <div className="bg-slate-800/50 border border-slate-700 rounded-xl p-4 space-y-3">
+        <p className="text-xs font-semibold text-slate-300">เพิ่มเอกสารใหม่</p>
+        <input
+          type="text"
+          value={title}
+          onChange={(e) => setTitle(e.target.value)}
+          placeholder="ชื่อเอกสาร (ไม่บังคับ)"
+          className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-brand-500"
+        />
+        <div
+          className="border-2 border-dashed border-slate-600 hover:border-brand-500 rounded-xl p-6 text-center cursor-pointer transition-colors"
+          onClick={() => fileRef.current?.click()}
+        >
+          {file ? (
+            <div>
+              <p className="text-sm text-white font-medium">📄 {file.name}</p>
+              <p className="text-xs text-slate-400 mt-1">{fmt(file.size)}</p>
+            </div>
+          ) : (
+            <div>
+              <p className="text-slate-400 text-sm">คลิกเพื่อเลือกไฟล์ PDF</p>
+              <p className="text-slate-500 text-xs mt-1">ขนาดสูงสุด 10 MB</p>
+            </div>
+          )}
+          <input
+            ref={fileRef}
+            type="file"
+            accept=".pdf"
+            className="hidden"
+            onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+          />
+        </div>
+        {msg && (
+          <p className={`text-xs ${msg.ok ? 'text-green-400' : 'text-red-400'}`}>
+            {msg.ok ? '✓ ' : '✕ '}{msg.text}
+          </p>
+        )}
+        <button
+          onClick={upload}
+          disabled={!file || uploading}
+          className="w-full bg-brand-600 hover:bg-brand-500 disabled:opacity-40 disabled:cursor-not-allowed text-white rounded-lg py-2.5 text-sm font-medium transition-colors"
+        >
+          {uploading ? 'กำลังประมวลผล...' : 'อัพโหลด PDF'}
+        </button>
+      </div>
+
+      {/* Docs list */}
+      <div>
+        <p className="text-xs font-semibold text-slate-400 mb-3">เอกสารทั้งหมด ({docs.length})</p>
+        {loading ? (
+          <p className="text-xs text-slate-500 text-center py-4">กำลังโหลด...</p>
+        ) : docs.length === 0 ? (
+          <p className="text-xs text-slate-500 text-center py-6">ยังไม่มีเอกสาร</p>
+        ) : (
+          <div className="space-y-2">
+            {docs.map((d) => (
+              <div key={d.id} className="flex items-center justify-between bg-slate-800/40 border border-slate-700 rounded-lg px-4 py-3">
+                <div className="flex items-center gap-3 min-w-0">
+                  <span className="text-2xl">📄</span>
+                  <div className="min-w-0">
+                    <p className="text-sm text-white font-medium truncate">{d.title}</p>
+                    <p className="text-xs text-slate-500">{d.filename} · {fmt(d.size)}</p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => remove(d.id, d.title)}
+                  className="ml-4 text-xs text-red-400 hover:text-red-300 shrink-0 transition-colors"
+                >
+                  ลบ
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
 export default function AdminPage() {
@@ -212,7 +363,7 @@ export default function AdminPage() {
     fetch('/api/me')
       .then((r) => r.json())
       .then((data) => {
-        setIsAdmin(data?.isAdmin === true)
+        setIsAdmin(data?.session?.isAdmin === true)
       })
       .catch(() => setIsAdmin(false))
   }, [])
@@ -830,18 +981,21 @@ export default function AdminPage() {
           <div className="space-y-4">
             <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6">
               <h2 className="text-base font-semibold text-white mb-1">📤 อัพโหลดข้อมูลรายเดือน</h2>
-              <p className="text-xs text-slate-500 mb-5">นำเข้าไฟล์รายงาน Excel (.xlsx) จาก SPS Business Portal · ระบบจะอัพเดตข้อมูลทั้งหมดอัตโนมัติ</p>
+              <p className="text-xs text-slate-500 mb-5">นำเข้าไฟล์รายงาน Excel (.xlsx) จาก First Community Business Portal · ระบบจะอัพเดตข้อมูลทั้งหมดอัตโนมัติ</p>
               <ExcelUpload onSuccess={() => { /* optionally refresh stats */ }} />
             </div>
             <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5">
               <h3 className="text-sm font-semibold text-slate-300 mb-3">📋 ขั้นตอนการอัพโหลด</h3>
               <ol className="space-y-2 text-xs text-slate-400">
-                <li className="flex gap-2"><span className="text-brand-400 font-bold">1.</span>ดาวน์โหลดรายงานประจำเดือนจาก SPS Business Portal</li>
+                <li className="flex gap-2"><span className="text-brand-400 font-bold">1.</span>ดาวน์โหลดรายงานประจำเดือนจาก First Community Business Portal</li>
                 <li className="flex gap-2"><span className="text-brand-400 font-bold">2.</span>เลือกไฟล์ .xlsx ที่ต้องการ (เลือกหลายเดือนพร้อมกันได้)</li>
                 <li className="flex gap-2"><span className="text-brand-400 font-bold">3.</span>คลิก "อัพโหลด" รอระบบประมวลผล (~10-30 วินาที)</li>
                 <li className="flex gap-2"><span className="text-brand-400 font-bold">4.</span>ข้อมูลทุกหน้าจะอัพเดตอัตโนมัติทันที</li>
               </ol>
             </div>
+
+            {/* ── Knowledge Base ── */}
+            <KnowledgeBase />
           </div>
         )}
       </div>

@@ -728,7 +728,7 @@ export default function IncomePlanPage() {
 
               {/* Rank advancement theory */}
               <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5">
-                <h3 className="text-sm font-semibold text-slate-300 mb-3">📖 หลักการสร้างรายได้ SPS</h3>
+                <h3 className="text-sm font-semibold text-slate-300 mb-3">📖 หลักการสร้างรายได้ First Community</h3>
                 <div className="space-y-3 text-xs">
                   <div className="flex gap-3 p-3 bg-sky-900/20 rounded-xl border border-sky-800/40">
                     <span className="text-2xl">🎯</span>
