@@ -6,26 +6,58 @@ const OLLAMA_URL = process.env.OLLAMA_URL || 'http://localhost:11434'
 const MODEL = process.env.OLLAMA_MODEL || 'llama3.2:3b'
 const KNOWLEDGE_DIR = path.join(process.cwd(), 'data', 'knowledge')
 
-function loadKnowledge(): string {
-  if (!fs.existsSync(KNOWLEDGE_DIR)) return ''
-  const docs = fs.readdirSync(KNOWLEDGE_DIR)
-    .filter((f) => f.endsWith('.json'))
-    .map((f) => {
-      try {
-        const d = JSON.parse(fs.readFileSync(path.join(KNOWLEDGE_DIR, f), 'utf-8'))
-        // Limit each doc to 3000 chars to keep context manageable
-        const excerpt = d.content?.slice(0, 3000) ?? ''
-        return `### ${d.title}\n${excerpt}`
-      } catch { return null }
-    })
-    .filter(Boolean)
-  if (!docs.length) return ''
-  return `\n\n=== ฐานความรู้ด้านธุรกิจเครือข่าย Binary ===\n${docs.join('\n\n---\n\n')}`
+const SUPABASE_URL = process.env.SUPABASE_URL?.replace(/\n/g, '') ?? ''
+const SUPABASE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY?.replace(/\n/g, '') ?? ''
+const BUCKET = 'knowledge'
+const USE_SUPABASE = !!(SUPABASE_URL && SUPABASE_KEY)
+
+function sbHeaders() {
+  return {
+    apikey: SUPABASE_KEY,
+    Authorization: `Bearer ${SUPABASE_KEY}`,
+    'Content-Type': 'application/json',
+  }
 }
 
-function buildSystemPrompt(coachData: Record<string, unknown> | null): string {
+async function loadKnowledge(): Promise<string> {
+  let docs: Array<{ title: string; content: string }> = []
+
+  if (USE_SUPABASE) {
+    const res = await fetch(`${SUPABASE_URL}/storage/v1/object/list/${BUCKET}`, {
+      method: 'POST',
+      headers: sbHeaders(),
+      body: JSON.stringify({ prefix: '', limit: 200 }),
+    })
+    if (res.ok) {
+      const files: { name: string }[] = await res.json()
+      for (const f of files.filter(f => f.name.endsWith('.json'))) {
+        const r = await fetch(`${SUPABASE_URL}/storage/v1/object/${BUCKET}/${f.name}`, { headers: sbHeaders() })
+        if (r.ok) {
+          try { docs.push(await r.json()) } catch { /* skip */ }
+        }
+      }
+    }
+  } else {
+    if (!fs.existsSync(KNOWLEDGE_DIR)) return ''
+    docs = fs.readdirSync(KNOWLEDGE_DIR)
+      .filter((f) => f.endsWith('.json'))
+      .map((f) => {
+        try { return JSON.parse(fs.readFileSync(path.join(KNOWLEDGE_DIR, f), 'utf-8')) }
+        catch { return null }
+      })
+      .filter(Boolean)
+  }
+
+  const excerpts = docs
+    .map(d => d.content ? `### ${d.title}\n${d.content.slice(0, 3000)}` : null)
+    .filter(Boolean) as string[]
+  if (!excerpts.length) return ''
+  return `\n\n=== ฐานความรู้ด้านธุรกิจเครือข่าย Binary ===\n${excerpts.join('\n\n---\n\n')}`
+}
+
+async function buildSystemPrompt(coachData: Record<string, unknown> | null): Promise<string> {
   if (!coachData) {
-    const knowledge = loadKnowledge()
+    const knowledge = await loadKnowledge()
     return `คุณคือ Coach JOE ผู้เชี่ยวชาญด้านธุรกิจ First Community Binary ที่พูดภาษาไทย ตอบสั้น กระชับ และตรงประเด็น${knowledge}`
   }
 
@@ -61,7 +93,7 @@ function buildSystemPrompt(coachData: Record<string, unknown> | null): string {
     `${m.name} (${m.id}): ${m.is_tapped ? 'ขุดลึกแล้ว' : 'ยังไม่ได้ขุดลึก'}`
   ).join('\n') ?? ''
 
-  const knowledge = loadKnowledge()
+  const knowledge = await loadKnowledge()
 
   return `คุณคือ Coach JOE ผู้เชี่ยวชาญด้านธุรกิจ First Community Binary ที่พูดภาษาไทย ตอบสั้น กระชับ ตรงประเด็น
 
@@ -102,7 +134,7 @@ export async function POST(req: NextRequest) {
   try {
     const { messages, coachData } = await req.json()
 
-    const systemPrompt = buildSystemPrompt(coachData)
+    const systemPrompt = await buildSystemPrompt(coachData)
 
     const ollamaRes = await fetch(`${OLLAMA_URL}/api/chat`, {
       method: 'POST',
