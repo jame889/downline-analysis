@@ -266,6 +266,10 @@ function CardNode({
 
 // ── Leg SVG ───────────────────────────────────────────────────────────────────
 
+const MIN_ZOOM = 0.25
+const MAX_ZOOM = 2.0
+const ZOOM_STEP = 0.15
+
 function LegSvg({
   roots, label, color, highlightedIds,
 }: {
@@ -276,6 +280,7 @@ function LegSvg({
 }) {
   const [hovered, setHovered] = useState<string | null>(null)
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set())
+  const [zoom, setZoom] = useState(1)
 
   const { allNodes, edges, svgW, svgH } = useMemo(() => {
     if (!roots.length) return { allNodes: [], edges: [], svgW: 0, svgH: 0 }
@@ -298,6 +303,16 @@ function LegSvg({
     })
   }
 
+  const changeZoom = (delta: number) =>
+    setZoom((z) => Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, +(z + delta).toFixed(2))))
+
+  const handleWheel = (e: React.WheelEvent) => {
+    if (e.ctrlKey || e.metaKey) {
+      e.preventDefault()
+      changeZoom(-e.deltaY * 0.003)
+    }
+  }
+
   const totalAll = flatNodes(cloneTree(roots))
   const activeCount = totalAll.filter((n) => !!n.is_active).length
 
@@ -316,39 +331,74 @@ function LegSvg({
 
   return (
     <div className="flex-1 min-w-0">
-      <div className="flex items-center justify-between mb-2 px-1">
+      {/* Header row */}
+      <div className="flex items-center justify-between mb-2 px-1 gap-2">
         <p className="text-sm font-semibold" style={{ color }}>{label}</p>
-        <p className="text-xs text-slate-500">
-          {activeCount} active / {totalAll.length} คน
-        </p>
+        <div className="flex items-center gap-2">
+          <p className="text-xs text-slate-500">
+            {activeCount} active / {totalAll.length} คน
+          </p>
+          {/* Zoom controls */}
+          <div className="flex items-center gap-1 bg-slate-800 border border-slate-700 rounded-lg px-1.5 py-0.5">
+            <button
+              onClick={() => changeZoom(-ZOOM_STEP)}
+              disabled={zoom <= MIN_ZOOM}
+              className="w-5 h-5 flex items-center justify-center text-slate-300 hover:text-white disabled:opacity-30 disabled:cursor-not-allowed text-base leading-none"
+              title="Zoom out"
+            >−</button>
+            <button
+              onClick={() => setZoom(1)}
+              className="text-xs text-slate-400 hover:text-white w-9 text-center tabular-nums"
+              title="Reset zoom"
+            >{Math.round(zoom * 100)}%</button>
+            <button
+              onClick={() => changeZoom(ZOOM_STEP)}
+              disabled={zoom >= MAX_ZOOM}
+              className="w-5 h-5 flex items-center justify-center text-slate-300 hover:text-white disabled:opacity-30 disabled:cursor-not-allowed text-base leading-none"
+              title="Zoom in"
+            >+</button>
+          </div>
+        </div>
       </div>
-      <div className="bg-slate-900/50 border border-slate-700/40 rounded-xl overflow-x-auto">
-        <svg width={svgW} height={svgH} className="block" style={{ minWidth: '100%' }}>
-          {/* Edges */}
-          {edges.map((e, i) => (
-            <path
-              key={`e-${i}`}
-              d={`M ${e.x1} ${e.y1} C ${e.x1} ${(e.y1 + e.y2) / 2}, ${e.x2} ${(e.y1 + e.y2) / 2}, ${e.x2} ${e.y2}`}
-              stroke="#2d3f52" strokeWidth={1.5} fill="none"
-            />
-          ))}
-          {/* Nodes */}
-          {allNodes.map((n) => (
-            <g
-              key={n.id}
-              onMouseEnter={() => setHovered(n.id)}
-              onMouseLeave={() => setHovered(null)}
-            >
-              <CardNode
-                n={n}
-                isHov={hovered === n.id}
-                isCollapsed={collapsed.has(n.id)}
-                isHighlighted={highlightedIds.has(n.id)}
-                onToggle={() => toggleCollapse(n.id)}
+      {/* SVG container */}
+      <div
+        className="bg-slate-900/50 border border-slate-700/40 rounded-xl overflow-auto"
+        onWheel={handleWheel}
+        style={{ maxHeight: '72vh' }}
+      >
+        <div style={{ width: svgW * zoom, height: svgH * zoom, position: 'relative', minWidth: '100%' }}>
+          <svg
+            width={svgW}
+            height={svgH}
+            className="block"
+            style={{ transform: `scale(${zoom})`, transformOrigin: 'top left' }}
+          >
+            {/* Edges */}
+            {edges.map((e, i) => (
+              <path
+                key={`e-${i}`}
+                d={`M ${e.x1} ${e.y1} C ${e.x1} ${(e.y1 + e.y2) / 2}, ${e.x2} ${(e.y1 + e.y2) / 2}, ${e.x2} ${e.y2}`}
+                stroke="#2d3f52" strokeWidth={1.5} fill="none"
               />
-            </g>
-          ))}
-        </svg>
+            ))}
+            {/* Nodes */}
+            {allNodes.map((n) => (
+              <g
+                key={n.id}
+                onMouseEnter={() => setHovered(n.id)}
+                onMouseLeave={() => setHovered(null)}
+              >
+                <CardNode
+                  n={n}
+                  isHov={hovered === n.id}
+                  isCollapsed={collapsed.has(n.id)}
+                  isHighlighted={highlightedIds.has(n.id)}
+                  onToggle={() => toggleCollapse(n.id)}
+                />
+              </g>
+            ))}
+          </svg>
+        </div>
       </div>
     </div>
   )
