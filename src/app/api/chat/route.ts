@@ -3,7 +3,7 @@ import fs from 'fs'
 import path from 'path'
 
 const OLLAMA_URL = process.env.OLLAMA_URL || 'http://localhost:11434'
-const MODEL = process.env.OLLAMA_MODEL || 'llama3.2:3b'
+const MODEL = process.env.OLLAMA_MODEL || 'gemma4:e2b'
 const KNOWLEDGE_DIR = path.join(process.cwd(), 'data', 'knowledge')
 
 const SUPABASE_URL = process.env.SUPABASE_URL?.replace(/\n/g, '') ?? ''

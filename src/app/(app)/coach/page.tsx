@@ -349,7 +349,7 @@ function ChatBot({ coachData }: { coachData: CoachData }) {
           </div>
           <div>
             <p className="text-sm font-semibold text-white">Coach JOE AI</p>
-            <p className="text-xs text-slate-400">llama3.2 · รู้ข้อมูลของคุณ · ตอบภาษาไทย</p>
+            <p className="text-xs text-slate-400">gemma4:e2b · รู้ข้อมูลของคุณ · ตอบภาษาไทย</p>
           </div>
         </div>
         <div className="flex items-center gap-3">
