@@ -120,8 +120,8 @@ function OrgCard({
   return (
     <div
       ref={cardRef}
-      className={`w-52 rounded-lg border shadow-md overflow-hidden bg-white cursor-default select-none
-        ${isHighlighted ? 'ring-2 ring-yellow-400 shadow-yellow-200' : 'border-gray-200'}`}
+      className={`w-52 rounded-lg border overflow-hidden bg-slate-800 cursor-default select-none shadow-lg shadow-black/30
+        ${isHighlighted ? 'ring-2 ring-yellow-400' : 'border-slate-700'}`}
     >
       {/* Colored header */}
       <div
@@ -133,29 +133,29 @@ function OrgCard({
       </div>
 
       {/* Card body */}
-      <div className="px-2.5 pt-2 pb-1.5 space-y-0.5 text-gray-700">
+      <div className="px-2.5 pt-2 pb-1.5 space-y-0.5">
         {/* Name + side label */}
-        <p className="font-semibold text-gray-900 text-[11.5px] leading-snug">
+        <p className="font-semibold text-white text-[11.5px] leading-snug">
           {node.name}
           {node.sideLabel && (
-            <span className="text-gray-400 font-normal">({node.sideLabel})</span>
+            <span className="text-slate-500 font-normal">({node.sideLabel})</span>
           )}
         </p>
 
         {/* Join date */}
         {node.join_date && (
-          <p className="text-[10px] text-gray-400">{node.join_date}</p>
+          <p className="text-[10px] text-slate-500">{node.join_date}</p>
         )}
 
         {/* Position */}
-        <p className="text-[10.5px] text-gray-600 font-medium">{getPosLabel(node.highest_position)}</p>
+        <p className="text-[10.5px] text-slate-400 font-medium">{getPosLabel(node.highest_position)}</p>
 
         {/* Sponsor/Upline link */}
         {node.sponsor_id && (
           <p className="text-[10px] truncate">
             <Link
               href={`/members/${node.sponsor_id}`}
-              className="text-blue-500 hover:underline"
+              className="text-sky-400 hover:text-sky-300 hover:underline"
               onClick={(e) => e.stopPropagation()}
             >
               {node.sponsor_id} 👤{(node.sponsor_name ?? '').split(' ')[0]}
@@ -165,20 +165,20 @@ function OrgCard({
 
         {/* Status rows */}
         <div className="text-[10px] leading-relaxed pt-0.5">
-          <span className="text-gray-400">สถานะแอคทีฟ: </span>
-          <span className={hasLeftVol ? 'text-gray-600' : 'text-red-500'}>
+          <span className="text-slate-500">สถานะแอคทีฟ: </span>
+          <span className={hasLeftVol ? 'text-slate-300' : 'text-red-400'}>
             (ส.){hasLeftVol ? 'บรรลุ' : 'ไม่บรรลุ'}
           </span>{' '}
-          <span className={hasRightVol ? 'text-gray-600' : 'text-red-500'}>
+          <span className={hasRightVol ? 'text-slate-300' : 'text-red-400'}>
             (ด.){hasRightVol ? 'บรรลุ' : 'ไม่บรรลุ'}
           </span>
         </div>
         <div className="text-[10px] leading-relaxed">
-          <span className="text-gray-400">สถานะคอวอลิฟาย: </span>
-          <span className={active ? 'text-gray-600' : 'text-red-500'}>
+          <span className="text-slate-500">สถานะคอวอลิฟาย: </span>
+          <span className={active ? 'text-slate-300' : 'text-red-400'}>
             (ส.){active ? 'บรรลุ' : 'ไม่บรรลุ'}
           </span>{' '}
-          <span className={qualified ? 'text-gray-600' : 'text-red-500'}>
+          <span className={qualified ? 'text-slate-300' : 'text-red-400'}>
             (ด.){qualified ? 'บรรลุ' : 'ไม่บรรลุ'}
           </span>
         </div>
@@ -188,7 +188,7 @@ function OrgCard({
       {hasChildren && (
         <button
           onClick={(e) => { e.stopPropagation(); onToggle() }}
-          className="w-full flex justify-center items-center py-0.5 bg-gray-50 border-t border-gray-200 text-gray-400 hover:bg-gray-100 transition-colors text-xs"
+          className="w-full flex justify-center items-center py-0.5 bg-slate-700/50 border-t border-slate-700 text-slate-500 hover:bg-slate-700 hover:text-slate-300 transition-colors text-xs"
         >
           {isCollapsed ? '∨' : '∧'}
         </button>
@@ -235,11 +235,11 @@ function OrgTreeNode({
       {kids.length > 0 && (
         <div className="flex flex-col items-center">
           {/* Vertical stem down from card */}
-          <div className="w-px h-4 bg-gray-300" />
+          <div className="w-px h-4 bg-slate-600" />
 
           {kids.length === 1 ? (
             <div className="flex flex-col items-center">
-              <div className="w-px h-4 bg-gray-300" />
+              <div className="w-px h-4 bg-slate-600" />
               <OrgTreeNode
                 node={kids[0]} depth={depth + 1} maxDepth={maxDepth}
                 collapsed={collapsed} onToggle={onToggle}
@@ -252,7 +252,7 @@ function OrgTreeNode({
               <div className="relative flex items-start">
                 {kids.map((child) => (
                   <div key={child.id} className="flex flex-col items-center px-4">
-                    <div className="w-px h-4 bg-gray-300" />
+                    <div className="w-px h-4 bg-slate-600" />
                     <OrgTreeNode
                       node={child} depth={depth + 1} maxDepth={maxDepth}
                       collapsed={collapsed} onToggle={onToggle}
@@ -263,7 +263,7 @@ function OrgTreeNode({
                 ))}
                 {/* Horizontal bar */}
                 <div
-                  className="absolute top-0 bg-gray-300 pointer-events-none"
+                  className="absolute top-0 bg-slate-600 pointer-events-none"
                   style={{
                     height: '1px',
                     left: `calc(50% / ${kids.length})`,
@@ -287,7 +287,7 @@ function RootOrgCard({ node }: { node: OrgNode }) {
 
   return (
     <div
-      className="w-64 rounded-xl border-2 border-gray-300 shadow-lg overflow-hidden bg-white"
+      className="w-64 rounded-xl border-2 shadow-xl shadow-black/40 overflow-hidden bg-slate-800"
       style={{ borderColor: headerColor }}
     >
       <div
@@ -296,22 +296,22 @@ function RootOrgCard({ node }: { node: OrgNode }) {
       >
         <span className="text-white font-bold text-sm tracking-wide">{node.id}</span>
         <div className="flex items-center gap-1.5">
-          <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${active ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}`}>
+          <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${active ? 'bg-green-900/60 text-green-400' : 'bg-slate-700 text-slate-400'}`}>
             {active ? 'Active' : 'Inactive'}
           </span>
           <span className="text-lg leading-none">{flagEmoji(node.country)}</span>
         </div>
       </div>
       <div className="px-3 py-2.5 space-y-1">
-        <p className="font-bold text-gray-900 text-sm">{node.name}</p>
-        <div className="flex items-center gap-2 text-xs text-gray-500">
+        <p className="font-bold text-white text-sm">{node.name}</p>
+        <div className="flex items-center gap-2 text-xs text-slate-500">
           {node.join_date && <span>{node.join_date}</span>}
-          <span className="font-medium text-gray-700">{getPosLabel(node.highest_position)}</span>
+          <span className="font-medium text-slate-400">{getPosLabel(node.highest_position)}</span>
         </div>
         <div className="flex gap-3 text-xs pt-0.5">
-          <span className="text-sky-600">L: {node.total_vol_left.toLocaleString()}</span>
-          <span className="text-purple-600">R: {node.total_vol_right.toLocaleString()}</span>
-          <span className="text-green-600">BV: {node.monthly_bv}</span>
+          <span className="text-sky-400">L: {node.total_vol_left.toLocaleString()}</span>
+          <span className="text-purple-400">R: {node.total_vol_right.toLocaleString()}</span>
+          <span className="text-green-400">BV: {node.monthly_bv}</span>
         </div>
       </div>
     </div>
@@ -332,7 +332,7 @@ function Legend() {
       {items.map((it) => (
         <div key={it.label} className="flex items-center gap-1.5">
           <span className="w-3 h-3 rounded-sm inline-block" style={{ background: it.color }} />
-          <span className="text-xs text-gray-600">{it.label}</span>
+          <span className="text-xs text-slate-400">{it.label}</span>
         </div>
       ))}
     </div>
@@ -425,23 +425,23 @@ export function TreeVizSection({
   const rightLeg = flipped ? leftChild : rightChild
 
   return (
-    <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden shadow-sm">
+    <div className="bg-slate-900 border border-slate-700 rounded-2xl overflow-hidden">
       {/* Section title + tabs */}
-      <div className="border-b border-gray-200">
+      <div className="border-b border-slate-700">
         <div className="px-4 pt-4 pb-0">
-          <h2 className="text-base font-bold text-gray-800 mb-3">ดูโครงสร้างการแนะนำและไบนารี่</h2>
+          <h2 className="text-base font-bold text-white mb-3">ดูโครงสร้างการแนะนำและไบนารี่</h2>
           <div className="flex gap-1">
             {[
-              { key: 'binary', label: 'ดูโครงสร้างการแนะนำ' },
-              { key: 'referral', label: 'ดูโครงสร้างไบนารี่' },
+              { key: 'binary',   label: 'ดูโครงสร้างไบนารี่' },
+              { key: 'referral', label: 'ดูโครงสร้างการแนะนำ' },
             ].map((tab) => (
               <button
                 key={tab.key}
                 onClick={() => setActiveTab(tab.key as 'binary' | 'referral')}
                 className={`px-4 py-2 text-sm font-medium rounded-t-lg border-b-2 transition-colors ${
                   activeTab === tab.key
-                    ? 'border-orange-500 text-orange-600 bg-orange-50'
-                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:bg-gray-50'
+                    ? 'border-orange-500 text-orange-400 bg-orange-900/20'
+                    : 'border-transparent text-slate-500 hover:text-slate-300 hover:bg-slate-800/50'
                 }`}
               >
                 {tab.label}
@@ -452,14 +452,14 @@ export function TreeVizSection({
       </div>
 
       {/* Controls bar */}
-      <div className="flex flex-wrap items-center gap-2 px-4 py-2.5 bg-gray-50 border-b border-gray-200">
+      <div className="flex flex-wrap items-center gap-2 px-4 py-2.5 bg-slate-800/60 border-b border-slate-700">
         {/* Zoom controls */}
-        <div className="flex items-center gap-1.5 bg-white border border-gray-300 rounded-lg px-2 py-1">
-          <span className="text-xs text-gray-500 w-8 text-right tabular-nums">{zoom}%</span>
+        <div className="flex items-center gap-1.5 bg-slate-700 border border-slate-600 rounded-lg px-2 py-1">
+          <span className="text-xs text-slate-400 w-8 text-right tabular-nums">{zoom}%</span>
           <button
             onClick={() => changeZoom(-10)}
             disabled={zoom <= 20}
-            className="text-gray-500 hover:text-gray-800 disabled:opacity-30 w-4 text-center font-bold"
+            className="text-slate-400 hover:text-white disabled:opacity-30 w-4 text-center font-bold"
           >−</button>
           <input
             type="range" min={20} max={200} step={5} value={zoom}
@@ -469,17 +469,17 @@ export function TreeVizSection({
           <button
             onClick={() => changeZoom(10)}
             disabled={zoom >= 200}
-            className="text-gray-500 hover:text-gray-800 disabled:opacity-30 w-4 text-center font-bold"
+            className="text-slate-400 hover:text-white disabled:opacity-30 w-4 text-center font-bold"
           >+</button>
         </div>
 
         {/* Depth */}
         <div className="flex items-center gap-1.5">
-          <span className="text-xs text-gray-500">ขั้นตอน</span>
+          <span className="text-xs text-slate-500">ขั้นตอน</span>
           <select
             value={maxDepth}
             onChange={(e) => setMaxDepth(+e.target.value)}
-            className="text-xs bg-white border border-gray-300 rounded-lg px-2 py-1 text-gray-700"
+            className="text-xs bg-slate-700 border border-slate-600 rounded-lg px-2 py-1 text-slate-300"
           >
             {[1,2,3,4,5,6,7,8].map(n => <option key={n} value={n}>{n}</option>)}
           </select>
@@ -490,8 +490,8 @@ export function TreeVizSection({
           onClick={() => setFlipped(f => !f)}
           className={`text-xs px-3 py-1.5 rounded-lg border transition-colors ${
             flipped
-              ? 'bg-orange-100 border-orange-300 text-orange-700'
-              : 'bg-white border-gray-300 text-gray-600 hover:bg-gray-50'
+              ? 'bg-orange-900/40 border-orange-700 text-orange-400'
+              : 'bg-slate-700 border-slate-600 text-slate-400 hover:text-white'
           }`}
         >
           การแปลงแผนผัง
@@ -500,60 +500,60 @@ export function TreeVizSection({
         {/* Navigate */}
         <button
           onClick={() => navigateTo('left')}
-          className="text-xs px-3 py-1.5 rounded-lg border bg-white border-gray-300 text-gray-600 hover:bg-gray-50 transition-colors"
+          className="text-xs px-3 py-1.5 rounded-lg border bg-slate-700 border-slate-600 text-slate-400 hover:text-white transition-colors"
         >
           เอเย่นต์ฝั่งซ้ายสุด
         </button>
         <button
           onClick={() => navigateTo('right')}
-          className="text-xs px-3 py-1.5 rounded-lg border bg-white border-gray-300 text-gray-600 hover:bg-gray-50 transition-colors"
+          className="text-xs px-3 py-1.5 rounded-lg border bg-slate-700 border-slate-600 text-slate-400 hover:text-white transition-colors"
         >
           เอเย่นต์ฝั่งขวาสุด
         </button>
 
         {/* Summary */}
-        <span className="ml-auto text-xs text-gray-400">
+        <span className="ml-auto text-xs text-slate-500">
           {activeCount} active / {totalCount} คน
         </span>
       </div>
 
       {/* Search */}
-      <div className="px-4 py-2.5 border-b border-gray-100 bg-white">
+      <div className="px-4 py-2.5 border-b border-slate-700/50 bg-slate-900/50">
         <div className="relative max-w-sm">
           <input
             type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             placeholder="กรอกหมายเลขสมาชิกหรือชื่อสมาชิก"
-            className="w-full text-sm border border-gray-300 rounded-lg px-3 py-1.5 pr-8 text-gray-700 placeholder-gray-400 focus:outline-none focus:border-orange-400 bg-white"
+            className="w-full text-sm border border-slate-600 rounded-lg px-3 py-1.5 pr-8 text-slate-300 placeholder-slate-600 focus:outline-none focus:border-orange-500 bg-slate-800"
           />
-          <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 text-sm">🔍</span>
+          <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-500 text-sm">🔍</span>
           {searchQuery && (
             <button
               onClick={() => setSearchQuery('')}
-              className="absolute right-7 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 text-xs mr-0.5"
+              className="absolute right-7 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300 text-xs mr-0.5"
             >✕</button>
           )}
         </div>
         {searchQuery.trim() && (
-          <p className="text-xs mt-1 text-gray-500">
+          <p className="text-xs mt-1 text-slate-500">
             {highlightedIds.size > 0 ? `พบ ${highlightedIds.size} คน` : 'ไม่พบ'}
           </p>
         )}
       </div>
 
       {/* Legend */}
-      <div className="px-4 py-2 bg-gray-50 border-b border-gray-100">
+      <div className="px-4 py-2 bg-slate-800/40 border-b border-slate-700/50">
         <Legend />
       </div>
 
       {/* Tree area */}
       {!root ? (
-        <div className="p-8 text-center text-gray-400">ไม่พบข้อมูล</div>
+        <div className="p-8 text-center text-slate-500">ไม่พบข้อมูล</div>
       ) : (
         <div
           ref={containerRef}
-          className="overflow-auto bg-white"
+          className="overflow-auto bg-slate-950"
           style={{ maxHeight: '75vh' }}
         >
           <div
@@ -567,14 +567,14 @@ export function TreeVizSection({
 
             {/* Vertical stem */}
             <div className="flex justify-center">
-              <div className="w-px h-5 bg-gray-300" />
+              <div className="w-px h-5 bg-slate-600" />
             </div>
 
             {/* Two legs */}
             <div className="flex gap-8 items-start justify-center">
               {/* Left leg */}
               <div className="flex flex-col items-center">
-                <div className="text-xs font-semibold text-sky-600 mb-2">← ขาซ้าย</div>
+                <div className="text-xs font-semibold text-sky-400 mb-2">← ขาซ้าย</div>
                 {leftLeg ? (
                   <OrgTreeNode
                     node={leftLeg} depth={0} maxDepth={maxDepth}
@@ -583,7 +583,7 @@ export function TreeVizSection({
                     nodeRefs={nodeRefs}
                   />
                 ) : (
-                  <div className="w-52 p-4 border border-dashed border-gray-300 rounded-lg text-center text-gray-400 text-xs">
+                  <div className="w-52 p-4 border border-dashed border-slate-700 rounded-lg text-center text-slate-600 text-xs">
                     ไม่มีสมาชิก
                   </div>
                 )}
@@ -591,7 +591,7 @@ export function TreeVizSection({
 
               {/* Right leg */}
               <div className="flex flex-col items-center">
-                <div className="text-xs font-semibold text-purple-600 mb-2">ขาขวา →</div>
+                <div className="text-xs font-semibold text-purple-400 mb-2">ขาขวา →</div>
                 {rightLeg ? (
                   <OrgTreeNode
                     node={rightLeg} depth={0} maxDepth={maxDepth}
@@ -600,7 +600,7 @@ export function TreeVizSection({
                     nodeRefs={nodeRefs}
                   />
                 ) : (
-                  <div className="w-52 p-4 border border-dashed border-gray-300 rounded-lg text-center text-gray-400 text-xs">
+                  <div className="w-52 p-4 border border-dashed border-slate-700 rounded-lg text-center text-slate-600 text-xs">
                     ไม่มีสมาชิก
                   </div>
                 )}
