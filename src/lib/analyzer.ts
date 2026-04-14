@@ -6,6 +6,11 @@
  *   yet in the built tree. Never use sponsor_id as fallback — upline chain only.
  *   Attach to the first ancestor found in the tree, regardless of isActive.
  * - Bug 2: Output is BFS-ordered (closest to root first = depth ascending).
+ * - Bug 4: Left/Right assignment now deterministic — children of each node are
+ *   sorted ascending by numeric member ID before being stored in childMap.
+ *   Lower member ID = registered earlier in system = LEFT leg.
+ *   Higher member ID = registered later = RIGHT leg.
+ *   Only upline_id chain is used — sponsor_id is never consulted.
  */
 
 export interface AnalyzeNode {
@@ -91,11 +96,18 @@ export function analyzeDownline(
     if (parentId) {
       const arr = childMap.get(parentId) ?? []
       arr.push(n.id)
+      // Sort ascending by numeric member ID so Left = lower ID (registered first),
+      // Right = higher ID (registered later). This makes L/R assignment deterministic
+      // and based purely on the upline chain — sponsor_id is never consulted.
+      arr.sort((a, b) => parseInt(a, 10) - parseInt(b, 10))
       childMap.set(parentId, arr)
     }
   }
 
-  // ── Step 4: Identify left / right root (first two direct children of root) ──
+  // ── Step 4: Identify left / right root ──────────────────────────────────────
+  // directKids is already sorted ascending by numeric member ID (from Step 3).
+  // Lower member ID (registered first) = LEFT leg.
+  // Higher member ID (registered later) = RIGHT leg.
   const directKids = childMap.get(rootId) ?? []
   const leftRootId  = directKids[0] ?? null
   const rightRootId = directKids[1] ?? null
