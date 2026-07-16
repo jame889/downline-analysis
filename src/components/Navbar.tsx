@@ -25,6 +25,7 @@ export default function Navbar() {
 
   const adminLinks = [
     { href: '/', label: 'Dashboard' },
+    { href: '/growth', label: '📈 Command' },
     { href: '/members', label: 'สมาชิก' },
     { href: '/tree', label: 'โครงสร้าง' },
     { href: '/income-plan', label: '💰 รายได้' },
@@ -33,11 +34,13 @@ export default function Navbar() {
     { href: '/simulator', label: '🧮' },
     { href: '/profile', label: '👤' },
     { href: '/telegram', label: '📱' },
+    { href: '/admin/history', label: '🗄 History' },
     { href: '/admin', label: '⚙️ Admin' },
   ]
 
   const memberLinks = [
     { href: '/my', label: 'องค์กรของฉัน' },
+    { href: '/growth', label: '📈 Command' },
     { href: `/tree?member=${session?.memberId ?? ''}`, label: 'โครงสร้าง' },
     { href: '/income-plan', label: '💰 รายได้' },
     { href: '/coach', label: 'Coach JOE' },
@@ -49,8 +52,8 @@ export default function Navbar() {
   const links = session?.isAdmin ? adminLinks : memberLinks
 
   return (
-    <nav className="bg-slate-900 border-b border-slate-800">
-      <div className="max-w-7xl mx-auto px-4 flex items-center gap-6 h-14">
+    <nav className="bg-slate-900 border-b border-slate-800 overflow-x-auto">
+      <div className="max-w-7xl mx-auto px-4 flex items-center gap-6 h-14 min-w-max">
         <span className="text-brand-500 font-bold text-lg tracking-tight shrink-0">First Community</span>
 
         <div className="flex items-center gap-5 flex-1">

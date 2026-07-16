@@ -6,12 +6,12 @@ export const dynamic = 'force-dynamic'
 export async function GET(req: NextRequest) {
   try {
     const { searchParams } = new URL(req.url)
-    const months = getAvailableMonths()
+    const months = await getAvailableMonths()
     const month = searchParams.get('month') ?? months[0]
 
     if (!month) return NextResponse.json({ members: [], month: null })
 
-    const members = getMembersForMonth(month)
+    const members = await getMembersForMonth(month)
     return NextResponse.json({ members, month })
   } catch (err) {
     console.error(err)

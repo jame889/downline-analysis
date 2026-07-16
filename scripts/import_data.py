@@ -5,14 +5,13 @@ Import SPS business report Excel files → JSON data files for Next.js app.
 Output layout:
   data/
     members.json          { "900057": { id, name, join_date, ... }, ... }
-    months.json           ["2025-08", "2025-09", ...]
+    months.json           ["2025-10", "2025-11", ...]
     reports/
-      2025-08.json        [ { member_id, month, level, ... }, ... ]
-      2025-09.json
+      2025-10.json        [ { member_id, month, level, ... }, ... ]
       ...
 
 Usage:
-    python3 scripts/import_data.py [--dir path/to/xlsx]
+    python3 scripts/import_data.py --dir /path/to/xlsx
 """
 
 import json
@@ -34,9 +33,7 @@ except ImportError:
 
 # ── Config ────────────────────────────────────────────────────────────────────
 
-DEFAULT_XLSX_DIR = Path(
-    "/Users/zenitha/.gemini/antigravity/scratch/downline-analyzer/backfill_downloads"
-)
+DEFAULT_XLSX_DIR = Path(__file__).parent.parent / "backfill_downloads"
 DATA_DIR = Path(__file__).parent.parent / "data"
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -60,8 +57,8 @@ def parse_id_from_ref(ref):
     return m.group(1) if m else None
 
 
-def month_from_filename(filename: str) :
-    """'business_report_SPS_2025-08.xlsx' → '2025-08'"""
+def month_from_filename(filename: str):
+    """'business_report_SPS_2025-10.xlsx' → '2025-10'"""
     m = re.search(r"(\d{4}-\d{2})", filename)
     return m.group(1) if m else None
 
@@ -88,13 +85,14 @@ def process_file(ws, month: str, members: dict) -> list[dict]:
         (
             level, member_cell, join_date, highest_pos, income_pos,
             promo_goal, country, lv, free_active_end, monthly_bv,
-            sponsor_ref, upline_ref, is_active, is_qualified,
+            # SPS source columns: K = Upline, L = Sponsor
+            upline_ref, sponsor_ref, is_active, is_qualified,
             left_pos, right_pos,
             total_vol_l, total_vol_r,
             prev_vol_l, prev_vol_r,
             curr_vol_l, curr_vol_r,
             ded_vol_l, ded_vol_r,
-            *_
+            *_,
         ) = padded
 
         if not member_cell:
@@ -107,7 +105,6 @@ def process_file(ws, month: str, members: dict) -> list[dict]:
         upline_id = parse_id_from_ref(upline_ref)
         sponsor_id = parse_id_from_ref(sponsor_ref)
 
-        # Upsert member
         if member_id not in members:
             members[member_id] = {
                 "id": member_id,
@@ -119,27 +116,27 @@ def process_file(ws, month: str, members: dict) -> list[dict]:
                 "sponsor_id": sponsor_id,
             }
         else:
-            # Update name and lv (keep original join_date)
-            members[member_id]["name"] = name
+            members[member_id]["name"] = name or members[member_id].get("name", "")
             members[member_id]["lv"] = safe_float(lv)
-            if not members[member_id]["upline_id"] and upline_id:
+            # The newest source report is authoritative for tree relationships.
+            if upline_id:
                 members[member_id]["upline_id"] = upline_id
-            if not members[member_id]["sponsor_id"] and sponsor_id:
+            if sponsor_id:
                 members[member_id]["sponsor_id"] = sponsor_id
 
         reports.append({
             "member_id": member_id,
             "month": month,
             "level": safe_int(level),
-            "highest_position": str(highest_pos) if highest_pos else None,
-            "income_position": str(income_pos) if income_pos else None,
+            "highest_position": str(highest_pos) if highest_pos else "FA",
+            "income_position": str(income_pos) if income_pos else "FA",
             "promotion_goal": str(promo_goal) if promo_goal else None,
             "free_active_end_month": str(free_active_end) if free_active_end else None,
             "monthly_bv": safe_float(monthly_bv),
             "is_active": str(is_active).upper() == "Y",
             "is_qualified": str(is_qualified).upper() == "Y",
-            "left_highest_pos": str(left_pos) if left_pos else None,
-            "right_highest_pos": str(right_pos) if right_pos else None,
+            "left_highest_pos": str(left_pos) if left_pos else "FA",
+            "right_highest_pos": str(right_pos) if right_pos else "FA",
             "total_vol_left": safe_float(total_vol_l),
             "total_vol_right": safe_float(total_vol_r),
             "prev_month_vol_left": safe_float(prev_vol_l),
@@ -188,19 +185,16 @@ def main():
             print(f"  [OK] {f.name}  →  {month}  ({len(reports)} members)")
         except Exception as e:
             print(f"  [ERR] {f.name}: {e}")
-            import traceback; traceback.print_exc()
+            import traceback
+            traceback.print_exc()
 
-    # Write members.json
     (DATA_DIR / "members.json").write_text(
         json.dumps(members, ensure_ascii=False, indent=2), encoding="utf-8"
     )
-
-    # Write months.json
     (DATA_DIR / "months.json").write_text(
         json.dumps(sorted(processed_months), ensure_ascii=False), encoding="utf-8"
     )
 
-    # Write passwords.json — default password = member_id (only for NEW members)
     pw_file = DATA_DIR / "passwords.json"
     existing_passwords: dict = {}
     if pw_file.exists():
@@ -210,12 +204,12 @@ def main():
     added = 0
     for member_id in members:
         if member_id not in new_passwords:
-            new_passwords[member_id] = member_id  # default: password = member_id
+            new_passwords[member_id] = member_id
             added += 1
 
     pw_file.write_text(json.dumps(new_passwords, ensure_ascii=False, indent=2), encoding="utf-8")
 
-    print(f"\nDone!")
+    print("\nDone!")
     print(f"  {len(members)} unique members")
     print(f"  {len(processed_months)} months: {processed_months[0]} → {processed_months[-1]}")
     print(f"  passwords.json: {added} new entries (default = member_id)")

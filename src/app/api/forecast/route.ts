@@ -51,7 +51,7 @@ export async function GET() {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    const months = getAvailableMonths().slice().sort()
+    const months = (await getAvailableMonths()).slice().sort()
 
     const history: {
       month: string
@@ -63,7 +63,7 @@ export async function GET() {
     }[] = []
 
     for (const month of months) {
-      const data = getMembersForMonth(month)
+      const data = await getMembersForMonth(month)
       const totalMembers = data.length
       const activeMembers = data.filter((m) => m.report.is_active).length
       const totalBV = data.reduce((sum, m) => sum + (m.report.monthly_bv ?? 0), 0)

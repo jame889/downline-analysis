@@ -14,15 +14,19 @@ export async function GET(request: NextRequest) {
     const { searchParams } = request.nextUrl
     const filterMember = searchParams.get('member')
 
-    const months = getAvailableMonths().slice().sort()
+    const months = (await getAvailableMonths()).slice().sort()
     if (months.length < 2) {
       return NextResponse.json({ atRisk: [], recentlyLost: [], improving: [] })
     }
 
+    const latestMonthForSubtree = months[months.length - 1]
+    const latestMembersForSubtree = await getMembersForMonth(latestMonthForSubtree)
+    const membersMapForSubtree = Object.fromEntries(latestMembersForSubtree.map((m) => [m.id, m]))
+
     // Optionally filter to a subtree
     let subtreeIds: Set<string> | null = null
     if (filterMember) {
-      subtreeIds = getSubtreeIds(filterMember)
+      subtreeIds = getSubtreeIds(filterMember, membersMapForSubtree)
     }
 
     // Build per-member history across all months
@@ -37,7 +41,7 @@ export async function GET(request: NextRequest) {
     const memberUplines = new Map<string, string | null>()
 
     for (const month of months) {
-      const data = getMembersForMonth(month)
+      const data = await getMembersForMonth(month)
       for (const m of data) {
         if (subtreeIds && !subtreeIds.has(m.id)) continue
         if (!memberHistory.has(m.id)) memberHistory.set(m.id, [])
@@ -133,7 +137,7 @@ export async function GET(request: NextRequest) {
 
       if (reasons.length > 0) {
         const uplineId = memberUplines.get(id) ?? null
-        const uplineMember = uplineId ? getMember(uplineId) : null
+        const uplineMember = uplineId ? await getMember(uplineId) : null
         atRisk.push({
           id,
           name: memberNames.get(id) ?? id,

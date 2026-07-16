@@ -9,8 +9,8 @@ export async function GET(req: NextRequest) {
     const id = searchParams.get('id')
     if (!id) return NextResponse.json({ error: 'id required' }, { status: 400 })
 
-    const member = getMember(id)
-    const history = getMemberHistory(id)
+    const member = await getMember(id)
+    const history = await getMemberHistory(id)
     return NextResponse.json({ member, history })
   } catch (err) {
     console.error(err)

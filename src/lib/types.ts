@@ -1,4 +1,16 @@
-export type Position = 'FA' | 'BR' | 'ST' | 'SV'
+export type Position =
+  | 'FA'
+  | 'ST'
+  | 'BR'
+  | 'SV'
+  | 'GD'
+  | 'PL'
+  | 'RB'
+  | 'DM'
+  | 'BD'
+  | 'RD'
+  | 'CR'
+  | 'CRA'
 
 export interface Member {
   id: string
@@ -14,15 +26,15 @@ export interface MonthlyReport {
   member_id: string
   month: string
   level: number
-  highest_position: Position
-  income_position: Position
+  highest_position: Position | string
+  income_position: Position | string
   promotion_goal: string
-  free_active_end_month: string
+  free_active_end_month: string | null
   monthly_bv: number
   is_active: boolean
   is_qualified: boolean
-  left_highest_pos: string
-  right_highest_pos: string
+  left_highest_pos: Position | string
+  right_highest_pos: Position | string
   total_vol_left: number
   total_vol_right: number
   prev_month_vol_left: number
@@ -43,27 +55,51 @@ export interface MonthlySummary {
   active_members: number
   qualified_members: number
   new_members: number
-  position_counts: Record<Position, number>
+  position_counts: Record<string, number>
   total_bv: number
 }
 
-export const POSITION_RANK: Record<Position, number> = {
-  FA: 1,
+export const POSITION_RANK: Record<string, number> = {
+  FA: 0,
+  ST: 1,
   BR: 2,
-  ST: 3,
-  SV: 4,
+  SV: 3,
+  GD: 4,
+  PL: 5,
+  RB: 6,
+  DM: 7,
+  BD: 8,
+  RD: 9,
+  CR: 10,
+  CRA: 11,
 }
 
-export const POSITION_LABEL: Record<Position, string> = {
-  FA: 'Founder Associate',
-  BR: 'Bronze',
+export const POSITION_LABEL: Record<string, string> = {
+  FA: 'First Agent',
   ST: 'Star',
+  BR: 'Bronze',
   SV: 'Silver',
+  GD: 'Gold',
+  PL: 'Platinum',
+  RB: 'Ruby',
+  DM: 'Diamond',
+  BD: 'Blue Diamond',
+  RD: 'Red Diamond',
+  CR: 'Crown',
+  CRA: 'Crown Ambassador',
 }
 
 export const POSITION_COLOR: Record<string, string> = {
   FA: '#94a3b8',
-  BR: '#f97316',
   ST: '#eab308',
+  BR: '#f97316',
   SV: '#a855f7',
+  GD: '#fbbf24',
+  PL: '#e5e7eb',
+  RB: '#ef4444',
+  DM: '#22d3ee',
+  BD: '#3b82f6',
+  RD: '#dc2626',
+  CR: '#f59e0b',
+  CRA: '#facc15',
 }

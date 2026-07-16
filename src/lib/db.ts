@@ -2,6 +2,11 @@ import fs from 'fs'
 import path from 'path'
 import type { Member, MonthlyReport, MonthlySummary, Position } from './types'
 import { sbSelect, sbUpsert } from './supabase'
+import {
+  getBundledHistoryMembers,
+  getBundledHistoryMonths,
+  getBundledHistoryReport,
+} from './history-db'
 
 const DATA_DIR = path.join(process.cwd(), 'data')
 const MEMBERS_FILE = path.join(DATA_DIR, 'members.json')
@@ -16,19 +21,25 @@ function reportFile(month: string) {
 // ── Local JSON loaders (sync, always available from bundled files) ─────────────
 
 function loadMembersLocal(): Record<string, Member> {
-  if (!fs.existsSync(MEMBERS_FILE)) return {}
-  return JSON.parse(fs.readFileSync(MEMBERS_FILE, 'utf-8'))
+  let legacy: Record<string, Member> = {}
+  if (fs.existsSync(MEMBERS_FILE)) {
+    legacy = JSON.parse(fs.readFileSync(MEMBERS_FILE, 'utf-8'))
+  }
+  // History data is newer and also fixes the Upline/Sponsor column mapping.
+  return { ...legacy, ...getBundledHistoryMembers() }
 }
 
 function loadReportLocal(month: string): MonthlyReport[] {
   const f = reportFile(month)
-  if (!fs.existsSync(f)) return []
-  return JSON.parse(fs.readFileSync(f, 'utf-8'))
+  if (fs.existsSync(f)) return JSON.parse(fs.readFileSync(f, 'utf-8'))
+  return getBundledHistoryReport(month)
 }
 
 function getMonthsLocal(): string[] {
-  if (!fs.existsSync(MONTHS_FILE)) return []
-  return JSON.parse(fs.readFileSync(MONTHS_FILE, 'utf-8'))
+  const legacy: string[] = fs.existsSync(MONTHS_FILE)
+    ? JSON.parse(fs.readFileSync(MONTHS_FILE, 'utf-8'))
+    : []
+  return Array.from(new Set([...legacy, ...getBundledHistoryMonths()]))
 }
 
 // ── Supabase loaders (async) ───────────────────────────────────────────────────
@@ -58,20 +69,22 @@ async function getMonthsSupabase(): Promise<string[]> {
   } catch { return [] }
 }
 
-// ── Smart loaders: Supabase preferred, JSON fallback ──────────────────────────
+// ── Smart loaders: Supabase + bundled history ─────────────────────────────────
 
 async function loadMembers(): Promise<Record<string, Member>> {
-  if (!USE_SUPABASE) return loadMembersLocal()
+  const local = loadMembersLocal()
+  if (!USE_SUPABASE) return local
   const sb = await loadMembersSupabase()
-  if (Object.keys(sb).length > 0) return sb
-  return loadMembersLocal() // fallback to bundled JSON
+  // Preserve newer Supabase-only people, while bundled history takes precedence
+  // for overlapping rows because it was parsed from the source SPS reports.
+  return { ...sb, ...local }
 }
 
 async function loadReport(month: string): Promise<MonthlyReport[]> {
   if (!USE_SUPABASE) return loadReportLocal(month)
   const sb = await loadReportSupabase(month)
   if (sb.length > 0) return sb
-  return loadReportLocal(month) // fallback to bundled JSON
+  return loadReportLocal(month)
 }
 
 // ── Public API (async) ────────────────────────────────────────────────────────
@@ -84,6 +97,15 @@ export async function getAvailableMonths(): Promise<string[]> {
   ])
   const all = new Set([...sbMonths, ...localMonths])
   return Array.from(all).sort().reverse()
+}
+
+export async function getAllMembers(): Promise<Record<string, Member>> {
+  return loadMembers()
+}
+
+export async function getReportsForMonths(months: string[]): Promise<Record<string, MonthlyReport[]>> {
+  const entries = await Promise.all(months.map(async (month) => [month, await loadReport(month)] as const))
+  return Object.fromEntries(entries)
 }
 
 export async function getMembersForMonth(month: string): Promise<(Member & { report: MonthlyReport })[]> {
@@ -111,11 +133,14 @@ export async function getMonthlySummaries(): Promise<MonthlySummary[]> {
   return Promise.all(
     months.map(async (month) => {
       const reports = await loadReport(month)
-      const position_counts: Record<string, number> = { FA: 0, BR: 0, ST: 0, SV: 0 }
+      const position_counts: Record<string, number> = {
+        FA: 0, ST: 0, BR: 0, SV: 0, GD: 0, PL: 0, RB: 0, DM: 0,
+      }
       let active = 0, qualified = 0, bv = 0, newMembers = 0
 
       for (const r of reports) {
-        if (r.highest_position in position_counts) position_counts[r.highest_position]++
+        const pos = r.highest_position || 'FA'
+        position_counts[pos] = (position_counts[pos] ?? 0) + 1
         if (r.is_active) active++
         if (r.is_qualified) qualified++
         bv += r.monthly_bv ?? 0
@@ -188,7 +213,7 @@ export async function getTreeData(month: string, rootMemberId?: string) {
     })
 }
 
-// ── Subtree helpers (sync - works on already-loaded members map) ───────────────
+// ── Subtree helpers (sync - works on already-loaded members map) ──────────────
 
 export function getSubtreeIds(rootId: string, members: Record<string, Member>): Set<string> {
   const children: Record<string, string[]> = {}
@@ -202,6 +227,7 @@ export function getSubtreeIds(rootId: string, members: Record<string, Member>): 
   const queue = [rootId]
   while (queue.length) {
     const id = queue.shift()!
+    if (result.has(id)) continue
     result.add(id)
     for (const child of children[id] ?? []) queue.push(child)
   }
@@ -242,7 +268,6 @@ function saveReportLocal(month: string, reports: MonthlyReport[]): void {
   if (!fs.existsSync(reportsDir)) fs.mkdirSync(reportsDir, { recursive: true })
   fs.writeFileSync(reportFile(month), JSON.stringify(reports, null, 2), 'utf-8')
 
-  // Update months index
   const months = getMonthsLocal()
   if (!months.includes(month)) {
     months.push(month)

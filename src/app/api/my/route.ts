@@ -12,14 +12,14 @@ export async function GET(req: NextRequest) {
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const { searchParams } = new URL(req.url)
-  const months = getAvailableMonths()
+  const months = await getAvailableMonths()
   const month = searchParams.get('month') ?? months[0]
 
-  const member = getMember(session.memberId)
-  const history = getMemberHistory(session.memberId)
+  const member = await getMember(session.memberId)
+  const history = await getMemberHistory(session.memberId)
 
   // Direct downlines for current month
-  const subtreeMembers = getMembersForMonthSubtree(month, session.memberId)
+  const subtreeMembers = await getMembersForMonthSubtree(month, session.memberId)
   const myReport = subtreeMembers.find((m) => m.id === session.memberId)?.report ?? null
 
   // Direct downlines = members in subtree at level immediately below me
@@ -40,7 +40,7 @@ export async function GET(req: NextRequest) {
     }))
 
   // Tree data for subtree
-  const treeNodes = getTreeData(month, session.memberId)
+  const treeNodes = await getTreeData(month, session.memberId)
 
   // Enrich history with THB
   const historyWithThb = history.map((r) => ({

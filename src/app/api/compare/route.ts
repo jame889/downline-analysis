@@ -20,13 +20,13 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'month1 and month2 are required' }, { status: 400 })
     }
 
-    const months = getAvailableMonths()
+    const months = await getAvailableMonths()
     if (!months.includes(month1) || !months.includes(month2)) {
       return NextResponse.json({ error: 'Invalid month(s)' }, { status: 400 })
     }
 
-    const data1 = getMembersForMonth(month1)
-    const data2 = getMembersForMonth(month2)
+    const data1 = await getMembersForMonth(month1)
+    const data2 = await getMembersForMonth(month2)
 
     const map1 = new Map<string, typeof data1[number]>()
     const map2 = new Map<string, typeof data2[number]>()

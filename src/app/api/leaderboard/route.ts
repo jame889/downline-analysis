@@ -23,7 +23,7 @@ export async function GET(request: NextRequest) {
     }
 
     const { searchParams } = request.nextUrl
-    const months = getAvailableMonths().slice().sort()
+    const months = (await getAvailableMonths()).slice().sort()
 
     const requestedMonth = searchParams.get('month')
     const month = requestedMonth && months.includes(requestedMonth)
@@ -34,10 +34,10 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'No data available' }, { status: 404 })
     }
 
-    const data = getMembersForMonth(month)
+    const data = await getMembersForMonth(month)
     const monthIdx = months.indexOf(month)
     const prevMonth = monthIdx > 0 ? months[monthIdx - 1] : null
-    const prevData = prevMonth ? getMembersForMonth(prevMonth) : []
+    const prevData = prevMonth ? await getMembersForMonth(prevMonth) : []
 
     const prevMap = new Map<string, (typeof prevData)[number]>()
     for (const m of prevData) prevMap.set(m.id, m)

@@ -35,13 +35,14 @@ async function sendTelegramMessage(chatId: string, text: string, botToken: strin
   }
 }
 
-function buildWeeklyMessage(memberId: string): string {
-  const months = getAvailableMonths().slice().sort()
+async function buildWeeklyMessage(memberId: string): Promise<string> {
+  const months = (await getAvailableMonths()).slice().sort()
   const month = months[months.length - 1]
   if (!month) return 'ไม่มีข้อมูล'
 
-  const data = getMembersForMonth(month)
-  const subtreeIds = getSubtreeIds(memberId)
+  const data = await getMembersForMonth(month)
+  const membersMap = Object.fromEntries(data.map((m) => [m.id, m]))
+  const subtreeIds = getSubtreeIds(memberId, membersMap)
   const myTeam = data.filter((m) => subtreeIds.has(m.id))
   const active = myTeam.filter((m) => m.report.is_active).length
   const totalBV = myTeam.reduce((sum, m) => sum + (m.report.monthly_bv ?? 0), 0)
@@ -57,13 +58,14 @@ function buildWeeklyMessage(memberId: string): string {
   )
 }
 
-function buildWakeupMessage(memberId: string): string {
-  const months = getAvailableMonths().slice().sort()
+async function buildWakeupMessage(memberId: string): Promise<string> {
+  const months = (await getAvailableMonths()).slice().sort()
   const month = months[months.length - 1]
   if (!month) return 'ไม่มีข้อมูล'
 
-  const data = getMembersForMonth(month)
-  const subtreeIds = getSubtreeIds(memberId)
+  const data = await getMembersForMonth(month)
+  const membersMap = Object.fromEntries(data.map((m) => [m.id, m]))
+  const subtreeIds = getSubtreeIds(memberId, membersMap)
   const inactive = data.filter((m) => subtreeIds.has(m.id) && !m.report.is_active && m.upline_id === memberId)
 
   if (inactive.length === 0) return `<b>Re-engagement ${month}</b>\n\nDownline ตรงทุกคน Active อยู่`
@@ -76,15 +78,16 @@ function buildWakeupMessage(memberId: string): string {
   )
 }
 
-function buildWatchlistMessage(memberId: string): string {
-  const months = getAvailableMonths().slice().sort()
+async function buildWatchlistMessage(memberId: string): Promise<string> {
+  const months = (await getAvailableMonths()).slice().sort()
   if (months.length < 2) return 'ไม่มีข้อมูลเพียงพอสำหรับ Watchlist'
 
   const currentMonth = months[months.length - 1]
   const prevMonth = months[months.length - 2]
-  const current = getMembersForMonth(currentMonth)
-  const prev = getMembersForMonth(prevMonth)
-  const subtreeIds = getSubtreeIds(memberId)
+  const current = await getMembersForMonth(currentMonth)
+  const prev = await getMembersForMonth(prevMonth)
+  const membersMap = Object.fromEntries(current.map((m) => [m.id, m]))
+  const subtreeIds = getSubtreeIds(memberId, membersMap)
 
   const prevMap = new Map<string, boolean>()
   for (const m of prev) {
@@ -149,13 +152,13 @@ export async function GET(request: NextRequest) {
     let message: string
     switch (schedule.type) {
       case 'weekly':
-        message = buildWeeklyMessage(memberId)
+        message = await buildWeeklyMessage(memberId)
         break
       case 'wakeup':
-        message = buildWakeupMessage(memberId)
+        message = await buildWakeupMessage(memberId)
         break
       case 'watchlist':
-        message = buildWatchlistMessage(memberId)
+        message = await buildWatchlistMessage(memberId)
         break
     }
 
