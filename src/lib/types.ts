@@ -15,8 +15,8 @@ export type Position =
 export interface Member {
   id: string
   name: string
-  join_date: string | null
-  country: string | null
+  join_date: string
+  country: string
   lv: number
   upline_id: string | null
   sponsor_id: string | null
