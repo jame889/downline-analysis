@@ -109,8 +109,12 @@ function buildVisualTree(
   nodes.forEach((node) => {
     if (!node.upline_id) return
     const children = childrenMap.get(node.upline_id) ?? []
-    children.push(node)
-    childrenMap.set(node.upline_id, children)
+    // Keep Gemini's original binary-tree rule: connect rows in report order
+    // and accept only the first two children for each Upline.
+    if (children.length < 2) {
+      children.push(node)
+      childrenMap.set(node.upline_id, children)
+    }
   })
 
   const build = (id: string, depth: number, path: Set<string>): VisualNode | null => {
