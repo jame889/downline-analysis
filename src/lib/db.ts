@@ -25,7 +25,7 @@ function loadMembersLocal(): Record<string, Member> {
   if (fs.existsSync(MEMBERS_FILE)) {
     legacy = JSON.parse(fs.readFileSync(MEMBERS_FILE, 'utf-8'))
   }
-  // History data is newer and also fixes the Upline/Sponsor column mapping.
+  // History data is newer and uses the corrected Sponsor/Upline relationships.
   return { ...legacy, ...getBundledHistoryMembers() }
 }
 

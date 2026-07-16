@@ -117,6 +117,7 @@ export async function GET(req: NextRequest) {
         id: r.member_id,
         name: m?.name ?? r.member_id,
         upline_id: m?.upline_id,
+        sponsor_id: m?.sponsor_id,
         join_date: m?.join_date,
         level: r.level,
         depth: sub.size > 1 ? Math.max(...Array.from(sub.values())) : 0,
@@ -141,7 +142,7 @@ export async function GET(req: NextRequest) {
 
   // ── 6. Hybrid 20/80 recommendation ──────────────────────────────────────────
   // Frontline: how many new personal sponsors this month
-  const myPersonalSponsors = newMembers.filter((m) => m.upline_id === rootId)
+  const myPersonalSponsors = newMembers.filter((m) => m.sponsor_id === rootId)
 
   // Score: how close to 20/80 hybrid
   const frontlineScore = Math.min(100, (myPersonalSponsors.length / 1) * 100) // target: 1+ new/month

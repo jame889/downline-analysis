@@ -59,16 +59,16 @@ export async function GET(request: NextRequest) {
         }
       })
 
-    // Top Recruiter: count new members whose upline_id = this member
+    // Top Recruiter: count new members whose sponsor_id = this member
     // New member = in current month but not in previous month
     const prevIds = new Set(prevData.map((m) => m.id))
     const recruitCounts = new Map<string, number>()
     for (const m of data) {
       if (!prevIds.has(m.id) && prevMonth) {
-        // New member - credit their upline
-        const uplineId = m.upline_id
-        if (uplineId) {
-          recruitCounts.set(uplineId, (recruitCounts.get(uplineId) ?? 0) + 1)
+        // New member - credit their personal sponsor
+        const sponsorId = m.sponsor_id
+        if (sponsorId) {
+          recruitCounts.set(sponsorId, (recruitCounts.get(sponsorId) ?? 0) + 1)
         }
       }
     }

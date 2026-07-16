@@ -19,9 +19,9 @@
     "2026-06": 395
   },
   "parts": 5,
-  "encoded_sha256": "18879781610c1e4564ec9ffe635fac40287dd24295784fa6fad090e80f30b3e6",
+  "encoded_sha256": "6547970f3ce95bce8422333c524c7977b59e053c946014c7472b832231700cd1",
   "notes": [
-    "Column K is Upline and column L is Sponsor in the source reports.",
+    "The SPS export labels are reversed: column K contains Sponsor and column L contains Upline.",
     "The application can read this bundled data immediately and an admin can upsert it into Supabase or local JSON from /admin/history."
   ]
 }

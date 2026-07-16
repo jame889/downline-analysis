@@ -49,7 +49,7 @@ export async function GET(request: NextRequest) {
       const memberData = data.find((m) => m.id === memberId)
       const target = memberGoals[currentMonth]
 
-      // Count new members this month (members whose upline_id is this member and first appeared this month)
+      // Count new members this month (personally sponsored and first appeared this month)
       const prevMonths = months.filter((m) => m < currentMonth)
       const prevMemberIds = new Set<string>()
       for (const pm of prevMonths) {
@@ -59,7 +59,7 @@ export async function GET(request: NextRequest) {
         }
       }
       const newMembers = data.filter(
-        (m) => m.upline_id === memberId && !prevMemberIds.has(m.id)
+        (m) => m.sponsor_id === memberId && !prevMemberIds.has(m.id)
       ).length
 
       const current = {
