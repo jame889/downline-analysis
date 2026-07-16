@@ -6,6 +6,9 @@ const cleanEnv = (value: string | undefined) => value?.replace(/\\n|\n/g, '').re
 
 const OLLAMA_URL = cleanEnv(process.env.OLLAMA_URL) || 'http://localhost:11434'
 const MODEL = cleanEnv(process.env.OLLAMA_MODEL) || 'llama3.2:3b'
+const OLLAMA_NUM_CTX = Number(cleanEnv(process.env.OLLAMA_NUM_CTX)) || 2048
+const OLLAMA_NUM_PREDICT = Number(cleanEnv(process.env.OLLAMA_NUM_PREDICT)) || 350
+const OLLAMA_TIMEOUT_MS = Number(cleanEnv(process.env.OLLAMA_TIMEOUT_MS)) || 55_000
 const KNOWLEDGE_DIR = path.join(process.cwd(), 'data', 'knowledge')
 
 const SUPABASE_URL = cleanEnv(process.env.SUPABASE_URL)
@@ -178,10 +181,13 @@ export async function POST(req: NextRequest) {
     const { messages, coachData } = payload!
 
     const systemPrompt = await buildSystemPrompt(coachData)
+    const controller = new AbortController()
+    const timeout = setTimeout(() => controller.abort(), OLLAMA_TIMEOUT_MS)
 
     const ollamaRes = await fetch(`${OLLAMA_URL}/api/chat`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
+      signal: controller.signal,
       body: JSON.stringify({
         model: MODEL,
         messages: [
@@ -189,8 +195,14 @@ export async function POST(req: NextRequest) {
           ...messages,
         ],
         stream: true,
+        options: {
+          num_ctx: OLLAMA_NUM_CTX,
+          num_predict: OLLAMA_NUM_PREDICT,
+          temperature: 0.4,
+        },
       }),
     })
+    clearTimeout(timeout)
 
     if (!ollamaRes.ok) {
       return ndjsonResponse(fallbackReply(coachData, messages))
