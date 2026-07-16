@@ -12,16 +12,32 @@ interface CompactHistory {
 }
 
 const HISTORY_FILE = path.join(process.cwd(), 'data', 'history-9m.json.gz.b64')
+const HISTORY_PARTS_DIR = path.join(process.cwd(), 'data', 'history')
 let cache: CompactHistory | null | undefined
+
+function readEncodedHistory(): string | null {
+  if (fs.existsSync(HISTORY_FILE)) {
+    return fs.readFileSync(HISTORY_FILE, 'utf-8').trim()
+  }
+  if (!fs.existsSync(HISTORY_PARTS_DIR)) return null
+  const parts = fs.readdirSync(HISTORY_PARTS_DIR)
+    .filter((name) => name.startsWith('history-9m.part-'))
+    .sort()
+  if (parts.length === 0) return null
+  return parts
+    .map((name) => fs.readFileSync(path.join(HISTORY_PARTS_DIR, name), 'utf-8'))
+    .join('')
+    .trim()
+}
 
 function loadHistory(): CompactHistory | null {
   if (cache !== undefined) return cache
   try {
-    if (!fs.existsSync(HISTORY_FILE)) {
+    const encoded = readEncodedHistory()
+    if (!encoded) {
       cache = null
       return cache
     }
-    const encoded = fs.readFileSync(HISTORY_FILE, 'utf-8').trim()
     const json = gunzipSync(Buffer.from(encoded, 'base64')).toString('utf-8')
     cache = JSON.parse(json) as CompactHistory
     return cache
