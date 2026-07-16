@@ -31,7 +31,7 @@ export default function Navbar() {
     { href: '/income-plan', label: '💰 รายได้' },
     { href: '/coach', label: 'Coach JOE' },
     { href: '/leaderboard', label: '🏆' },
-    { href: '/simulator', label: '🧮' },
+    { href: '/simulator', label: 'Placement 3D' },
     { href: '/profile', label: '👤' },
     { href: '/telegram', label: '📱' },
     { href: '/admin/history', label: '🗄 History' },
@@ -44,7 +44,7 @@ export default function Navbar() {
     { href: `/tree?member=${session?.memberId ?? ''}`, label: 'โครงสร้าง' },
     { href: '/income-plan', label: '💰 รายได้' },
     { href: '/coach', label: 'Coach JOE' },
-    { href: '/simulator', label: '🧮' },
+    { href: '/simulator', label: 'Placement 3D' },
     { href: '/profile', label: '👤' },
     { href: '/telegram', label: '📱' },
   ]
