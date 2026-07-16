@@ -1,18 +1,11 @@
 #!/usr/bin/env python3
 """
-Import SPS business report Excel files → JSON data files for Next.js app.
+Import SPS business report Excel files into private runtime JSON files.
 
-Output layout:
-  data/
-    members.json          { "900057": { id, name, join_date, ... }, ... }
-    months.json           ["2025-08", "2025-09", ...]
-    reports/
-      2025-08.json        [ { member_id, month, level, ... }, ... ]
-      2025-09.json
-      ...
-
-Usage:
-    python3 scripts/import_data.py [--dir path/to/xlsx]
+Security requirements:
+- Point PRIVATE_DATA_DIR outside the repository for production data.
+- This importer never creates passwords.
+- Provision credentials separately with scripts/migrate_passwords.py or an identity provider.
 """
 
 import json
@@ -32,17 +25,13 @@ except ImportError:
     os.system(f"{sys.executable} -m pip install openpyxl --quiet")
     import openpyxl
 
-# ── Config ────────────────────────────────────────────────────────────────────
-
 DEFAULT_XLSX_DIR = Path(
     "/Users/zenitha/.gemini/antigravity/scratch/downline-analyzer/backfill_downloads"
 )
-DATA_DIR = Path(__file__).parent.parent / "data"
+DATA_DIR = Path(os.environ.get("PRIVATE_DATA_DIR", Path(__file__).parent.parent / "data")).resolve()
 
-# ── Helpers ───────────────────────────────────────────────────────────────────
 
 def parse_member_cell(cell):
-    """'900057\n(อัจฉรา ศรีตะเถระ)' → ('900057', 'อัจฉรา ศรีตะเถระ')"""
     if not cell:
         return "", ""
     cell = str(cell).strip()
@@ -53,33 +42,30 @@ def parse_member_cell(cell):
 
 
 def parse_id_from_ref(ref):
-    """'900008 (Bussara Meejanpetch)' → '900008'"""
     if not ref:
         return None
-    m = re.match(r"(\d+)", str(ref).strip())
-    return m.group(1) if m else None
+    match = re.match(r"(\d+)", str(ref).strip())
+    return match.group(1) if match else None
 
 
-def month_from_filename(filename: str) :
-    """'business_report_SPS_2025-08.xlsx' → '2025-08'"""
-    m = re.search(r"(\d{4}-\d{2})", filename)
-    return m.group(1) if m else None
+def month_from_filename(filename: str):
+    match = re.search(r"(\d{4}-\d{2})", filename)
+    return match.group(1) if match else None
 
 
-def safe_float(v) -> float:
+def safe_float(value) -> float:
     try:
-        return float(v) if v not in (None, "") else 0.0
+        return float(value) if value not in (None, "") else 0.0
     except (ValueError, TypeError):
         return 0.0
 
 
-def safe_int(v) -> int:
+def safe_int(value) -> int:
     try:
-        return int(v) if v not in (None, "") else 0
+        return int(value) if value not in (None, "") else 0
     except (ValueError, TypeError):
         return 0
 
-# ── Main ──────────────────────────────────────────────────────────────────────
 
 def process_file(ws, month: str, members: dict) -> list[dict]:
     reports = []
@@ -107,7 +93,6 @@ def process_file(ws, month: str, members: dict) -> list[dict]:
         upline_id = parse_id_from_ref(upline_ref)
         sponsor_id = parse_id_from_ref(sponsor_ref)
 
-        # Upsert member
         if member_id not in members:
             members[member_id] = {
                 "id": member_id,
@@ -119,7 +104,6 @@ def process_file(ws, month: str, members: dict) -> list[dict]:
                 "sponsor_id": sponsor_id,
             }
         else:
-            # Update name and lv (keep original join_date)
             members[member_id]["name"] = name
             members[member_id]["lv"] = safe_float(lv)
             if not members[member_id]["upline_id"] and upline_id:
@@ -167,59 +151,35 @@ def main():
         print(f"[ERROR] No Excel files found in: {xlsx_dir}")
         sys.exit(1)
 
-    print(f"Found {len(files)} files\n")
-
     members: dict = {}
     processed_months: list[str] = []
 
-    for f in files:
-        month = month_from_filename(f.name)
+    for file in files:
+        month = month_from_filename(file.name)
         if not month:
-            print(f"  [SKIP] {f.name}")
             continue
         try:
-            wb = openpyxl.load_workbook(f, read_only=True, data_only=True)
-            ws = wb["Business Report"]
-            reports = process_file(ws, month, members)
-
-            out_path = reports_dir / f"{month}.json"
-            out_path.write_text(json.dumps(reports, ensure_ascii=False, indent=2), encoding="utf-8")
+            workbook = openpyxl.load_workbook(file, read_only=True, data_only=True)
+            worksheet = workbook["Business Report"]
+            reports = process_file(worksheet, month, members)
+            (reports_dir / f"{month}.json").write_text(
+                json.dumps(reports, ensure_ascii=False, indent=2), encoding="utf-8"
+            )
             processed_months.append(month)
-            print(f"  [OK] {f.name}  →  {month}  ({len(reports)} members)")
-        except Exception as e:
-            print(f"  [ERR] {f.name}: {e}")
-            import traceback; traceback.print_exc()
+            print(f"[OK] {file.name} -> {month} ({len(reports)} members)")
+        except Exception as error:
+            print(f"[ERR] {file.name}: {error}")
 
-    # Write members.json
+    DATA_DIR.mkdir(parents=True, exist_ok=True)
     (DATA_DIR / "members.json").write_text(
         json.dumps(members, ensure_ascii=False, indent=2), encoding="utf-8"
     )
-
-    # Write months.json
     (DATA_DIR / "months.json").write_text(
         json.dumps(sorted(processed_months), ensure_ascii=False), encoding="utf-8"
     )
 
-    # Write passwords.json — default password = member_id (only for NEW members)
-    pw_file = DATA_DIR / "passwords.json"
-    existing_passwords: dict = {}
-    if pw_file.exists():
-        existing_passwords = json.loads(pw_file.read_text(encoding="utf-8"))
-
-    new_passwords = dict(existing_passwords)
-    added = 0
-    for member_id in members:
-        if member_id not in new_passwords:
-            new_passwords[member_id] = member_id  # default: password = member_id
-            added += 1
-
-    pw_file.write_text(json.dumps(new_passwords, ensure_ascii=False, indent=2), encoding="utf-8")
-
-    print(f"\nDone!")
-    print(f"  {len(members)} unique members")
-    print(f"  {len(processed_months)} months: {processed_months[0]} → {processed_months[-1]}")
-    print(f"  passwords.json: {added} new entries (default = member_id)")
-    print(f"  Data written to: {DATA_DIR}")
+    print(f"Data written to private directory: {DATA_DIR}")
+    print("No passwords were created. Provision hashed credentials separately.")
 
 
 if __name__ == "__main__":
