@@ -15,9 +15,20 @@ import PlacementNetwork3D, { type PlacementTreeNode } from './PlacementNetwork3D
 interface MyData {
   member?: { id: string; name: string }
   treeNodes?: PlacementTreeNode[]
+  sponsorDirectory?: SponsorMember[]
   month?: string
   months?: string[]
   error?: string
+}
+
+interface SponsorMember {
+  id: string
+  name: string
+  sponsor_id?: string | null
+  sponsor_name?: string
+  upline_id: string | null
+  is_active: number
+  highest_position: string
 }
 
 const CORE_STORAGE_PREFIX = 'downline-5-core'
@@ -28,6 +39,7 @@ function formatNumber(value: number) {
 
 export default function SimulatorPage() {
   const [nodes, setNodes] = useState<PlacementTreeNode[]>([])
+  const [sponsorDirectory, setSponsorDirectory] = useState<SponsorMember[]>([])
   const [months, setMonths] = useState<string[]>([])
   const [month, setMonth] = useState('')
   const [originalRootId, setOriginalRootId] = useState('')
@@ -56,6 +68,7 @@ export default function SimulatorPage() {
       const nextMonth = data.month ?? targetMonth ?? ''
 
       setNodes(nextNodes)
+      setSponsorDirectory(data.sponsorDirectory ?? nextNodes)
       setMonths(data.months ?? [])
       setMonth(nextMonth)
       setOriginalRootId(nextRoot)
@@ -104,11 +117,11 @@ export default function SimulatorPage() {
   const selectedNode = nodeMap.get(selectedId) ?? nodeMap.get(rootId) ?? null
   const sponsoredMembers = useMemo(
     () => selectedNode
-      ? nodes
+      ? sponsorDirectory
           .filter((node) => node.sponsor_id === selectedNode.id)
           .sort((a, b) => Number(b.is_active) - Number(a.is_active) || a.name.localeCompare(b.name))
       : [],
-    [nodes, selectedNode]
+    [selectedNode, sponsorDirectory]
   )
 
   function findAndFocus(event?: FormEvent) {

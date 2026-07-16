@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getSession } from '@/lib/auth'
 import {
-  getAvailableMonths, getMember, getMemberHistory,
-  getMembersForMonthSubtree, getTreeData, bvToThb
+  getAllMembers, getAvailableMonths, getMember, getMemberHistory,
+  getMembersForMonth, getMembersForMonthSubtree, getTreeData, bvToThb
 } from '@/lib/db'
 
 export const dynamic = 'force-dynamic'
@@ -15,11 +15,17 @@ export async function GET(req: NextRequest) {
   const months = await getAvailableMonths()
   const month = searchParams.get('month') ?? months[0]
 
-  const member = await getMember(session.memberId)
+  const [member, allMembers] = await Promise.all([
+    getMember(session.memberId),
+    getAllMembers(),
+  ])
   const history = await getMemberHistory(session.memberId)
 
   // Direct downlines for current month
-  const subtreeMembers = await getMembersForMonthSubtree(month, session.memberId)
+  const [subtreeMembers, monthMembers] = await Promise.all([
+    getMembersForMonthSubtree(month, session.memberId),
+    getMembersForMonth(month),
+  ])
   const myReport = subtreeMembers.find((m) => m.id === session.memberId)?.report ?? null
 
   // Direct downlines = members in subtree at level immediately below me
@@ -41,6 +47,22 @@ export async function GET(req: NextRequest) {
 
   // Tree data for subtree
   const treeNodes = await getTreeData(month, session.memberId)
+  const visibleSponsorIds = new Set(treeNodes.map((item) => item.id))
+  const reportByMemberId = new Map(monthMembers.map((item) => [item.id, item.report]))
+  const sponsorDirectory = Object.values(allMembers)
+    .filter((item) => item.sponsor_id && visibleSponsorIds.has(item.sponsor_id))
+    .map((item) => {
+      const report = reportByMemberId.get(item.id)
+      return {
+        id: item.id,
+        name: item.name,
+        sponsor_id: item.sponsor_id,
+        sponsor_name: item.sponsor_id ? (allMembers[item.sponsor_id]?.name ?? '') : '',
+        upline_id: item.upline_id,
+        is_active: report?.is_active ? 1 : 0,
+        highest_position: report?.highest_position ?? '',
+      }
+    })
 
   // Enrich history with THB
   const historyWithThb = history.map((r) => ({
@@ -75,6 +97,7 @@ export async function GET(req: NextRequest) {
     history: historyWithThb,
     directDownlines,
     treeNodes,
+    sponsorDirectory,
     orgStats,
     month,
     months,
