@@ -99,6 +99,91 @@ function ndjsonResponse(content: string) {
   })
 }
 
+function formatNumber(value: number | undefined) {
+  return (value ?? 0).toLocaleString()
+}
+
+function isDiamondWorkQuestion(question: string) {
+  const q = question.toLowerCase()
+  return (
+    (q.includes('diamond') || q.includes('ไดมอนด์')) &&
+    (q.includes('ใคร') || q.includes('คนไหน') || q.includes('กับใคร') || q.includes('ลงไป') || q.includes('ทำงาน'))
+  )
+}
+
+function diamondWorkReply(coachData: Record<string, unknown>, question: string): string | null {
+  if (!isDiamondWorkQuestion(question)) return null
+  const d = coachData as {
+    balance?: { weakSide?: string; gapToBalance?: number }
+    diamond?: {
+      currentLeft: number
+      currentRight: number
+      targetLeft: number
+      targetRight: number
+      leftGap: number
+      rightGap: number
+      leftPlacement: boolean
+      rightPlacement: boolean
+      requiredPlacement: string
+    } | null
+    focusCandidates?: Array<{
+      id: string
+      name: string
+      side: string
+      position: string
+      latestLeft: number
+      latestRight: number
+      latestNewVolume: number
+      sponsorLast3: number
+      movingUpsLast3: number
+      leadersCreated: number
+      activeConsistency: number
+      momentumRatio: number
+      score: number
+      status: string
+      recommendation: string
+    }>
+  }
+  const diamond = d.diamond
+  const weakSide = d.balance?.weakSide === 'L' ? 'ซ้าย' : d.balance?.weakSide === 'R' ? 'ขวา' : 'สายอ่อน'
+  const rankedCandidates = d.focusCandidates ?? []
+  const weakSideCandidates = rankedCandidates.filter((candidate) => candidate.side === weakSide)
+  const candidates = [
+    ...weakSideCandidates,
+    ...rankedCandidates.filter((candidate) => candidate.side !== weakSide),
+  ].slice(0, 5)
+  if (!candidates.length) return null
+
+  const gapLine = diamond
+    ? `เป้า Diamond ต้องมี ${formatNumber(diamond.targetLeft)}/${formatNumber(diamond.targetRight)} BV ตอนนี้ขาดซ้าย ${formatNumber(diamond.leftGap)} BV, ขาดขวา ${formatNumber(diamond.rightGap)} BV และ Placement ต้องมี ${diamond.requiredPlacement} ทั้งสองฝั่ง (${diamond.leftPlacement ? 'ซ้ายผ่าน' : 'ซ้ายยังไม่ผ่าน'}, ${diamond.rightPlacement ? 'ขวาผ่าน' : 'ขวายังไม่ผ่าน'})`
+    : `สาย${weakSide}ยังต้องเพิ่มประมาณ ${formatNumber(d.balance?.gapToBalance)} BV เพื่อ balance`
+
+  const top = candidates[0]
+  const people = candidates.map((c, index) => {
+    const why = [
+      `คะแนน ${c.score}/100`,
+      `อยู่ฝั่ง${c.side}`,
+      `${c.position}`,
+      `New BV ล่าสุด ${formatNumber(c.latestNewVolume)}`,
+      `สปอนเซอร์ 3 เดือน ${c.sponsorLast3}`,
+      `Moving Up 3 เดือน ${c.movingUpsLast3}`,
+      `สร้างผู้นำ ${c.leadersCreated}`,
+      `Active ${c.activeConsistency}%`,
+    ].join(' · ')
+    return `${index + 1}. ${c.name} (${c.id}) — ${why}\n   งานที่ต้องทำ: ${c.recommendation}`
+  }).join('\n')
+
+  return [
+    `ตอบตรงๆ: ถ้าจะดัน Diamond ตอนนี้ ให้ลงไปทำงานกับ ${top.name} เป็นคนแรกครับ`,
+    '',
+    gapLine,
+    `ลำดับคนที่ควรลงไปทำงานด้วยใน 14 วันแรก:`,
+    people,
+    '',
+    `แผน 7 วัน: นัด 1:1 กับอันดับ 1-3, วางเป้า BV ฝั่ง${weakSide}, ตรวจรายชื่อใหม่/คนรอ Start Up, แล้วตามผลทุก 48 ชั่วโมง [CHART:balance]`,
+  ].join('\n')
+}
+
 async function buildSystemPrompt(coachData: Record<string, unknown> | null): Promise<string> {
   if (!coachData) {
     const knowledge = await loadKnowledge()
@@ -121,6 +206,19 @@ async function buildSystemPrompt(coachData: Record<string, unknown> | null): Pro
     actions?: Array<{ priority: string; category: string; title: string; detail: string }>
     myPersonalSponsors?: number
     byLevel?: Record<string, { total: number; active: number }>
+    diamond?: {
+      currentLeft: number; currentRight: number; targetLeft: number; targetRight: number
+      leftGap: number; rightGap: number; leftPlacement: boolean; rightPlacement: boolean
+      requiredPlacement: string; qualified: boolean
+    } | null
+    focusCandidates?: Array<{
+      id: string; name: string; side: string; position: string
+      latestLeft: number; latestRight: number; latestNewVolume: number
+      sponsorLast3: number; movingUpsLast3: number; leadersCreated: number
+      activeConsistency: number; momentumRatio: number; score: number; status: string
+      recommendation: string
+    }>
+    growthInsights?: string[]
   }
 
   const balanceStr = d.balance
@@ -135,6 +233,14 @@ async function buildSystemPrompt(coachData: Record<string, unknown> | null): Pro
 
   const newMemberStr = d.newMembers?.map(m =>
     `${m.name} (${m.id}): ${m.is_tapped ? 'ขุดลึกแล้ว' : 'ยังไม่ได้ขุดลึก'}`
+  ).join('\n') ?? ''
+
+  const diamondStr = d.diamond
+    ? `Diamond target ${d.diamond.targetLeft.toLocaleString()}/${d.diamond.targetRight.toLocaleString()} BV, ปัจจุบันซ้าย ${d.diamond.currentLeft.toLocaleString()}, ขวา ${d.diamond.currentRight.toLocaleString()}, gap ซ้าย ${d.diamond.leftGap.toLocaleString()}, gap ขวา ${d.diamond.rightGap.toLocaleString()}, Placement ต้องมี ${d.diamond.requiredPlacement}: ซ้าย ${d.diamond.leftPlacement ? 'ผ่าน' : 'ยังไม่ผ่าน'}, ขวา ${d.diamond.rightPlacement ? 'ผ่าน' : 'ยังไม่ผ่าน'}, สถานะ ${d.diamond.qualified ? 'พร้อม' : 'ยังไม่พร้อม'}`
+    : 'ยังไม่มีข้อมูล Diamond Readiness'
+
+  const focusCandidateStr = d.focusCandidates?.slice(0, 8).map((c, index) =>
+    `${index + 1}. ${c.name} (${c.id}) ฝั่ง${c.side}, ${c.position}, score ${c.score}/100, status ${c.status}, New BV ${c.latestNewVolume.toLocaleString()}, L/R ${c.latestLeft.toLocaleString()}/${c.latestRight.toLocaleString()}, sponsor3m ${c.sponsorLast3}, movingUp3m ${c.movingUpsLast3}, leaders ${c.leadersCreated}, active ${c.activeConsistency}%, momentum ${c.momentumRatio}x, action: ${c.recommendation}`
   ).join('\n') ?? ''
 
   const knowledge = await loadKnowledge()
@@ -158,12 +264,20 @@ ${newMemberStr}
 === Actions ที่แนะนำ ===
 ${actionsStr}
 
+=== Diamond Readiness ===
+${diamondStr}
+
+=== คนที่ควรลงไปทำงานด้วย / Focus Candidates ===
+${focusCandidateStr || 'ยังไม่มี candidate เพียงพอ'}
+
 === กลยุทธ์หลัก ===
 Hybrid 20/80: 20% Frontline (Speed) + 80% การขุดลึก (Stability)
 สายซ้าย = Speed, สายขวา = Stability
 ขุดลึกจนเจอผู้นำ 2-3 คนซ้อนกัน แล้วหยุดขุดสายนั้น
 
 ตอบเป็นภาษาไทย สั้น กระชับ ตรงประเด็น ใช้ข้อมูลข้างต้นประกอบคำแนะนำเสมอ
+ห้ามตอบกว้างๆ ถ้าผู้ใช้ถามว่า "กับใคร", "คนไหน", "ต้องลงไปทำงานกับใคร", "ขึ้น Gold/Diamond ทำกับใคร" ให้ตอบเป็นรายชื่อจริงจาก Focus Candidates อย่างน้อย 3 คน พร้อม ID, ฝั่ง, score, เหตุผลเชิงตัวเลข และงาน 7 วันถัดไป
+ถ้าถามเรื่อง Diamond ให้เริ่มด้วยชื่อคนอันดับ 1 ทันที แล้วตามด้วย gap Diamond และลำดับคนที่ควรโค้ช
 
 === การแสดง Chart ===
 เมื่อคำตอบเกี่ยวข้องกับข้อมูลด้านล่าง ให้ใส่ tag ต่อท้ายคำอธิบาย (บรรทัดใหม่):
@@ -179,6 +293,12 @@ export async function POST(req: NextRequest) {
   try {
     payload = await req.json()
     const { messages, coachData } = payload!
+    const latestQuestion = messages[messages.length - 1]?.content ?? ''
+
+    if (coachData) {
+      const deterministicReply = diamondWorkReply(coachData, latestQuestion)
+      if (deterministicReply) return ndjsonResponse(deterministicReply)
+    }
 
     const systemPrompt = await buildSystemPrompt(coachData)
     const controller = new AbortController()

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getSession } from '@/lib/auth'
 import { getAllMembers, getAvailableMonths, getReportsForMonths } from '@/lib/db'
+import { getGrowthDashboardData } from '@/lib/growth'
 import type { Member } from '@/lib/types'
 
 export const dynamic = 'force-dynamic'
@@ -195,6 +196,8 @@ export async function GET(req: NextRequest) {
     })
   }
 
+  const growth = await getGrowthDashboardData(rootId, 9)
+
   return NextResponse.json({
     month: latestMonth,
     member: { id: rootId, name: session.name },
@@ -219,5 +222,10 @@ export async function GET(req: NextRequest) {
 
     // Hybrid score
     myPersonalSponsors: myPersonalSponsors.length,
+
+    // Growth Command Center context for Coach JOE
+    diamond: growth?.diamond ?? null,
+    focusCandidates: growth?.focusCandidates ?? [],
+    growthInsights: growth?.insights ?? [],
   })
 }
