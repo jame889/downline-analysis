@@ -6,8 +6,8 @@ const OLLAMA_URL = process.env.OLLAMA_URL || 'http://localhost:11434'
 const MODEL = process.env.OLLAMA_MODEL || 'gemma4:e2b'
 const KNOWLEDGE_DIR = path.join(process.cwd(), 'data', 'knowledge')
 
-const SUPABASE_URL = process.env.SUPABASE_URL?.replace(/\n/g, '') ?? ''
-const SUPABASE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY?.replace(/\n/g, '') ?? ''
+const SUPABASE_URL = process.env.SUPABASE_URL?.replace(/\\n|\n/g, '').replace(/^"|"$/g, '') ?? ''
+const SUPABASE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY?.replace(/\\n|\n/g, '').replace(/^"|"$/g, '') ?? ''
 const BUCKET = 'knowledge'
 const USE_SUPABASE = !!(SUPABASE_URL && SUPABASE_KEY)
 
@@ -23,21 +23,27 @@ async function loadKnowledge(): Promise<string> {
   let docs: Array<{ title: string; content: string }> = []
 
   if (USE_SUPABASE) {
-    const res = await fetch(`${SUPABASE_URL}/storage/v1/object/list/${BUCKET}`, {
-      method: 'POST',
-      headers: sbHeaders(),
-      body: JSON.stringify({ prefix: '', limit: 200 }),
-    })
-    if (res.ok) {
-      const files: { name: string }[] = await res.json()
-      for (const f of files.filter(f => f.name.endsWith('.json'))) {
-        const r = await fetch(`${SUPABASE_URL}/storage/v1/object/${BUCKET}/${f.name}`, { headers: sbHeaders() })
-        if (r.ok) {
-          try { docs.push(await r.json()) } catch { /* skip */ }
+    try {
+      const res = await fetch(`${SUPABASE_URL}/storage/v1/object/list/${BUCKET}`, {
+        method: 'POST',
+        headers: sbHeaders(),
+        body: JSON.stringify({ prefix: '', limit: 200 }),
+      })
+      if (res.ok) {
+        const files: { name: string }[] = await res.json()
+        for (const f of files.filter(f => f.name.endsWith('.json'))) {
+          const r = await fetch(`${SUPABASE_URL}/storage/v1/object/${BUCKET}/${f.name}`, { headers: sbHeaders() })
+          if (r.ok) {
+            try { docs.push(await r.json()) } catch { /* skip */ }
+          }
         }
       }
+    } catch (error) {
+      console.warn('[chat] skipped Supabase knowledge load', error)
     }
-  } else {
+  }
+
+  if (docs.length === 0) {
     if (!fs.existsSync(KNOWLEDGE_DIR)) return ''
     docs = fs.readdirSync(KNOWLEDGE_DIR)
       .filter((f) => f.endsWith('.json'))
@@ -53,6 +59,39 @@ async function loadKnowledge(): Promise<string> {
     .filter(Boolean) as string[]
   if (!excerpts.length) return ''
   return `\n\n=== ฐานความรู้ด้านธุรกิจเครือข่าย Binary ===\n${excerpts.join('\n\n---\n\n')}`
+}
+
+function fallbackReply(coachData: Record<string, unknown> | null, messages: Array<{ role: string; content: string }>): string {
+  const d = coachData as {
+    balance?: { weakSide?: string; weakVol?: number; strongVol?: number; gapToBalance?: number; urgency?: string }
+    actions?: Array<{ priority: string; title: string; detail: string }>
+    safeLines?: number
+    gen1?: unknown[]
+    myPersonalSponsors?: number
+  } | null
+  const latestQuestion = messages[messages.length - 1]?.content ?? ''
+  if (!d) return `ตอนนี้ระบบ AI หลักเชื่อมต่อไม่ได้ชั่วคราว แต่ Coach JOE ยังรับคำถามได้ครับ\n\nคำถามของคุณ: ${latestQuestion}\n\nแนะนำให้ดู Balance, Weak Leg และ Action Priority ในหน้า Coach ก่อน แล้วลองส่งคำถามอีกครั้งภายหลัง`
+
+  const weakSide = d.balance?.weakSide === 'L' ? 'ซ้าย' : d.balance?.weakSide === 'R' ? 'ขวา' : 'ที่อ่อนกว่า'
+  const firstAction = d.actions?.[0]
+  return [
+    'ตอนนี้ AI หลักเชื่อมต่อไม่ได้ชั่วคราว ผมสรุปจากข้อมูล Dashboard ให้ก่อน:',
+    `1. Weak Leg คือสาย${weakSide} ขาดอีกประมาณ ${(d.balance?.gapToBalance ?? 0).toLocaleString()} BV เพื่อ Balance`,
+    `2. Safe Zone ตอนนี้ ${d.safeLines ?? 0}/${d.gen1?.length ?? 0} สาย`,
+    `3. สปอนเซอร์ส่วนตัวเดือนนี้ ${d.myPersonalSponsors ?? 0} คน`,
+    firstAction ? `4. Priority แรก: ${firstAction.title} - ${firstAction.detail}` : '4. Priority แรก: ตรวจสายอ่อนและเลือกคนที่ต้องโค้ชใน 7 วัน',
+    '',
+    'ให้โฟกัส 7 วันแรกที่ Weak Leg, ปลุก Gen 1 ที่ inactive, และ Start Up สมาชิกใหม่ให้เร็วที่สุด [CHART:balance]',
+  ].join('\n')
+}
+
+function ndjsonResponse(content: string) {
+  return new Response(`${JSON.stringify({ message: { content } })}\n`, {
+    headers: {
+      'Content-Type': 'application/x-ndjson',
+      'Cache-Control': 'no-cache',
+    },
+  })
 }
 
 async function buildSystemPrompt(coachData: Record<string, unknown> | null): Promise<string> {
@@ -131,8 +170,10 @@ Hybrid 20/80: 20% Frontline (Speed) + 80% การขุดลึก (Stability
 }
 
 export async function POST(req: NextRequest) {
+  let payload: { messages: Array<{ role: string; content: string }>; coachData: Record<string, unknown> | null } | null = null
   try {
-    const { messages, coachData } = await req.json()
+    payload = await req.json()
+    const { messages, coachData } = payload!
 
     const systemPrompt = await buildSystemPrompt(coachData)
 
@@ -150,7 +191,7 @@ export async function POST(req: NextRequest) {
     })
 
     if (!ollamaRes.ok) {
-      return Response.json({ error: 'Ollama error' }, { status: 500 })
+      return ndjsonResponse(fallbackReply(coachData, messages))
     }
 
     // Forward Ollama's NDJSON stream as-is
@@ -162,6 +203,7 @@ export async function POST(req: NextRequest) {
       },
     })
   } catch (e) {
-    return Response.json({ error: String(e) }, { status: 500 })
+    console.warn('[chat] fallback response', e)
+    return ndjsonResponse(fallbackReply(payload?.coachData ?? null, payload?.messages ?? []))
   }
 }

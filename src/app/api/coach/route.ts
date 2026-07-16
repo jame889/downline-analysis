@@ -1,33 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getSession } from '@/lib/auth'
-import { getAvailableMonths } from '@/lib/db'
-import fs from 'fs'
-import path from 'path'
+import { getAllMembers, getAvailableMonths, getReportsForMonths } from '@/lib/db'
+import type { Member } from '@/lib/types'
 
 export const dynamic = 'force-dynamic'
 
-const DATA_DIR = path.join(process.cwd(), 'data')
-
-function loadMembers() {
-  return JSON.parse(fs.readFileSync(path.join(DATA_DIR, 'members.json'), 'utf-8')) as Record<string, {
-    id: string; name: string; join_date: string; upline_id: string | null; sponsor_id: string | null; lv: number
-  }>
-}
-
-function loadReport(month: string) {
-  const f = path.join(DATA_DIR, 'reports', `${month}.json`)
-  if (!fs.existsSync(f)) return []
-  return JSON.parse(fs.readFileSync(f, 'utf-8')) as Array<{
-    member_id: string; month: string; level: number;
-    highest_position: string; monthly_bv: number;
-    is_active: boolean; is_qualified: boolean;
-    total_vol_left: number; total_vol_right: number;
-    current_month_vol_left: number; current_month_vol_right: number;
-  }>
-}
-
 // Build children map from members
-function buildChildrenMap(members: ReturnType<typeof loadMembers>) {
+function buildChildrenMap(members: Record<string, Member>) {
   const children: Record<string, string[]> = {}
   for (const m of Object.values(members)) {
     if (m.upline_id) {
@@ -72,10 +51,14 @@ export async function GET(req: NextRequest) {
   const months = await getAvailableMonths()
   const latestMonth = months[0]
   const prevMonth = months[1]
+  if (!latestMonth) return NextResponse.json({ error: 'ไม่พบข้อมูล' }, { status: 404 })
 
-  const members = loadMembers()
-  const repMap = new Map(loadReport(latestMonth).map((r) => [r.member_id, r]))
-  const prevRepMap = new Map(loadReport(prevMonth).map((r) => [r.member_id, r]))
+  const [members, reportsByMonth] = await Promise.all([
+    getAllMembers(),
+    getReportsForMonths([latestMonth, prevMonth].filter(Boolean) as string[]),
+  ])
+  const repMap = new Map((reportsByMonth[latestMonth] ?? []).map((r) => [r.member_id, r]))
+  const prevRepMap = new Map((prevMonth ? reportsByMonth[prevMonth] : []).map((r) => [r.member_id, r]))
   const children = buildChildrenMap(members)
 
   const rootId = session.memberId
