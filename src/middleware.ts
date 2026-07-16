@@ -1,60 +1,68 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { jwtVerify } from 'jose'
 
-const SECRET = new TextEncoder().encode(
-  process.env.JWT_SECRET ?? 'downline-sps-secret-key-2026-internal'
-)
 const SESSION_COOKIE = 'dl_session'
-const ROOT_MEMBER_ID = process.env.NEXT_PUBLIC_ROOT_MEMBER_ID ?? '900057'
+
+function getSecret(): Uint8Array {
+  const secret = process.env.JWT_SECRET?.trim()
+  if (!secret || secret.length < 32) throw new Error('JWT_SECRET must be at least 32 characters')
+  return new TextEncoder().encode(secret)
+}
+
+function getRootMemberId(): string {
+  const value = process.env.ROOT_MEMBER_ID?.trim() || process.env.NEXT_PUBLIC_ROOT_MEMBER_ID?.trim()
+  if (!value) throw new Error('ROOT_MEMBER_ID must be configured')
+  return value
+}
 
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl
 
-  // Always allow static assets, auth endpoints, and chat API
-  if (pathname.startsWith('/_next') || pathname.startsWith('/api/auth') || pathname.startsWith('/api/chat')) {
+  if (pathname.startsWith('/_next') || pathname.startsWith('/api/auth')) {
     return NextResponse.next()
   }
 
   const token = request.cookies.get(SESSION_COOKIE)?.value
 
-  // ── Login page ────────────────────────────────────────────────────────────
   if (pathname === '/login') {
-    // Already logged in → redirect to appropriate page
     if (token) {
       try {
-        const { payload } = await jwtVerify(token, SECRET)
+        const { payload } = await jwtVerify(token, getSecret())
         const session = payload as { memberId: string; isAdmin: boolean }
         return NextResponse.redirect(
-          new URL(session.isAdmin && session.memberId === ROOT_MEMBER_ID ? '/' : '/my', request.url)
+          new URL(session.isAdmin && session.memberId === getRootMemberId() ? '/' : '/my', request.url)
         )
       } catch {
-        // Invalid token — let them see the login page
+        // Invalid token: show login page.
       }
     }
     return NextResponse.next()
   }
 
-  // ── Protected pages ───────────────────────────────────────────────────────
   if (!token) {
+    if (pathname.startsWith('/api/')) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
     return NextResponse.redirect(new URL('/login', request.url))
   }
 
   try {
-    const { payload } = await jwtVerify(token, SECRET)
+    const { payload } = await jwtVerify(token, getSecret())
     const session = payload as { memberId: string; isAdmin: boolean }
 
-    // Non-admin on root dashboard → /my
     if (pathname === '/' && !session.isAdmin) {
       return NextResponse.redirect(new URL('/my', request.url))
     }
 
-    // Admin on /my → /
-    if (pathname === '/my' && session.isAdmin && session.memberId === ROOT_MEMBER_ID) {
+    if (pathname === '/my' && session.isAdmin && session.memberId === getRootMemberId()) {
       return NextResponse.redirect(new URL('/', request.url))
     }
 
     return NextResponse.next()
   } catch {
+    if (pathname.startsWith('/api/')) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
     const res = NextResponse.redirect(new URL('/login', request.url))
     res.cookies.delete(SESSION_COOKIE)
     return res
