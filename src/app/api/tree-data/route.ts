@@ -12,7 +12,7 @@ export async function GET(req: NextRequest) {
 
     if (!month) return NextResponse.json({ nodes: [], month: null })
 
-    const nodes = getTreeData(month, member)
+    const nodes = await getTreeData(month, member)
     return NextResponse.json({ nodes, month })
   } catch (err) {
     console.error(err)

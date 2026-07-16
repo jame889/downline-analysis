@@ -9,7 +9,7 @@ export const dynamic = 'force-dynamic'
 export async function GET() {
   try {
     const months = await getAvailableMonths()
-    const summaries = getMonthlySummaries()
+    const summaries = await getMonthlySummaries()
 
     // Build per-month root member L/R data for the admin dashboard
     const rootLR = await Promise.all(months.slice().sort().map(async (month) => {
