@@ -28,6 +28,7 @@ export default function Navbar() {
     { href: '/members', label: 'สมาชิก' },
     { href: '/tree', label: 'โครงสร้าง' },
     { href: '/income-plan', label: '💰 รายได้' },
+    { href: '/personality', label: '🧭 บุคลิกผู้นำ' },
     { href: '/coach', label: 'Coach JOE' },
     { href: '/leaderboard', label: '🏆' },
     { href: '/simulator', label: '🧮' },
@@ -40,6 +41,7 @@ export default function Navbar() {
     { href: '/my', label: 'องค์กรของฉัน' },
     { href: `/tree?member=${session?.memberId ?? ''}`, label: 'โครงสร้าง' },
     { href: '/income-plan', label: '💰 รายได้' },
+    { href: '/personality', label: '🧭 บุคลิกผู้นำ' },
     { href: '/coach', label: 'Coach JOE' },
     { href: '/simulator', label: '🧮' },
     { href: '/profile', label: '👤' },
@@ -52,8 +54,7 @@ export default function Navbar() {
     <nav className="bg-slate-900 border-b border-slate-800">
       <div className="max-w-7xl mx-auto px-4 flex items-center gap-6 h-14">
         <span className="text-brand-500 font-bold text-lg tracking-tight shrink-0">First Community</span>
-
-        <div className="flex items-center gap-5 flex-1">
+        <div className="flex items-center gap-5 flex-1 overflow-x-auto">
           {links.map(({ href, label }) => (
             <Link
               key={href}
@@ -69,19 +70,13 @@ export default function Navbar() {
             </Link>
           ))}
         </div>
-
         {session && (
           <div className="flex items-center gap-3 shrink-0">
             <div className="text-right hidden sm:block">
               <p className="text-xs text-slate-300 leading-tight">{session.name}</p>
               <p className="text-xs text-slate-500">{session.memberId}{session.isAdmin ? ' · Admin' : ''}</p>
             </div>
-            <button
-              onClick={logout}
-              className="text-xs text-slate-400 hover:text-red-400 border border-slate-700 hover:border-red-700 px-2.5 py-1.5 rounded-lg transition-colors"
-            >
-              ออกจากระบบ
-            </button>
+            <button onClick={logout} className="text-xs text-slate-400 hover:text-red-400 border border-slate-700 hover:border-red-700 px-2.5 py-1.5 rounded-lg transition-colors">ออกจากระบบ</button>
           </div>
         )}
       </div>
