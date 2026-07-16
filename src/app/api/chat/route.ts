@@ -111,6 +111,68 @@ function isDiamondWorkQuestion(question: string) {
   )
 }
 
+type MemberDirectoryEntry = {
+  id: string
+  name: string
+  sponsorId: string | null
+  sponsorName: string | null
+  uplineId: string | null
+  uplineName: string | null
+  position: string | null
+  isActive: boolean
+}
+
+function normalizeText(value: string) {
+  return value.toLowerCase().replace(/\s+/g, ' ').trim()
+}
+
+function isRelationshipQuestion(question: string) {
+  const q = normalizeText(question)
+  return (
+    q.includes('ผู้แนะนำ') ||
+    q.includes('ใครแนะนำ') ||
+    q.includes('สปอนเซอร์') ||
+    q.includes('sponsor') ||
+    q.includes('upline') ||
+    q.includes('อัพไลน์') ||
+    q.includes('อัปไลน์')
+  )
+}
+
+function findMentionedMember(question: string, directory: MemberDirectoryEntry[]) {
+  const idMatch = question.match(/\b\d{5,}\b/)
+  if (idMatch) {
+    const byId = directory.find((member) => member.id === idMatch[0])
+    if (byId) return byId
+  }
+
+  const q = normalizeText(question)
+  return directory
+    .slice()
+    .sort((a, b) => b.name.length - a.name.length)
+    .find((member) => q.includes(normalizeText(member.name)))
+}
+
+function relationshipReply(coachData: Record<string, unknown>, question: string): string | null {
+  if (!isRelationshipQuestion(question)) return null
+  const d = coachData as { memberDirectory?: MemberDirectoryEntry[] }
+  const directory = d.memberDirectory ?? []
+  const member = findMentionedMember(question, directory)
+  if (!member) return null
+
+  const asksUpline = /upline|อัพไลน์|อัปไลน์/i.test(question)
+  const lines = [
+    `${member.name} (${member.id})`,
+    `ผู้แนะนำ/Sponsor: ${member.sponsorName && member.sponsorId ? `${member.sponsorName} (${member.sponsorId})` : 'ยังไม่มีข้อมูลในระบบ'}`,
+    `Upline/Placement: ${member.uplineName && member.uplineId ? `${member.uplineName} (${member.uplineId})` : 'ยังไม่มีข้อมูลในระบบ'}`,
+    `สถานะล่าสุด: ${member.isActive ? 'Active' : 'Inactive'}${member.position ? ` · ${member.position}` : ''}`,
+  ]
+  if (asksUpline) {
+    return `ข้อมูล Placement ของ ${lines.join('\n')}`
+  }
+  return lines.join('\n')
+}
+
 function diamondWorkReply(coachData: Record<string, unknown>, question: string): string | null {
   if (!isDiamondWorkQuestion(question)) return null
   const d = coachData as {
@@ -206,6 +268,7 @@ async function buildSystemPrompt(coachData: Record<string, unknown> | null): Pro
     actions?: Array<{ priority: string; category: string; title: string; detail: string }>
     myPersonalSponsors?: number
     byLevel?: Record<string, { total: number; active: number }>
+    memberDirectory?: MemberDirectoryEntry[]
     diamond?: {
       currentLeft: number; currentRight: number; targetLeft: number; targetRight: number
       leftGap: number; rightGap: number; leftPlacement: boolean; rightPlacement: boolean
@@ -243,6 +306,10 @@ async function buildSystemPrompt(coachData: Record<string, unknown> | null): Pro
     `${index + 1}. ${c.name} (${c.id}) ฝั่ง${c.side}, ${c.position}, score ${c.score}/100, status ${c.status}, New BV ${c.latestNewVolume.toLocaleString()}, L/R ${c.latestLeft.toLocaleString()}/${c.latestRight.toLocaleString()}, sponsor3m ${c.sponsorLast3}, movingUp3m ${c.movingUpsLast3}, leaders ${c.leadersCreated}, active ${c.activeConsistency}%, momentum ${c.momentumRatio}x, action: ${c.recommendation}`
   ).join('\n') ?? ''
 
+  const directoryStr = d.memberDirectory?.slice(0, 80).map((m) =>
+    `${m.name} (${m.id}): sponsor ${m.sponsorName ? `${m.sponsorName} (${m.sponsorId})` : '-'}, upline ${m.uplineName ? `${m.uplineName} (${m.uplineId})` : '-'}, ${m.isActive ? 'Active' : 'Inactive'}${m.position ? `, ${m.position}` : ''}`
+  ).join('\n') ?? ''
+
   const knowledge = await loadKnowledge()
 
   return `คุณคือ Coach JOE ผู้เชี่ยวชาญด้านธุรกิจ First Community Binary ที่พูดภาษาไทย ตอบสั้น กระชับ ตรงประเด็น
@@ -270,6 +337,9 @@ ${diamondStr}
 === คนที่ควรลงไปทำงานด้วย / Focus Candidates ===
 ${focusCandidateStr || 'ยังไม่มี candidate เพียงพอ'}
 
+=== Member Relationship Directory ===
+${directoryStr || 'ยังไม่มีข้อมูล sponsor/upline'}
+
 === กลยุทธ์หลัก ===
 Hybrid 20/80: 20% Frontline (Speed) + 80% การขุดลึก (Stability)
 สายซ้าย = Speed, สายขวา = Stability
@@ -278,6 +348,7 @@ Hybrid 20/80: 20% Frontline (Speed) + 80% การขุดลึก (Stability
 ตอบเป็นภาษาไทย สั้น กระชับ ตรงประเด็น ใช้ข้อมูลข้างต้นประกอบคำแนะนำเสมอ
 ห้ามตอบกว้างๆ ถ้าผู้ใช้ถามว่า "กับใคร", "คนไหน", "ต้องลงไปทำงานกับใคร", "ขึ้น Gold/Diamond ทำกับใคร" ให้ตอบเป็นรายชื่อจริงจาก Focus Candidates อย่างน้อย 3 คน พร้อม ID, ฝั่ง, score, เหตุผลเชิงตัวเลข และงาน 7 วันถัดไป
 ถ้าถามเรื่อง Diamond ให้เริ่มด้วยชื่อคนอันดับ 1 ทันที แล้วตามด้วย gap Diamond และลำดับคนที่ควรโค้ช
+ถ้าผู้ใช้ถามว่าใครคือผู้แนะนำ/สปอนเซอร์/upline ของสมาชิกคนใด ให้ตอบจาก Member Relationship Directory เท่านั้น ห้ามบอกว่าไม่มีข้อมูลถ้ามีชื่อหรือ ID อยู่ใน Directory
 
 === การแสดง Chart ===
 เมื่อคำตอบเกี่ยวข้องกับข้อมูลด้านล่าง ให้ใส่ tag ต่อท้ายคำอธิบาย (บรรทัดใหม่):
@@ -296,6 +367,9 @@ export async function POST(req: NextRequest) {
     const latestQuestion = messages[messages.length - 1]?.content ?? ''
 
     if (coachData) {
+      const relationship = relationshipReply(coachData, latestQuestion)
+      if (relationship) return ndjsonResponse(relationship)
+
       const deterministicReply = diamondWorkReply(coachData, latestQuestion)
       if (deterministicReply) return ndjsonResponse(deterministicReply)
     }

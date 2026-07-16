@@ -197,6 +197,24 @@ export async function GET(req: NextRequest) {
   }
 
   const growth = await getGrowthDashboardData(rootId, 9)
+  const memberDirectory = Array.from(rootSub.keys())
+    .filter((id) => id !== rootId)
+    .map((id) => {
+      const member = members[id]
+      const sponsor = member?.sponsor_id ? members[member.sponsor_id] : null
+      const upline = member?.upline_id ? members[member.upline_id] : null
+      const report = repMap.get(id)
+      return {
+        id,
+        name: member?.name ?? id,
+        sponsorId: member?.sponsor_id ?? null,
+        sponsorName: sponsor?.name ?? null,
+        uplineId: member?.upline_id ?? null,
+        uplineName: upline?.name ?? null,
+        position: report?.income_position ?? report?.highest_position ?? null,
+        isActive: report?.is_active ?? false,
+      }
+    })
 
   return NextResponse.json({
     month: latestMonth,
@@ -227,5 +245,6 @@ export async function GET(req: NextRequest) {
     diamond: growth?.diamond ?? null,
     focusCandidates: growth?.focusCandidates ?? [],
     growthInsights: growth?.insights ?? [],
+    memberDirectory,
   })
 }
