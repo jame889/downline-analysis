@@ -60,7 +60,7 @@ export async function GET(req: NextRequest) {
   const goalParam = url.searchParams.get('goal')
   const goal = goalParam ? Number(goalParam) : 50_000
 
-  const months = getAvailableMonths()
+  const months = await getAvailableMonths()
   const latestMonth = months[0]
   const prevMonth = months[1]
 

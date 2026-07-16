@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import fs from 'fs'
 import path from 'path'
-import { getSession, ROOT_MEMBER_ID } from '@/lib/auth'
-import { getAvailableMonths, getMembersForMonth, getMember, getSubtreeIds } from '@/lib/db'
+import { getSession } from '@/lib/auth'
+import { getAvailableMonths, getMembersForMonth, getSubtreeIds } from '@/lib/db'
 
 export const dynamic = 'force-dynamic'
 
@@ -43,15 +43,16 @@ async function sendTelegramMessage(
   }
 }
 
-function buildWatchlistMessage(memberId: string): string {
-  const months = getAvailableMonths().slice().sort()
+async function buildWatchlistMessage(memberId: string): Promise<string> {
+  const months = (await getAvailableMonths()).slice().sort()
   if (months.length < 2) return 'ไม่มีข้อมูลเพียงพอสำหรับ Watchlist'
 
   const currentMonth = months[months.length - 1]
   const prevMonth = months[months.length - 2]
-  const current = getMembersForMonth(currentMonth)
-  const prev = getMembersForMonth(prevMonth)
-  const subtreeIds = getSubtreeIds(memberId)
+  const current = await getMembersForMonth(currentMonth)
+  const prev = await getMembersForMonth(prevMonth)
+  const membersMap = Object.fromEntries(current.map((m) => [m.id, m]))
+  const subtreeIds = getSubtreeIds(memberId, membersMap)
 
   const prevMap = new Map<string, boolean>()
   for (const m of prev) {
@@ -71,12 +72,12 @@ function buildWatchlistMessage(memberId: string): string {
   return `<b>Watchlist Alert ${currentMonth}</b>\n\nสมาชิกที่เปลี่ยนจาก Active เป็น Inactive:\n${atRisk.slice(0, 20).join('\n')}${atRisk.length > 20 ? `\n... และอีก ${atRisk.length - 20} คน` : ''}`
 }
 
-function buildLeaderboardMessage(): string {
-  const months = getAvailableMonths().slice().sort()
+async function buildLeaderboardMessage(): Promise<string> {
+  const months = (await getAvailableMonths()).slice().sort()
   const month = months[months.length - 1]
   if (!month) return 'ไม่มีข้อมูล'
 
-  const data = getMembersForMonth(month)
+  const data = await getMembersForMonth(month)
   const topBV = data
     .slice()
     .sort((a, b) => (b.report.monthly_bv ?? 0) - (a.report.monthly_bv ?? 0))
@@ -86,13 +87,14 @@ function buildLeaderboardMessage(): string {
   return `<b>Top 5 BV - ${month}</b>\n\n${lines.join('\n')}`
 }
 
-function buildWeeklyMessage(memberId: string): string {
-  const months = getAvailableMonths().slice().sort()
+async function buildWeeklyMessage(memberId: string): Promise<string> {
+  const months = (await getAvailableMonths()).slice().sort()
   const month = months[months.length - 1]
   if (!month) return 'ไม่มีข้อมูล'
 
-  const data = getMembersForMonth(month)
-  const subtreeIds = getSubtreeIds(memberId)
+  const data = await getMembersForMonth(month)
+  const membersMap = Object.fromEntries(data.map((m) => [m.id, m]))
+  const subtreeIds = getSubtreeIds(memberId, membersMap)
   const myTeam = data.filter((m) => subtreeIds.has(m.id))
   const active = myTeam.filter((m) => m.report.is_active).length
   const totalBV = myTeam.reduce((sum, m) => sum + (m.report.monthly_bv ?? 0), 0)
@@ -106,13 +108,14 @@ function buildWeeklyMessage(memberId: string): string {
     `Vol Right: ${(me?.report.total_vol_right ?? 0).toLocaleString()}`
 }
 
-function buildWakeupMessage(memberId: string): string {
-  const months = getAvailableMonths().slice().sort()
+async function buildWakeupMessage(memberId: string): Promise<string> {
+  const months = (await getAvailableMonths()).slice().sort()
   const month = months[months.length - 1]
   if (!month) return 'ไม่มีข้อมูล'
 
-  const data = getMembersForMonth(month)
-  const subtreeIds = getSubtreeIds(memberId)
+  const data = await getMembersForMonth(month)
+  const membersMap = Object.fromEntries(data.map((m) => [m.id, m]))
+  const subtreeIds = getSubtreeIds(memberId, membersMap)
   const inactive = data.filter((m) => subtreeIds.has(m.id) && !m.report.is_active && m.upline_id === memberId)
 
   if (inactive.length === 0) return `<b>Re-engagement ${month}</b>\n\nDownline ตรงทุกคน Active อยู่`
@@ -150,16 +153,16 @@ export async function POST(request: NextRequest) {
     let message: string
     switch (type) {
       case 'watchlist':
-        message = buildWatchlistMessage(session.memberId)
+        message = await buildWatchlistMessage(session.memberId)
         break
       case 'leaderboard':
-        message = buildLeaderboardMessage()
+        message = await buildLeaderboardMessage()
         break
       case 'weekly':
-        message = buildWeeklyMessage(session.memberId)
+        message = await buildWeeklyMessage(session.memberId)
         break
       case 'wakeup':
-        message = buildWakeupMessage(session.memberId)
+        message = await buildWakeupMessage(session.memberId)
         break
     }
 

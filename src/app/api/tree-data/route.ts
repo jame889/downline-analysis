@@ -6,7 +6,7 @@ export const dynamic = 'force-dynamic'
 export async function GET(req: NextRequest) {
   try {
     const { searchParams } = new URL(req.url)
-    const months = getAvailableMonths()
+    const months = await getAvailableMonths()
     const month = searchParams.get('month') ?? months[0]
     const member = searchParams.get('member') ?? undefined
 

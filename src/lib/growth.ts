@@ -242,7 +242,7 @@ export async function getGrowthDashboardData(memberId: string, window = 9): Prom
   const last3Months = months.slice(-3)
   const focusCandidates: FocusCandidate[] = []
 
-  for (const candidateId of subtree) {
+  for (const candidateId of Array.from(subtree)) {
     if (candidateId === memberId) continue
     const candidateMember = members[candidateId]
     const candidateLatest = latestMap.get(candidateId)

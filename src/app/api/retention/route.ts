@@ -11,14 +11,14 @@ export async function GET() {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    const months = getAvailableMonths().slice().sort()
+    const months = (await getAvailableMonths()).slice().sort()
 
     // Build per-month member ID sets and active sets
     const monthMemberIds: Map<string, Set<string>> = new Map()
     const monthActiveIds: Map<string, Set<string>> = new Map()
 
     for (const month of months) {
-      const data = getMembersForMonth(month)
+      const data = await getMembersForMonth(month)
       const ids = new Set<string>()
       const activeIds = new Set<string>()
       for (const m of data) {

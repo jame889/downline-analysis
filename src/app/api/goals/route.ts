@@ -40,12 +40,12 @@ export async function GET(request: NextRequest) {
     const memberGoals = goals[memberId] ?? {}
 
     // Get current month data for progress calculation
-    const months = getAvailableMonths()
+    const months = await getAvailableMonths()
     const currentMonth = months.length > 0 ? months[0] : null // months are sorted desc
 
     let progress = null
     if (currentMonth && memberGoals[currentMonth]) {
-      const data = getMembersForMonth(currentMonth)
+      const data = await getMembersForMonth(currentMonth)
       const memberData = data.find((m) => m.id === memberId)
       const target = memberGoals[currentMonth]
 
@@ -53,7 +53,7 @@ export async function GET(request: NextRequest) {
       const prevMonths = months.filter((m) => m < currentMonth)
       const prevMemberIds = new Set<string>()
       for (const pm of prevMonths) {
-        const pData = getMembersForMonth(pm)
+        const pData = await getMembersForMonth(pm)
         for (const m of pData) {
           prevMemberIds.add(m.id)
         }

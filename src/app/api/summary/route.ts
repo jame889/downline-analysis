@@ -8,12 +8,12 @@ export const dynamic = 'force-dynamic'
 
 export async function GET() {
   try {
-    const months = getAvailableMonths()
+    const months = await getAvailableMonths()
     const summaries = getMonthlySummaries()
 
     // Build per-month root member L/R data for the admin dashboard
-    const rootLR = months.slice().sort().map((month) => {
-      const members = getMembersForMonth(month)
+    const rootLR = await Promise.all(months.slice().sort().map(async (month) => {
+      const members = await getMembersForMonth(month)
       const root = members.find((m) => m.id === ROOT_MEMBER_ID)
       return {
         month,
@@ -26,7 +26,7 @@ export async function GET() {
         weak_leg: Math.min(root?.report.total_vol_left ?? 0, root?.report.total_vol_right ?? 0),
         weak_leg_thb: bvToThb(Math.min(root?.report.total_vol_left ?? 0, root?.report.total_vol_right ?? 0)),
       }
-    })
+    }))
 
     return NextResponse.json({ months, summaries, rootLR })
   } catch (err) {
