@@ -1,7 +1,9 @@
 'use client'
 
 import {
+  ChevronDown,
   ChevronRight,
+  ChevronUp,
   Focus,
   Paintbrush,
   Rotate3D,
@@ -115,6 +117,9 @@ export default function SimulatorPage() {
   )
 
   const selectedNode = nodeMap.get(selectedId) ?? nodeMap.get(rootId) ?? null
+  const selectedHasChildren = selectedNode
+    ? nodes.some((item) => item.upline_id === selectedNode.id)
+    : false
   const sponsoredMembers = useMemo(
     () => selectedNode
       ? sponsorDirectory
@@ -149,6 +154,14 @@ export default function SimulatorPage() {
     setSelectedId(originalRootId)
     setCollapsedIds(new Set())
     setSearch('')
+    setSearchError('')
+  }
+
+  function focusNode(node: PlacementTreeNode) {
+    setRootId(node.id)
+    setSelectedId(node.id)
+    setCollapsedIds(new Set())
+    setSearch(node.id)
     setSearchError('')
   }
 
@@ -210,7 +223,7 @@ export default function SimulatorPage() {
             paintMode={paintMode}
             maxDepth={maxDepth}
             onSelect={setSelectedId}
-            onToggleCollapse={toggleNode}
+            onFocus={focusNode}
             onToggleCore={toggleCore}
           />
         )}
@@ -319,6 +332,29 @@ export default function SimulatorPage() {
                 </span>
               </div>
 
+              {selectedHasChildren && (
+                <div className="mt-3 grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => focusNode(selectedNode)}
+                    className="flex h-9 items-center justify-center gap-2 rounded-md bg-cyan-600 text-xs font-semibold text-white hover:bg-cyan-500"
+                  >
+                    <Focus className="h-4 w-4" />
+                    ดูชั้นลึก
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => toggleNode(selectedNode)}
+                    className="flex h-9 items-center justify-center gap-2 rounded-md border border-slate-700 bg-slate-900 text-xs font-semibold text-slate-300 hover:border-slate-600"
+                  >
+                    {collapsedIds.has(selectedNode.id)
+                      ? <ChevronDown className="h-4 w-4" />
+                      : <ChevronUp className="h-4 w-4" />}
+                    {collapsedIds.has(selectedNode.id) ? 'ขยายสาย' : 'ยุบสาย'}
+                  </button>
+                </div>
+              )}
+
               <div className="mt-3 grid grid-cols-2 gap-2">
                 <div className="rounded-md bg-black/30 p-2.5">
                   <p className="text-[10px] text-slate-500">BV ซ้าย</p>
@@ -358,10 +394,8 @@ export default function SimulatorPage() {
                         key={member.id}
                         type="button"
                         onClick={() => {
-                          setRootId(member.id)
-                          setSelectedId(member.id)
-                          setSearch(member.id)
-                          setCollapsedIds(new Set())
+                          const node = nodeMap.get(member.id)
+                          if (node) focusNode(node)
                         }}
                         className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left hover:bg-slate-900"
                       >
@@ -405,10 +439,7 @@ export default function SimulatorPage() {
               </div>
               <button
                 type="button"
-                onClick={() => {
-                  setRootId(selectedNode.id)
-                  setCollapsedIds(new Set())
-                }}
+                onClick={() => focusNode(selectedNode)}
                 title="เริ่มโครงสร้างจากสมาชิกนี้"
                 className="grid h-9 w-9 shrink-0 place-items-center rounded-md border border-slate-700 bg-slate-900 text-cyan-300"
               >

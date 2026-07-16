@@ -50,7 +50,7 @@ interface Props {
   paintMode: boolean
   maxDepth: number
   onSelect: (id: string) => void
-  onToggleCollapse: (node: PlacementTreeNode) => void
+  onFocus: (node: PlacementTreeNode) => void
   onToggleCore: (node: PlacementTreeNode) => void
 }
 
@@ -176,7 +176,7 @@ export default function PlacementNetwork3D({
   paintMode,
   maxDepth,
   onSelect,
-  onToggleCollapse,
+  onFocus,
   onToggleCore,
 }: Props) {
   const containerRef = useRef<HTMLDivElement>(null)
@@ -184,13 +184,14 @@ export default function PlacementNetwork3D({
   const nodesRef = useRef(nodes)
   const paintModeRef = useRef(paintMode)
   const onSelectRef = useRef(onSelect)
-  const onToggleCollapseRef = useRef(onToggleCollapse)
+  const onFocusRef = useRef(onFocus)
   const onToggleCoreRef = useRef(onToggleCore)
+  const layoutKeyRef = useRef('')
 
   nodesRef.current = nodes
   paintModeRef.current = paintMode
   onSelectRef.current = onSelect
-  onToggleCollapseRef.current = onToggleCollapse
+  onFocusRef.current = onFocus
   onToggleCoreRef.current = onToggleCore
 
   useEffect(() => {
@@ -259,8 +260,7 @@ export default function PlacementNetwork3D({
       pointerDown.y = event.clientY
     }
 
-    const onPointerUp = (event: PointerEvent) => {
-      if (Math.hypot(event.clientX - pointerDown.x, event.clientY - pointerDown.y) > 5) return
+    const findNodeAtPointer = (event: PointerEvent | MouseEvent) => {
       const rect = renderer.domElement.getBoundingClientRect()
       pointer.x = ((event.clientX - rect.left) / rect.width) * 2 - 1
       pointer.y = -((event.clientY - rect.top) / rect.height) * 2 + 1
@@ -268,19 +268,28 @@ export default function PlacementNetwork3D({
 
       const hit = raycaster.intersectObjects(network.children, true)
         .find((item) => item.object.userData.memberId)
-      if (!hit) return
+      if (!hit) return null
 
-      const node = nodesRef.current.find((item) => item.id === hit.object.userData.memberId)
+      return nodesRef.current.find((item) => item.id === hit.object.userData.memberId) ?? null
+    }
+
+    const onPointerUp = (event: PointerEvent) => {
+      if (Math.hypot(event.clientX - pointerDown.x, event.clientY - pointerDown.y) > 5) return
+      const node = findNodeAtPointer(event)
       if (!node) return
       if (paintModeRef.current) onToggleCoreRef.current(node)
-      else {
-        onSelectRef.current(node.id)
-        onToggleCollapseRef.current(node)
-      }
+      else onSelectRef.current(node.id)
+    }
+
+    const onDoubleClick = (event: MouseEvent) => {
+      if (paintModeRef.current) return
+      const node = findNodeAtPointer(event)
+      if (node) onFocusRef.current(node)
     }
 
     renderer.domElement.addEventListener('pointerdown', onPointerDown)
     renderer.domElement.addEventListener('pointerup', onPointerUp)
+    renderer.domElement.addEventListener('dblclick', onDoubleClick)
 
     let animationId = 0
     const animate = () => {
@@ -310,6 +319,7 @@ export default function PlacementNetwork3D({
       resizeObserver.disconnect()
       renderer.domElement.removeEventListener('pointerdown', onPointerDown)
       renderer.domElement.removeEventListener('pointerup', onPointerUp)
+      renderer.domElement.removeEventListener('dblclick', onDoubleClick)
       controls.dispose()
       disposeObject(network)
       renderer.dispose()
@@ -328,6 +338,14 @@ export default function PlacementNetwork3D({
     const root = buildVisualTree(nodes, rootId, collapsedIds, maxDepth)
     if (!root) return
     const visualNodes = flattenVisualTree(root)
+    const layoutKey = [
+      rootId,
+      maxDepth,
+      Array.from(collapsedIds).sort().join(','),
+      nodes.map((node) => `${node.id}:${node.upline_id ?? ''}`).join(','),
+    ].join('|')
+    const shouldRefit = layoutKeyRef.current !== layoutKey
+    layoutKeyRef.current = layoutKey
     const spacing = Math.max(2.8, Math.min(6, 38 / Math.sqrt(Math.max(root.width, 1))))
 
     const materials = {
@@ -374,23 +392,25 @@ export default function PlacementNetwork3D({
       })
     })
 
-    const xs = visualNodes.map((node) => node.x * spacing)
-    const ys = visualNodes.map((node) => node.y)
-    const minX = Math.min(...xs)
-    const maxX = Math.max(...xs)
-    const minY = Math.min(...ys)
-    const maxY = Math.max(...ys)
-    const centerX = (minX + maxX) / 2
-    const centerY = (minY + maxY) / 2
-    const width = Math.max(maxX - minX, 12)
-    const height = Math.max(maxY - minY, 12)
-    const halfFov = THREE.MathUtils.degToRad(state.camera.fov / 2)
-    const distanceForHeight = height / (2 * Math.tan(halfFov))
-    const distanceForWidth = width / (2 * Math.tan(halfFov) * state.camera.aspect)
-    const distance = Math.max(distanceForHeight, distanceForWidth, 24) * 1.25
+    if (shouldRefit) {
+      const xs = visualNodes.map((node) => node.x * spacing)
+      const ys = visualNodes.map((node) => node.y)
+      const minX = Math.min(...xs)
+      const maxX = Math.max(...xs)
+      const minY = Math.min(...ys)
+      const maxY = Math.max(...ys)
+      const centerX = (minX + maxX) / 2
+      const centerY = (minY + maxY) / 2
+      const width = Math.max(maxX - minX, 12)
+      const height = Math.max(maxY - minY, 12)
+      const halfFov = THREE.MathUtils.degToRad(state.camera.fov / 2)
+      const distanceForHeight = height / (2 * Math.tan(halfFov))
+      const distanceForWidth = width / (2 * Math.tan(halfFov) * state.camera.aspect)
+      const distance = Math.max(distanceForHeight, distanceForWidth, 24) * 1.25
 
-    state.controls.target.set(centerX, centerY, 0)
-    state.camera.position.set(centerX, centerY, Math.min(220, distance))
+      state.controls.target.set(centerX, centerY, 0)
+      state.camera.position.set(centerX, centerY, Math.min(220, distance))
+    }
     state.controls.update()
     state.renderer.render(state.scene, state.camera)
 
