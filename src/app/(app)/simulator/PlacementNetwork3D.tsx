@@ -221,7 +221,7 @@ export default function PlacementNetwork3D({
     controls.enableDamping = true
     controls.dampingFactor = 0.08
     controls.minDistance = 8
-    controls.maxDistance = 500
+    controls.maxDistance = 1500
     controls.screenSpacePanning = true
 
     scene.add(new THREE.AmbientLight('#dbeafe', 1.5))
@@ -409,7 +409,7 @@ export default function PlacementNetwork3D({
       const distance = Math.max(distanceForHeight, distanceForWidth, 24) * 1.25
 
       state.controls.target.set(centerX, centerY, 0)
-      state.camera.position.set(centerX, centerY, Math.min(220, distance))
+      state.camera.position.set(centerX, centerY, Math.min(1200, distance))
     }
     state.controls.update()
     state.renderer.render(state.scene, state.camera)

@@ -257,7 +257,7 @@ export default function SimulatorPage() {
                 className="rounded-md border border-slate-700 bg-slate-900 px-2.5 py-2 text-sm text-slate-200 outline-none focus:border-cyan-500"
                 aria-label="จำนวนชั้นที่แสดง"
               >
-                {[3, 4, 5, 6, 7, 8, 10, 12].map((depth) => (
+                {[3, 4, 5, 6, 7, 8, 10, 12, 20, 50, 100].map((depth) => (
                   <option key={depth} value={depth}>{depth} ชั้น</option>
                 ))}
               </select>
