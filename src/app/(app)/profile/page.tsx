@@ -123,7 +123,7 @@ export default function ProfilePage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ currentPassword, newPassword }),
       })
-      const d = await res.json()
+      const d = await res.json().catch(() => ({ error: 'เซิร์ฟเวอร์ตอบกลับไม่ถูกต้อง' }))
       if (res.ok && d.ok) {
         setPwResult({ type: 'success', text: 'เปลี่ยนรหัสผ่านสำเร็จแล้ว' })
         setCurrentPassword('')

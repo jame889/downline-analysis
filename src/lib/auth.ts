@@ -2,12 +2,13 @@ import { SignJWT, jwtVerify } from 'jose'
 import { cookies } from 'next/headers'
 import fs from 'fs'
 import path from 'path'
+import crypto from 'crypto'
 
-const SECRET = new TextEncoder().encode(
-  process.env.JWT_SECRET ?? 'downline-sps-secret-key-2026-internal'
-)
+const SECRET_TEXT = process.env.JWT_SECRET ?? 'downline-sps-secret-key-2026-internal'
+const SECRET = new TextEncoder().encode(SECRET_TEXT)
 
 export const SESSION_COOKIE = 'dl_session'
+export const PASSWORD_COOKIE_PREFIX = 'dl_pw_'
 export const ROOT_MEMBER_ID = process.env.NEXT_PUBLIC_ROOT_MEMBER_ID ?? '900057'
 
 export interface SessionPayload {
@@ -45,12 +46,36 @@ export async function getSession(): Promise<SessionPayload | null> {
 
 const DATA_DIR = path.join(process.cwd(), 'data')
 
+export function passwordOverrideCookieName(memberId: string): string {
+  return `${PASSWORD_COOKIE_PREFIX}${memberId.replace(/[^a-zA-Z0-9_-]/g, '')}`
+}
+
+export function createPasswordOverrideValue(memberId: string, password: string): string {
+  const changedAt = Date.now().toString(36)
+  const hash = crypto
+    .createHmac('sha256', SECRET_TEXT)
+    .update(`${memberId}:${password}`)
+    .digest('base64url')
+  return `v1.${changedAt}.${hash}`
+}
+
+function passwordOverrideMatches(memberId: string, password: string): boolean | null {
+  const value = cookies().get(passwordOverrideCookieName(memberId))?.value
+  if (!value) return null
+  const [, , hash] = value.split('.')
+  if (!hash) return null
+  const expected = createPasswordOverrideValue(memberId, password).split('.')[2]
+  return hash === expected
+}
+
 export function checkPassword(memberId: string, password: string): boolean {
   const pwFile = path.join(DATA_DIR, 'passwords.json')
   if (fs.existsSync(pwFile)) {
     const passwords: Record<string, string> = JSON.parse(fs.readFileSync(pwFile, 'utf-8'))
     if (memberId in passwords) return passwords[memberId] === password
   }
+  const override = passwordOverrideMatches(memberId, password)
+  if (override !== null) return override
   // Default password = member_id
   return password === memberId
 }

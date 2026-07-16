@@ -1,5 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getSession, checkPassword } from '@/lib/auth'
+import {
+  getSession,
+  checkPassword,
+  createPasswordOverrideValue,
+  passwordOverrideCookieName,
+} from '@/lib/auth'
 import fs from 'fs'
 import path from 'path'
 
@@ -23,16 +28,30 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'รหัสผ่านปัจจุบันไม่ถูกต้อง' }, { status: 401 })
   }
 
-  const pwFile = path.join(DATA_DIR, 'passwords.json')
-  const metaFile = path.join(DATA_DIR, 'password_meta.json')
-  const passwords = safeRead<Record<string, string>>(pwFile, {})
-  const meta = safeRead<Record<string, any>>(metaFile, {})
+  let persisted = false
+  try {
+    const pwFile = path.join(DATA_DIR, 'passwords.json')
+    const metaFile = path.join(DATA_DIR, 'password_meta.json')
+    const passwords = safeRead<Record<string, string>>(pwFile, {})
+    const meta = safeRead<Record<string, any>>(metaFile, {})
 
-  passwords[session.memberId] = newPassword
-  meta[session.memberId] = { changedAt: new Date().toISOString(), isDefault: false }
+    passwords[session.memberId] = newPassword
+    meta[session.memberId] = { changedAt: new Date().toISOString(), isDefault: false }
 
-  fs.writeFileSync(pwFile, JSON.stringify(passwords, null, 2))
-  fs.writeFileSync(metaFile, JSON.stringify(meta, null, 2))
+    fs.writeFileSync(pwFile, JSON.stringify(passwords, null, 2))
+    fs.writeFileSync(metaFile, JSON.stringify(meta, null, 2))
+    persisted = true
+  } catch (error) {
+    console.warn('[user/change-password] skipped filesystem password write', error)
+  }
 
-  return NextResponse.json({ ok: true })
+  const res = NextResponse.json({ ok: true, persisted })
+  res.cookies.set(passwordOverrideCookieName(session.memberId), createPasswordOverrideValue(session.memberId, newPassword), {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'lax',
+    maxAge: 60 * 60 * 24 * 365,
+    path: '/',
+  })
+  return res
 }
