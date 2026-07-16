@@ -2,12 +2,14 @@ import { NextRequest } from 'next/server'
 import fs from 'fs'
 import path from 'path'
 
-const OLLAMA_URL = process.env.OLLAMA_URL || 'http://localhost:11434'
-const MODEL = process.env.OLLAMA_MODEL || 'gemma4:e2b'
+const cleanEnv = (value: string | undefined) => value?.replace(/\\n|\n/g, '').replace(/^"|"$/g, '').trim() ?? ''
+
+const OLLAMA_URL = cleanEnv(process.env.OLLAMA_URL) || 'http://localhost:11434'
+const MODEL = cleanEnv(process.env.OLLAMA_MODEL) || 'llama3.2:3b'
 const KNOWLEDGE_DIR = path.join(process.cwd(), 'data', 'knowledge')
 
-const SUPABASE_URL = process.env.SUPABASE_URL?.replace(/\\n|\n/g, '').replace(/^"|"$/g, '') ?? ''
-const SUPABASE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY?.replace(/\\n|\n/g, '').replace(/^"|"$/g, '') ?? ''
+const SUPABASE_URL = cleanEnv(process.env.SUPABASE_URL)
+const SUPABASE_KEY = cleanEnv(process.env.SUPABASE_SERVICE_ROLE_KEY)
 const BUCKET = 'knowledge'
 const USE_SUPABASE = !!(SUPABASE_URL && SUPABASE_KEY)
 
