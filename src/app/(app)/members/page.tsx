@@ -33,7 +33,10 @@ export default function MembersPage() {
   const filtered = useMemo(() => {
     return members.filter((m) => {
       const q = search.toLowerCase()
-      const matchSearch = !q || m.id.includes(q) || m.name.toLowerCase().includes(q)
+      const matchSearch = !q
+        || m.id.includes(q)
+        || m.name.toLowerCase().includes(q)
+        || (m.mbti ?? '').toLowerCase().includes(q)
       const matchPos = posFilter === 'ALL' || m.report.highest_position === posFilter
       const matchActive = activeFilter === 'ALL'
         || (activeFilter === 'Y' && m.report.is_active)
@@ -101,6 +104,7 @@ export default function MembersPage() {
               <tr className="border-b border-slate-800 text-slate-400 text-xs">
                 <th className="text-left px-4 py-3">ชั้น</th>
                 <th className="text-left px-4 py-3">รหัส / ชื่อ</th>
+                <th className="text-center px-4 py-3">MBTI</th>
                 <th className="text-left px-4 py-3">วันที่สมัคร</th>
                 <th className="text-left px-4 py-3">ตำแหน่ง</th>
                 <th className="text-center px-4 py-3">Active</th>
@@ -112,9 +116,9 @@ export default function MembersPage() {
             </thead>
             <tbody>
               {loading ? (
-                <tr><td colSpan={9} className="text-center py-10 text-slate-500">กำลังโหลด...</td></tr>
+                <tr><td colSpan={10} className="text-center py-10 text-slate-500">กำลังโหลด...</td></tr>
               ) : filtered.length === 0 ? (
-                <tr><td colSpan={9} className="text-center py-10 text-slate-500">ไม่พบข้อมูล</td></tr>
+                <tr><td colSpan={10} className="text-center py-10 text-slate-500">ไม่พบข้อมูล</td></tr>
               ) : filtered.map((m) => (
                 <tr key={m.id} className="border-b border-slate-800/50 hover:bg-slate-800/30 transition-colors">
                   <td className="px-4 py-2.5 text-slate-400">{m.report.level}</td>
@@ -123,6 +127,15 @@ export default function MembersPage() {
                       <span className="text-brand-400 font-mono">{m.id}</span>
                       <span className="text-slate-300 ml-2">{m.name}</span>
                     </Link>
+                  </td>
+                  <td className="px-4 py-2.5 text-center">
+                    {m.mbti ? (
+                      <span className="inline-flex min-w-12 justify-center rounded border border-cyan-800 bg-cyan-950/50 px-2 py-1 font-mono text-xs font-semibold text-cyan-300">
+                        {m.mbti.toUpperCase()}
+                      </span>
+                    ) : (
+                      <span className="text-slate-600">-</span>
+                    )}
                   </td>
                   <td className="px-4 py-2.5 text-slate-400">{m.join_date}</td>
                   <td className="px-4 py-2.5">

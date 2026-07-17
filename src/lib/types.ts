@@ -15,6 +15,7 @@ export type Position =
 export interface Member {
   id: string
   name: string
+  mbti?: string | null
   join_date: string
   country: string
   lv: number
