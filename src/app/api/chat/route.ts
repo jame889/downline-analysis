@@ -1,14 +1,13 @@
 import { NextRequest } from 'next/server'
 import fs from 'fs'
 import path from 'path'
+import { generateCoachReply, getCoachAiHealth, type AiMessage } from '@/lib/coach-ai'
+import { getSession } from '@/lib/auth'
+
+export const maxDuration = 60
 
 const cleanEnv = (value: string | undefined) => value?.replace(/\\n|\n/g, '').replace(/^"|"$/g, '').trim() ?? ''
 
-const OLLAMA_URL = cleanEnv(process.env.OLLAMA_URL) || 'http://localhost:11434'
-const MODEL = cleanEnv(process.env.OLLAMA_MODEL) || 'llama3.2:3b'
-const OLLAMA_NUM_CTX = Number(cleanEnv(process.env.OLLAMA_NUM_CTX)) || 2048
-const OLLAMA_NUM_PREDICT = Number(cleanEnv(process.env.OLLAMA_NUM_PREDICT)) || 350
-const OLLAMA_TIMEOUT_MS = Number(cleanEnv(process.env.OLLAMA_TIMEOUT_MS)) || 55_000
 const KNOWLEDGE_DIR = path.join(process.cwd(), 'data', 'knowledge')
 
 const SUPABASE_URL = cleanEnv(process.env.SUPABASE_URL)
@@ -25,25 +24,14 @@ function errorDetails(error: unknown) {
 }
 
 export async function GET() {
-  const controller = new AbortController()
-  const timeout = setTimeout(() => controller.abort(), 5_000)
-  try {
-    const response = await fetch(`${OLLAMA_URL}/api/tags`, {
-      signal: controller.signal,
-      cache: 'no-store',
-    })
-    if (!response.ok) {
-      return Response.json({ online: false, status: response.status }, { status: 503 })
-    }
-    const data = await response.json() as { models?: Array<{ name?: string }> }
-    const modelAvailable = (data.models ?? []).some((item) => item.name === MODEL)
-    return Response.json({ online: true, model: MODEL, modelAvailable })
-  } catch (error) {
-    console.warn(JSON.stringify({ level: 'warn', message: 'ollama_health_failed', ...errorDetails(error) }))
-    return Response.json({ online: false }, { status: 503 })
-  } finally {
-    clearTimeout(timeout)
-  }
+  const providers = await getCoachAiHealth()
+  const active = providers.find((provider) => provider.online)
+  return Response.json({
+    online: Boolean(active),
+    provider: active?.provider ?? 'data',
+    model: active?.model ?? 'Coach Data Engine',
+    providers,
+  }, { status: active ? 200 : 503 })
 }
 
 function sbHeaders() {
@@ -90,7 +78,8 @@ async function loadKnowledge(): Promise<string> {
   }
 
   const excerpts = docs
-    .map(d => d.content ? `### ${d.title}\n${d.content.slice(0, 3000)}` : null)
+    .slice(0, 4)
+    .map(d => d.content ? `### ${d.title}\n${d.content.slice(0, 1500)}` : null)
     .filter(Boolean) as string[]
   if (!excerpts.length) return ''
   return `\n\n=== ฐานความรู้ด้านธุรกิจเครือข่าย Binary ===\n${excerpts.join('\n\n---\n\n')}`
@@ -105,12 +94,12 @@ function fallbackReply(coachData: Record<string, unknown> | null, messages: Arra
     myPersonalSponsors?: number
   } | null
   const latestQuestion = messages[messages.length - 1]?.content ?? ''
-  if (!d) return `ตอนนี้ระบบ AI หลักเชื่อมต่อไม่ได้ชั่วคราว แต่ Coach JOE ยังรับคำถามได้ครับ\n\nคำถามของคุณ: ${latestQuestion}\n\nแนะนำให้ดู Balance, Weak Leg และ Action Priority ในหน้า Coach ก่อน แล้วลองส่งคำถามอีกครั้งภายหลัง`
+  if (!d) return `Coach JOE กำลังใช้โหมดข้อมูลสำรองครับ\n\nคำถามของคุณ: ${latestQuestion}\n\nแนะนำให้ดู Balance, Weak Leg และ Action Priority ในหน้า Coach ก่อน แล้วลองส่งคำถามอีกครั้งภายหลัง`
 
   const weakSide = d.balance?.weakSide === 'L' ? 'ซ้าย' : d.balance?.weakSide === 'R' ? 'ขวา' : 'ที่อ่อนกว่า'
   const firstAction = d.actions?.[0]
   return [
-    'ตอนนี้ AI หลักเชื่อมต่อไม่ได้ชั่วคราว ผมสรุปจากข้อมูล Dashboard ให้ก่อน:',
+    'Cloud AI ยังไม่ตอบในรอบนี้ ผมจึงสรุปจาก Coach Data Engine ให้ทันที:',
     `1. Weak Leg คือสาย${weakSide} ขาดอีกประมาณ ${(d.balance?.gapToBalance ?? 0).toLocaleString()} BV เพื่อ Balance`,
     `2. Safe Zone ตอนนี้ ${d.safeLines ?? 0}/${d.gen1?.length ?? 0} สาย`,
     `3. สปอนเซอร์ส่วนตัวเดือนนี้ ${d.myPersonalSponsors ?? 0} คน`,
@@ -120,11 +109,12 @@ function fallbackReply(coachData: Record<string, unknown> | null, messages: Arra
   ].join('\n')
 }
 
-function ndjsonResponse(content: string) {
+function ndjsonResponse(content: string, provider = 'data') {
   return new Response(`${JSON.stringify({ message: { content } })}\n`, {
     headers: {
       'Content-Type': 'application/x-ndjson',
       'Cache-Control': 'no-cache',
+      'X-Coach-Provider': provider,
     },
   })
 }
@@ -154,6 +144,59 @@ type MemberDirectoryEntry = {
 
 function normalizeText(value: string) {
   return value.toLowerCase().replace(/\s+/g, ' ').trim()
+}
+
+function escapeRegExp(value: string) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
+
+function buildMemberPrivacyFilter(coachData: Record<string, unknown> | null) {
+  const d = coachData as {
+    member?: { id?: string; name?: string }
+    memberDirectory?: MemberDirectoryEntry[]
+    gen1?: Array<{ id?: string; name?: string }>
+    newMembers?: Array<{ id?: string; name?: string }>
+    focusCandidates?: Array<{ id?: string; name?: string }>
+  } | null
+  const members = new Map<string, string>()
+  const add = (member: { id?: string; name?: string } | undefined) => {
+    if (member?.id && member.name) members.set(member.id, member.name)
+  }
+  add(d?.member)
+  d?.memberDirectory?.forEach(add)
+  d?.gen1?.forEach(add)
+  d?.newMembers?.forEach(add)
+  d?.focusCandidates?.forEach(add)
+
+  const aliases = Array.from(members, ([id, name], index) => ({
+    id,
+    name,
+    token: `[MEMBER_${String(index + 1).padStart(3, '0')}]`,
+  }))
+
+  function protect(input: string) {
+    let output = input
+    for (const item of aliases) {
+      output = output.replace(new RegExp(escapeRegExp(`${item.name} (${item.id})`), 'gi'), item.token)
+    }
+    for (const item of aliases) {
+      output = output.replace(new RegExp(`\\b${escapeRegExp(item.id)}\\b`, 'g'), item.token)
+    }
+    for (const item of aliases.slice().sort((a, b) => b.name.length - a.name.length)) {
+      output = output.replace(new RegExp(escapeRegExp(item.name), 'gi'), item.token)
+    }
+    return output
+  }
+
+  function restore(input: string) {
+    let output = input
+    for (const item of aliases) {
+      output = output.split(item.token).join(`${item.name} (${item.id})`)
+    }
+    return output
+  }
+
+  return { protect, restore }
 }
 
 function isRelationshipQuestion(question: string) {
@@ -336,10 +379,6 @@ async function buildSystemPrompt(coachData: Record<string, unknown> | null): Pro
     `${index + 1}. ${c.name} (${c.id}) ฝั่ง${c.side}, ${c.position}, score ${c.score}/100, status ${c.status}, New BV ${c.latestNewVolume.toLocaleString()}, L/R ${c.latestLeft.toLocaleString()}/${c.latestRight.toLocaleString()}, sponsor3m ${c.sponsorLast3}, movingUp3m ${c.movingUpsLast3}, leaders ${c.leadersCreated}, active ${c.activeConsistency}%, momentum ${c.momentumRatio}x, action: ${c.recommendation}`
   ).join('\n') ?? ''
 
-  const directoryStr = d.memberDirectory?.slice(0, 80).map((m) =>
-    `${m.name} (${m.id}): sponsor ${m.sponsorName ? `${m.sponsorName} (${m.sponsorId})` : '-'}, upline ${m.uplineName ? `${m.uplineName} (${m.uplineId})` : '-'}, ${m.isActive ? 'Active' : 'Inactive'}${m.position ? `, ${m.position}` : ''}`
-  ).join('\n') ?? ''
-
   const knowledge = await loadKnowledge()
 
   return `คุณคือ Coach JOE ผู้เชี่ยวชาญด้านธุรกิจ First Community Binary ที่พูดภาษาไทย ตอบสั้น กระชับ ตรงประเด็น
@@ -367,9 +406,6 @@ ${diamondStr}
 === คนที่ควรลงไปทำงานด้วย / Focus Candidates ===
 ${focusCandidateStr || 'ยังไม่มี candidate เพียงพอ'}
 
-=== Member Relationship Directory ===
-${directoryStr || 'ยังไม่มีข้อมูล sponsor/upline'}
-
 === กลยุทธ์หลัก ===
 Hybrid 20/80: 20% Frontline (Speed) + 80% การขุดลึก (Stability)
 สายซ้าย = Speed, สายขวา = Stability
@@ -378,7 +414,7 @@ Hybrid 20/80: 20% Frontline (Speed) + 80% การขุดลึก (Stability
 ตอบเป็นภาษาไทย สั้น กระชับ ตรงประเด็น ใช้ข้อมูลข้างต้นประกอบคำแนะนำเสมอ
 ห้ามตอบกว้างๆ ถ้าผู้ใช้ถามว่า "กับใคร", "คนไหน", "ต้องลงไปทำงานกับใคร", "ขึ้น Gold/Diamond ทำกับใคร" ให้ตอบเป็นรายชื่อจริงจาก Focus Candidates อย่างน้อย 3 คน พร้อม ID, ฝั่ง, score, เหตุผลเชิงตัวเลข และงาน 7 วันถัดไป
 ถ้าถามเรื่อง Diamond ให้เริ่มด้วยชื่อคนอันดับ 1 ทันที แล้วตามด้วย gap Diamond และลำดับคนที่ควรโค้ช
-ถ้าผู้ใช้ถามว่าใครคือผู้แนะนำ/สปอนเซอร์/upline ของสมาชิกคนใด ให้ตอบจาก Member Relationship Directory เท่านั้น ห้ามบอกว่าไม่มีข้อมูลถ้ามีชื่อหรือ ID อยู่ใน Directory
+คำถามผู้แนะนำ/สปอนเซอร์/upline จะถูกตอบจาก Coach Data Engine ก่อนส่งมาถึงคุณ ห้ามเดาความสัมพันธ์ของสมาชิกเอง
 
 === การแสดง Chart ===
 เมื่อคำตอบเกี่ยวข้องกับข้อมูลด้านล่าง ให้ใส่ tag ต่อท้ายคำอธิบาย (บรรทัดใหม่):
@@ -393,8 +429,19 @@ export async function POST(req: NextRequest) {
   const startedAt = Date.now()
   let payload: { messages: Array<{ role: string; content: string }>; coachData: Record<string, unknown> | null } | null = null
   try {
+    const session = await getSession()
+    if (!session) return Response.json({ error: 'Unauthorized' }, { status: 401 })
+
     payload = await req.json()
-    const { messages, coachData } = payload!
+    const { messages: rawMessages, coachData } = payload!
+    if (!Array.isArray(rawMessages) || rawMessages.length === 0) {
+      return Response.json({ error: 'Invalid messages' }, { status: 400 })
+    }
+    const messages = rawMessages
+      .filter((message) => message && (message.role === 'user' || message.role === 'assistant') && typeof message.content === 'string')
+      .slice(-8)
+      .map((message) => ({ role: message.role, content: message.content.slice(0, 2_000) }))
+    if (!messages.length) return Response.json({ error: 'Invalid messages' }, { status: 400 })
     const latestQuestion = messages[messages.length - 1]?.content ?? ''
 
     if (coachData) {
@@ -406,55 +453,27 @@ export async function POST(req: NextRequest) {
     }
 
     const systemPrompt = await buildSystemPrompt(coachData)
-    const controller = new AbortController()
-    const timeout = setTimeout(() => controller.abort(), OLLAMA_TIMEOUT_MS)
-
-    let ollamaRes: Response
-    try {
-      ollamaRes = await fetch(`${OLLAMA_URL}/api/chat`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        signal: controller.signal,
-        body: JSON.stringify({
-          model: MODEL,
-          messages: [
-            { role: 'system', content: systemPrompt },
-            ...messages,
-          ],
-          stream: true,
-          options: {
-            num_ctx: OLLAMA_NUM_CTX,
-            num_predict: OLLAMA_NUM_PREDICT,
-            temperature: 0.4,
-          },
-        }),
-      })
-    } finally {
-      clearTimeout(timeout)
-    }
-
-    if (!ollamaRes.ok) {
-      console.warn(JSON.stringify({
-        level: 'warn',
-        message: 'ollama_chat_rejected',
-        status: ollamaRes.status,
-        durationMs: Date.now() - startedAt,
-      }))
-      return ndjsonResponse(fallbackReply(coachData, messages))
-    }
-
-    // Forward Ollama's NDJSON stream as-is
-    return new Response(ollamaRes.body, {
-      headers: {
-        'Content-Type': 'application/x-ndjson',
-        'Transfer-Encoding': 'chunked',
-        'Cache-Control': 'no-cache',
-      },
-    })
+    const privacy = buildMemberPrivacyFilter(coachData)
+    const aiMessages: AiMessage[] = [
+      { role: 'system', content: privacy.protect(systemPrompt) },
+      ...messages.map((message) => ({
+        role: message.role as 'user' | 'assistant',
+        content: privacy.protect(message.content),
+      })),
+    ]
+    const result = await generateCoachReply(aiMessages)
+    console.info(JSON.stringify({
+      level: 'info',
+      message: 'coach_ai_completed',
+      provider: result.provider,
+      model: result.model,
+      durationMs: Date.now() - startedAt,
+    }))
+    return ndjsonResponse(privacy.restore(result.content), result.provider)
   } catch (e) {
     console.warn(JSON.stringify({
       level: 'warn',
-      message: 'ollama_chat_failed',
+      message: 'coach_ai_all_providers_failed',
       durationMs: Date.now() - startedAt,
       ...errorDetails(e),
     }))

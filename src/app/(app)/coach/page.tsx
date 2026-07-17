@@ -205,6 +205,14 @@ interface ChatMessage {
   content: string
 }
 
+function providerLabel(provider: string | undefined) {
+  if (provider === 'groq') return 'Groq AI'
+  if (provider === 'openrouter') return 'OpenRouter AI'
+  if (provider === 'cloudflare') return 'Cloudflare AI'
+  if (provider === 'data') return 'Coach Data Engine'
+  return 'Cloud AI'
+}
+
 // ── TTS helpers ───────────────────────────────────────────────────────────────
 
 function ChatBot({ coachData }: { coachData: CoachData }) {
@@ -214,6 +222,7 @@ function ChatBot({ coachData }: { coachData: CoachData }) {
   const [ttsEnabled, setTtsEnabled] = useState(false)
   const [speaking, setSpeaking] = useState(false)
   const [aiStatus, setAiStatus] = useState<'checking' | 'online' | 'fallback'>('checking')
+  const [aiProvider, setAiProvider] = useState('Cloud AI')
   const bottomRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const prevStreamingRef = useRef(false)
@@ -229,13 +238,16 @@ function ChatBot({ coachData }: { coachData: CoachData }) {
       try {
         const response = await fetch('/api/chat', { cache: 'no-store' })
         const data = await response.json()
-        if (mounted) setAiStatus(response.ok && data.online ? 'online' : 'fallback')
+        if (mounted) {
+          setAiStatus(response.ok && data.online ? 'online' : 'fallback')
+          setAiProvider(providerLabel(data.provider))
+        }
       } catch {
         if (mounted) setAiStatus('fallback')
       }
     }
     checkAiStatus()
-    const interval = window.setInterval(checkAiStatus, 60_000)
+    const interval = window.setInterval(checkAiStatus, 300_000)
     return () => {
       mounted = false
       window.clearInterval(interval)
@@ -304,6 +316,11 @@ function ChatBot({ coachData }: { coachData: CoachData }) {
       })
 
       if (!res.ok || !res.body) throw new Error('Failed')
+      const responseProvider = res.headers.get('X-Coach-Provider')
+      if (responseProvider) {
+        setAiProvider(providerLabel(responseProvider))
+        setAiStatus(responseProvider === 'data' ? 'fallback' : 'online')
+      }
 
       const reader = res.body.getReader()
       const decoder = new TextDecoder()
@@ -369,7 +386,7 @@ function ChatBot({ coachData }: { coachData: CoachData }) {
           </div>
           <div>
             <p className="text-sm font-semibold text-white">Coach JOE AI</p>
-            <p className="text-xs text-slate-400">Ollama AI · รู้ข้อมูลของคุณ · ตอบภาษาไทย</p>
+            <p className="text-xs text-slate-400">{aiProvider} · รู้ข้อมูลของคุณ · ตอบภาษาไทย</p>
           </div>
         </div>
         <div className="flex items-center gap-3">
