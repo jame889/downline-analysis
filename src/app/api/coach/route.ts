@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getSession } from '@/lib/auth'
 import { getAllMembers, getAvailableMonths, getReportsForMonths } from '@/lib/db'
 import { getGrowthDashboardData } from '@/lib/growth'
+import { getDailyActivityAnalysis } from '@/lib/daily-activities'
 import type { Member } from '@/lib/types'
 
 export const dynamic = 'force-dynamic'
@@ -197,7 +198,65 @@ export async function GET(req: NextRequest) {
     })
   }
 
-  const growth = await getGrowthDashboardData(rootId, 9)
+  const [growth, activityAnalysis] = await Promise.all([
+    getGrowthDashboardData(rootId, 9),
+    getDailyActivityAnalysis(rootId),
+  ])
+
+  const activity30 = activityAnalysis.recent30
+  if (activity30.totalActivities === 0) {
+    actions.push({
+      priority: 'medium',
+      category: 'Activity Data',
+      title: 'ยังไม่มีบันทึกกิจกรรมใน 30 วันล่าสุด',
+      detail: 'เริ่มบันทึกกิจกรรมและผลทีมซ้าย–ขวาทุกวัน เพื่อให้ Coach JOE วิเคราะห์คอขวดจากการลงมือทำจริงได้',
+    })
+  } else {
+    if (activity30.activeDays < 8) {
+      actions.push({
+        priority: 'medium',
+        category: 'Consistency',
+        title: `ลงมือทำ ${activity30.activeDays}/30 วัน — ความสม่ำเสมอยังต่ำ`,
+        detail: `บันทึกแล้ว ${activity30.totalActivities} กิจกรรม ควรวางกิจกรรมอย่างน้อย 3 วันต่อสัปดาห์และติดตามผลทุกวัน`,
+      })
+    }
+    if (activity30.outreachCount > 0 && activity30.meetingCount === 0) {
+      actions.push({
+        priority: 'high',
+        category: 'Conversion',
+        title: `ทำ Outreach ${activity30.outreachCount} ครั้ง แต่ยังไม่มี Meeting`,
+        detail: 'คอขวดอยู่ช่วงเปลี่ยนการติดต่อเป็นนัดหมาย ให้ทบทวนรายชื่อ ข้อความเชิญ และ Follow-up ภายใน 24 ชั่วโมง',
+      })
+    }
+    if (activity30.totalActivities >= 8 && myPersonalSponsors.length === 0) {
+      actions.push({
+        priority: 'high',
+        category: 'Result Gap',
+        title: `ทำ ${activity30.totalActivities} กิจกรรม แต่ Sponsor ใหม่ยังเป็น 0`,
+        detail: 'ปริมาณการลงมือทำมีแล้ว แต่ผลยังไม่เปลี่ยนเป็น Sponsor ควรตรวจคุณภาพการนัด การ Follow-up และการพาคนเข้า Start Up',
+      })
+    }
+
+    const weakParticipants = weakSide === 'L' ? activity30.leftParticipants : activity30.rightParticipants
+    const strongParticipants = weakSide === 'L' ? activity30.rightParticipants : activity30.leftParticipants
+    if (strongParticipants > weakParticipants) {
+      actions.push({
+        priority: 'medium',
+        category: 'Weak Leg Focus',
+        title: `ผลกิจกรรมยังเข้าฝั่ง${weakSide === 'L' ? 'ซ้าย' : 'ขวา'}น้อยกว่าฝั่งแข็ง`,
+        detail: `30 วันล่าสุด ฝั่งอ่อนมีผู้เข้าร่วม ${weakParticipants} คน เทียบฝั่งแข็ง ${strongParticipants} คน ให้จัดกิจกรรม 7 วันถัดไปเน้นฝั่งอ่อน`,
+      })
+    }
+  }
+
+  if (activityAnalysis.upcoming7.totalActivities === 0) {
+    actions.push({
+      priority: 'low',
+      category: '7-Day Plan',
+      title: 'ยังไม่มีกิจกรรมในแผน 7 วันข้างหน้า',
+      detail: 'ใส่กิจกรรมล่วงหน้าในปฏิทินอย่างน้อย 3 วัน เพื่อเปลี่ยนคำแนะนำของ Coach JOE เป็นตารางลงมือทำจริง',
+    })
+  }
   const memberDirectory = Array.from(rootSub.keys())
     .filter((id) => id !== rootId)
     .map((id) => {
@@ -247,5 +306,6 @@ export async function GET(req: NextRequest) {
     focusCandidates: growth?.focusCandidates ?? [],
     growthInsights: growth?.insights ?? [],
     memberDirectory,
+    activityAnalysis,
   })
 }

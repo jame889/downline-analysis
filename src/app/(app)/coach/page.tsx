@@ -42,6 +42,17 @@ interface CoachData {
   byLevel: Record<string, { total: number; active: number }>
   actions: Action[]
   myPersonalSponsors: number
+  activityAnalysis?: {
+    recent30: {
+      totalActivities: number
+      activeDays: number
+      consistencyPct: number
+      leftParticipants: number
+      rightParticipants: number
+    }
+    recent7: { totalActivities: number; activeDays: number }
+    upcoming7: { totalActivities: number; activeDays: number }
+  }
 }
 
 // ── Sub-components ────────────────────────────────────────────────────────────
@@ -371,6 +382,7 @@ function ChatBot({ coachData }: { coachData: CoachData }) {
   }
 
   const suggestions = [
+    'วิเคราะห์กิจกรรม 30 วันของฉัน แล้ววางแผน 7 วันให้หน่อย',
     'สายไหนควรโฟกัสตอนนี้?',
     'ทำยังไงให้ Balance เร็วที่สุด?',
     'สมาชิกใหม่คนไหนต้อง การขุดลึก ด่วน?',
@@ -387,7 +399,9 @@ function ChatBot({ coachData }: { coachData: CoachData }) {
           </div>
           <div>
             <p className="text-sm font-semibold text-white">Coach JOE AI</p>
-            <p className="text-xs text-slate-400">{aiProvider} · รู้ข้อมูลของคุณ · ตอบภาษาไทย</p>
+            <p className="text-xs text-slate-400">
+              {aiProvider} · ผังและกิจกรรม 30 วัน {coachData.activityAnalysis?.recent30.totalActivities ?? 0} รายการ
+            </p>
           </div>
         </div>
         <div className="flex items-center gap-3">

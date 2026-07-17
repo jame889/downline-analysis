@@ -3,6 +3,7 @@ import fs from 'fs'
 import path from 'path'
 import { generateCoachReply, getCoachAiHealth, type AiMessage } from '@/lib/coach-ai'
 import { getSession } from '@/lib/auth'
+import type { DailyActivityAnalysis } from '@/lib/daily-activities'
 
 export const maxDuration = 60
 
@@ -88,24 +89,43 @@ async function loadKnowledge(): Promise<string> {
 function fallbackReply(coachData: Record<string, unknown> | null, messages: Array<{ role: string; content: string }>): string {
   const d = coachData as {
     balance?: { weakSide?: string; weakVol?: number; strongVol?: number; gapToBalance?: number; urgency?: string }
-    actions?: Array<{ priority: string; title: string; detail: string }>
+    actions?: Array<{ priority: string; category: string; title: string; detail: string }>
     safeLines?: number
     gen1?: unknown[]
     myPersonalSponsors?: number
+    activityAnalysis?: DailyActivityAnalysis
+    focusCandidates?: Array<{ id: string; name: string; side: string; score: number }>
   } | null
   const latestQuestion = messages[messages.length - 1]?.content ?? ''
   if (!d) return `Coach JOE กำลังใช้โหมดข้อมูลสำรองครับ\n\nคำถามของคุณ: ${latestQuestion}\n\nแนะนำให้ดู Balance, Weak Leg และ Action Priority ในหน้า Coach ก่อน แล้วลองส่งคำถามอีกครั้งภายหลัง`
 
   const weakSide = d.balance?.weakSide === 'L' ? 'ซ้าย' : d.balance?.weakSide === 'R' ? 'ขวา' : 'ที่อ่อนกว่า'
   const firstAction = d.actions?.[0]
+  const activity = d.activityAnalysis
+  const activityAction = d.actions?.find((item) => ['Consistency', 'Conversion', 'Result Gap', 'Weak Leg Focus'].includes(item.category))
+  const focusPeople = d.focusCandidates
+    ?.filter((item) => item.side === weakSide)
+    .slice(0, 3)
+    .map((item) => `${item.name} (${item.id}, score ${item.score})`)
+    .join(', ')
+  const sevenDayPlan = activity && activity.recent30.totalActivities >= 8 && (d.myPersonalSponsors ?? 0) === 0
+    ? `รักษาปริมาณเดิม แต่เปลี่ยนเป็น Follow-up เชิงคุณภาพ: นัดทบทวน 3 ราย, Meeting 2 ครั้ง และ Start Up 1 ครั้ง โดยเน้นฝั่ง${weakSide}`
+    : `ลงมืออย่างน้อย 3 วัน: Outreach 3 ครั้ง, Meeting 2 ครั้ง และ Start Up 1 ครั้ง โดยเน้นฝั่ง${weakSide}`
   return [
     'Cloud AI ยังไม่ตอบในรอบนี้ ผมจึงสรุปจาก Coach Data Engine ให้ทันที:',
     `1. Weak Leg คือสาย${weakSide} ขาดอีกประมาณ ${(d.balance?.gapToBalance ?? 0).toLocaleString()} BV เพื่อ Balance`,
     `2. Safe Zone ตอนนี้ ${d.safeLines ?? 0}/${d.gen1?.length ?? 0} สาย`,
     `3. สปอนเซอร์ส่วนตัวเดือนนี้ ${d.myPersonalSponsors ?? 0} คน`,
-    firstAction ? `4. Priority แรก: ${firstAction.title} - ${firstAction.detail}` : '4. Priority แรก: ตรวจสายอ่อนและเลือกคนที่ต้องโค้ชใน 7 วัน',
+    activity
+      ? `4. กิจกรรม 30 วัน: ${activity.recent30.totalActivities} ครั้ง ใน ${activity.recent30.activeDays} วัน · ทีมซ้าย ${activity.recent30.leftParticipants} คน · ทีมขวา ${activity.recent30.rightParticipants} คน`
+      : '4. ยังไม่มีข้อมูลกิจกรรมรายวันสำหรับวิเคราะห์',
+    activityAction
+      ? `5. คอขวดจากกิจกรรม: ${activityAction.title} - ${activityAction.detail}`
+      : firstAction ? `5. Priority แรก: ${firstAction.title} - ${firstAction.detail}` : '5. Priority แรก: ตรวจสายอ่อนและเลือกคนที่ต้องโค้ชใน 7 วัน',
+    `6. แผน 7 วัน: ${sevenDayPlan}`,
+    focusPeople ? `7. คนที่ควรทำงานด้วย: ${focusPeople}` : `7. เลือก Focus Candidate ในฝั่ง${weakSide}และติดตามผลทุก 48 ชั่วโมง`,
     '',
-    'ให้โฟกัส 7 วันแรกที่ Weak Leg, ปลุก Gen 1 ที่ inactive, และ Start Up สมาชิกใหม่ให้เร็วที่สุด [CHART:balance]',
+    'บันทึกผลทีมซ้าย–ขวาหลังจบทุกกิจกรรม เพื่อให้ Coach JOE ปรับแผนรอบถัดไป [CHART:balance]',
   ].join('\n')
 }
 
@@ -357,6 +377,7 @@ async function buildSystemPrompt(coachData: Record<string, unknown> | null): Pro
       recommendation: string
     }>
     growthInsights?: string[]
+    activityAnalysis?: DailyActivityAnalysis
   }
 
   const balanceStr = d.balance
@@ -380,6 +401,32 @@ async function buildSystemPrompt(coachData: Record<string, unknown> | null): Pro
   const focusCandidateStr = d.focusCandidates?.slice(0, 8).map((c, index) =>
     `${index + 1}. ${c.name} (${c.id}) ฝั่ง${c.side}, ${c.position}, score ${c.score}/100, status ${c.status}, New BV ${c.latestNewVolume.toLocaleString()}, L/R ${c.latestLeft.toLocaleString()}/${c.latestRight.toLocaleString()}, sponsor3m ${c.sponsorLast3}, movingUp3m ${c.movingUpsLast3}, leaders ${c.leadersCreated}, active ${c.activeConsistency}%, momentum ${c.momentumRatio}x, action: ${c.recommendation}`
   ).join('\n') ?? ''
+
+  const activity = d.activityAnalysis
+  const activityTypeStr = activity?.typeBreakdown.map((item) =>
+    `${item.label}: ${item.count} ครั้ง, ทีมซ้าย ${item.leftParticipants} คน, ทีมขวา ${item.rightParticipants} คน`
+  ).join('\n') ?? ''
+  const recentActivityStr = activity?.recentEntries.map((item) => {
+    const detail = item.details.replace(/\s+/g, ' ').trim()
+    return `${item.date} ${item.startTime} ${item.label}, ซ้าย ${item.leftCount}, ขวา ${item.rightCount}${detail ? `, รายละเอียด: ${detail}` : ''}`
+  }).join('\n') ?? ''
+  const momentumText = activity?.momentumChangePct === null || activity?.momentumChangePct === undefined
+    ? 'ยังเทียบแนวโน้มไม่ได้'
+    : `${activity.momentumChangePct >= 0 ? '+' : ''}${activity.momentumChangePct}%`
+  const activityStr = activity
+    ? `ช่วง 30 วัน ${activity.recent30.startDate} ถึง ${activity.recent30.endDate}: ${activity.recent30.totalActivities} กิจกรรม ใน ${activity.recent30.activeDays} วัน (Consistency ${activity.recent30.consistencyPct}%)
+Outreach ${activity.recent30.outreachCount}, Meeting/Event ${activity.recent30.meetingCount}, Start Up ${activity.recent30.startupCount}
+ผู้เข้าร่วม/ผลทีม: ซ้าย ${activity.recent30.leftParticipants} คน, ขวา ${activity.recent30.rightParticipants} คน
+7 วันล่าสุด ${activity.recent7.totalActivities} กิจกรรม เทียบ 7 วันก่อน ${activity.previous7.totalActivities} กิจกรรม, Momentum ${momentumText}
+Streak ล่าสุด ${activity.currentStreakDays} วัน, กิจกรรมล่าสุด ${activity.lastActivityDate ?? 'ไม่มี'}
+แผน 7 วันข้างหน้า: ${activity.upcoming7.totalActivities} กิจกรรม ใน ${activity.upcoming7.activeDays} วัน
+
+แยกตามประเภท:
+${activityTypeStr || 'ยังไม่มีข้อมูล'}
+
+รายการล่าสุด:
+${recentActivityStr || 'ยังไม่มีข้อมูล'}`
+    : 'ยังไม่มีข้อมูลกิจกรรมรายวัน'
 
   const knowledge = await loadKnowledge()
 
@@ -408,6 +455,9 @@ ${diamondStr}
 === คนที่ควรลงไปทำงานด้วย / Focus Candidates ===
 ${focusCandidateStr || 'ยังไม่มี candidate เพียงพอ'}
 
+=== ผลการลงมือทำจากบันทึกกิจกรรมรายวัน ===
+${activityStr}
+
 === กลยุทธ์หลัก ===
 Hybrid 20/80: 20% Frontline (Speed) + 80% การขุดลึก (Stability)
 สายซ้าย = Speed, สายขวา = Stability
@@ -419,6 +469,15 @@ Hybrid 20/80: 20% Frontline (Speed) + 80% การขุดลึก (Stability
 ห้ามตอบกว้างๆ ถ้าผู้ใช้ถามว่า "กับใคร", "คนไหน", "ต้องลงไปทำงานกับใคร", "ขึ้น Gold/Diamond ทำกับใคร" ให้ตอบเป็นรายชื่อจริงจาก Focus Candidates อย่างน้อย 3 คน พร้อม ID, ฝั่ง, score, เหตุผลเชิงตัวเลข และงาน 7 วันถัดไป
 ถ้าถามเรื่อง Diamond ให้เริ่มด้วยชื่อคนอันดับ 1 ทันที แล้วตามด้วย gap Diamond และลำดับคนที่ควรโค้ช
 คำถามผู้แนะนำ/สปอนเซอร์/upline จะถูกตอบจาก Coach Data Engine ก่อนส่งมาถึงคุณ ห้ามเดาความสัมพันธ์ของสมาชิกเอง
+เมื่อให้คำแนะนำ ต้องวิเคราะห์ข้อมูลกิจกรรมร่วมกับ BV, Sponsor, Weak Leg, Momentum และ Focus Candidates เสมอ โดยใช้หลักต่อไปนี้:
+- กิจกรรมน้อยและผลไม่โต = คอขวดด้านปริมาณหรือความสม่ำเสมอ
+- กิจกรรมมากแต่ Sponsor/BV ไม่โต = คอขวดด้านคุณภาพการนัด Follow-up การปิดผล หรือ Start Up ห้ามแนะนำให้เพิ่มปริมาณอย่างเดียว
+- Outreach มากแต่ Meeting น้อย = คอขวดช่วงเปลี่ยนการติดต่อเป็นนัดหมาย
+- Meeting มากแต่ Start Up/Sponsor ต่ำ = คอขวดช่วง Follow-up และการตัดสินใจ
+- ผลกิจกรรมเข้าฝั่งแข็งมากกว่า Weak Leg = การโฟกัสผิดฝั่ง ให้กำหนดกิจกรรมฝั่งอ่อนอย่างเจาะจง
+- แยกกิจกรรมที่ผ่านมาออกจากแผน 7 วันข้างหน้า ห้ามนับแผนอนาคตเป็นผลงานแล้ว
+ถ้าถามว่าวันนี้/สัปดาห์นี้ควรทำอะไร ให้กำหนดเป้าหมาย 7 วันเป็นจำนวนครั้งของกิจกรรม ระบุฝั่งซ้ายหรือขวา และเชื่อมกับชื่อ Focus Candidate ที่ควรทำงานด้วย
+ต้องอ้างช่วงเวลาและตัวเลขจริงจากข้อมูล ห้ามกล่าวว่าผู้ใช้ไม่ลงมือทำเมื่อเพียงแค่ไม่มีบันทึก และห้ามสร้างชื่อผู้เข้าร่วมที่ไม่มีในข้อมูล
 
 === การแสดง Chart ===
 เมื่อคำตอบเกี่ยวข้องกับข้อมูลด้านล่าง ให้ใส่ tag ต่อท้ายคำอธิบาย (บรรทัดใหม่):
