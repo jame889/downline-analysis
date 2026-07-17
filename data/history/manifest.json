@@ -1,12 +1,12 @@
 {
-  "version": 1,
+  "version": 2,
   "source": "SPS Business Report spreadsheets",
   "period": {
     "start": "2025-10",
-    "end": "2026-06",
-    "months": 9
+    "end": "2026-07",
+    "months": 10
   },
-  "unique_members": 395,
+  "unique_members": 405,
   "report_rows": {
     "2025-10": 82,
     "2025-11": 108,
@@ -16,12 +16,20 @@
     "2026-03": 251,
     "2026-04": 296,
     "2026-05": 360,
-    "2026-06": 395
+    "2026-06": 395,
+    "2026-07": 405
   },
   "parts": 5,
-  "encoded_sha256": "6547970f3ce95bce8422333c524c7977b59e053c946014c7472b832231700cd1",
+  "encoded_sha256": "c6a841c8a18058cf8ce757740ee1965e5c767b989320842f52bad16fcbdc50c3",
   "notes": [
     "The SPS export labels are reversed: column K contains Sponsor and column L contains Upline.",
-    "The application can read this bundled data immediately and an admin can upsert it into Supabase or local JSON from /admin/history."
-  ]
+    "The application reads this bundled data immediately after deployment."
+  ],
+  "imports": {
+    "2026-07": {
+      "filename": "business_report_SPS_2026-07.xlsx",
+      "sha256": "3eceb1974bc4fdabd6fee4f55a1a4d03cd5c5767fead3c5bef23022cfd9b7cb2",
+      "rows": 405
+    }
+  }
 }
