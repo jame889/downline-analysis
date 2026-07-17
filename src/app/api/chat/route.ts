@@ -129,6 +129,17 @@ function fallbackReply(coachData: Record<string, unknown> | null, messages: Arra
   ].join('\n')
 }
 
+function sanitizeActivityClaims(content: string, coachData: Record<string, unknown> | null): string {
+  const activity = (coachData as { activityAnalysis?: DailyActivityAnalysis } | null)?.activityAnalysis
+  if (!activity || activity.recent30.totalActivities > 0) return content
+
+  return content
+    .replace(/ไม่มีการลงมือทำเลย/g, 'ยังไม่มีบันทึกกิจกรรมในระบบ')
+    .replace(/ไม่มีการลงมือทำ/g, 'ยังไม่มีบันทึกกิจกรรมในระบบ')
+    .replace(/ปริมาณเป็นศูนย์/g, 'ข้อมูลกิจกรรมที่บันทึกยังเป็นศูนย์')
+    .replace(/ไม่มี\s*(Outreach|Meeting)(?:\s*\/\s*(?:Outreach|Meeting))?\s*เลย/gi, 'ยังไม่มีบันทึก $1 ในระบบ')
+}
+
 function ndjsonResponse(content: string, provider = 'data') {
   return new Response(`${JSON.stringify({ message: { content } })}\n`, {
     headers: {
@@ -478,6 +489,7 @@ Hybrid 20/80: 20% Frontline (Speed) + 80% การขุดลึก (Stability
 - แยกกิจกรรมที่ผ่านมาออกจากแผน 7 วันข้างหน้า ห้ามนับแผนอนาคตเป็นผลงานแล้ว
 ถ้าถามว่าวันนี้/สัปดาห์นี้ควรทำอะไร ให้กำหนดเป้าหมาย 7 วันเป็นจำนวนครั้งของกิจกรรม ระบุฝั่งซ้ายหรือขวา และเชื่อมกับชื่อ Focus Candidate ที่ควรทำงานด้วย
 ต้องอ้างช่วงเวลาและตัวเลขจริงจากข้อมูล ห้ามกล่าวว่าผู้ใช้ไม่ลงมือทำเมื่อเพียงแค่ไม่มีบันทึก และห้ามสร้างชื่อผู้เข้าร่วมที่ไม่มีในข้อมูล
+สำคัญ: กิจกรรม 0 รายการหมายถึง "ยังไม่มีบันทึกกิจกรรมในระบบ" เท่านั้น ไม่ใช่หลักฐานว่าไม่ได้ทำงาน ห้ามใช้คำว่า "ไม่มีการลงมือทำ" หรือ "ปริมาณเป็นศูนย์" กับกรณีนี้
 
 === การแสดง Chart ===
 เมื่อคำตอบเกี่ยวข้องกับข้อมูลด้านล่าง ให้ใส่ tag ต่อท้ายคำอธิบาย (บรรทัดใหม่):
@@ -532,7 +544,8 @@ export async function POST(req: NextRequest) {
       model: result.model,
       durationMs: Date.now() - startedAt,
     }))
-    return ndjsonResponse(privacy.restore(result.content), result.provider)
+    const restoredContent = privacy.restore(result.content)
+    return ndjsonResponse(sanitizeActivityClaims(restoredContent, coachData), result.provider)
   } catch (e) {
     console.warn(JSON.stringify({
       level: 'warn',
