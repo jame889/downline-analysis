@@ -13,7 +13,8 @@ export async function middleware(request: NextRequest) {
   // Machine-to-machine routes authenticate with their own bearer secrets.
   const isMachineRoute =
     pathname === '/api/admin/business-report-sync' ||
-    pathname === '/api/cron/telegram'
+    pathname === '/api/cron/telegram' ||
+    pathname === '/api/telegram/webhook'
 
   // Always allow static assets, auth endpoints, chat API, and signed machine routes.
   if (
