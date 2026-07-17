@@ -419,8 +419,11 @@ async function buildSystemPrompt(coachData: Record<string, unknown> | null): Pro
   ).join('\n') ?? ''
   const recentActivityStr = activity?.recentEntries.map((item) => {
     const detail = item.details.replace(/\s+/g, ' ').trim()
-    return `${item.date} ${item.startTime} ${item.label}, ซ้าย ${item.leftCount}, ขวา ${item.rightCount}${detail ? `, รายละเอียด: ${detail}` : ''}`
+    return `${item.date} ${item.startTime} ${item.label}, สถานะ ${item.status}, ผล ${item.outcome}, ซ้าย ${item.leftCount}, ขวา ${item.rightCount}${item.contactName ? `, ผู้ติดต่อ: ${item.contactName}` : ''}${item.followUpDate ? `, Follow-up: ${item.followUpDate}` : ''}${detail ? `, รายละเอียด: ${detail}` : ''}${item.outcomeNotes ? `, หมายเหตุผล: ${item.outcomeNotes}` : ''}`
   }).join('\n') ?? ''
+  const notificationStr = activity?.notifications.map((item) =>
+    `[${item.severity}] ${item.title}: ${item.detail}${item.date ? ` (${item.date})` : ''}`
+  ).join('\n') ?? ''
   const momentumText = activity?.momentumChangePct === null || activity?.momentumChangePct === undefined
     ? 'ยังเทียบแนวโน้มไม่ได้'
     : `${activity.momentumChangePct >= 0 ? '+' : ''}${activity.momentumChangePct}%`
@@ -431,6 +434,14 @@ Outreach ${activity.recent30.outreachCount}, Meeting/Event ${activity.recent30.m
 7 วันล่าสุด ${activity.recent7.totalActivities} กิจกรรม เทียบ 7 วันก่อน ${activity.previous7.totalActivities} กิจกรรม, Momentum ${momentumText}
 Streak ล่าสุด ${activity.currentStreakDays} วัน, กิจกรรมล่าสุด ${activity.lastActivityDate ?? 'ไม่มี'}
 แผน 7 วันข้างหน้า: ${activity.upcoming7.totalActivities} กิจกรรม ใน ${activity.upcoming7.activeDays} วัน
+Funnel: Outreach ${activity.funnel.outreach} → นัดหมาย ${activity.funnel.appointments} → Meeting ${activity.funnel.meetings} → Follow-up ${activity.funnel.followUps} → Sponsor ${activity.funnel.sponsors} → Start Up ${activity.funnel.startups}
+Conversion: Outreach→นัด ${activity.funnel.outreachToAppointmentPct ?? 0}%, นัด→Meeting ${activity.funnel.appointmentToMeetingPct ?? 0}%, Meeting→Sponsor ${activity.funnel.meetingToSponsorPct ?? 0}%
+แผนเทียบผลงาน 7 วัน: วางแผน ${activity.planVsActual.planned7}, ทำแล้ว ${activity.planVsActual.completed7}, ยกเลิก ${activity.planVsActual.cancelled7}, สำเร็จ ${activity.planVsActual.completionPct ?? 0}%
+Weekly Scorecard: ${activity.weeklyScorecard.score}/100 เกรด ${activity.weeklyScorecard.grade} (Consistency ${activity.weeklyScorecard.consistencyScore}/25, Conversion ${activity.weeklyScorecard.conversionScore}/25, Weak Leg ${activity.weeklyScorecard.weakSide === 'L' ? 'ซ้าย' : 'ขวา'} ${activity.weeklyScorecard.weakLegScore}/20 จากผู้เข้าร่วม ${activity.weeklyScorecard.weakLegParticipants} คน, Sponsor ${activity.weeklyScorecard.sponsorScore}/15, Start Up ${activity.weeklyScorecard.startupScore}/15)
+สิ่งสำคัญที่สุด: ${activity.weeklyScorecard.summary}
+
+งานเตือน/งานค้าง:
+${notificationStr || 'ไม่มีงานค้าง'}
 
 แยกตามประเภท:
 ${activityTypeStr || 'ยังไม่มีข้อมูล'}
@@ -485,6 +496,9 @@ Hybrid 20/80: 20% Frontline (Speed) + 80% การขุดลึก (Stability
 - กิจกรรมมากแต่ Sponsor/BV ไม่โต = คอขวดด้านคุณภาพการนัด Follow-up การปิดผล หรือ Start Up ห้ามแนะนำให้เพิ่มปริมาณอย่างเดียว
 - Outreach มากแต่ Meeting น้อย = คอขวดช่วงเปลี่ยนการติดต่อเป็นนัดหมาย
 - Meeting มากแต่ Start Up/Sponsor ต่ำ = คอขวดช่วง Follow-up และการตัดสินใจ
+- มี Follow-up ถึงกำหนด = จัดรายชื่อเหล่านั้นเป็นงานอันดับแรกก่อนเพิ่ม Outreach ใหม่
+- ทำตามแผนต่ำกว่า 70% = ลดจำนวนงานใหม่และปิดกิจกรรมตามแผนที่ค้าง
+- ใช้ Funnel หา stage ที่ตกมากที่สุด และบอก conversion ของ stage นั้นด้วยตัวเลข
 - ผลกิจกรรมเข้าฝั่งแข็งมากกว่า Weak Leg = การโฟกัสผิดฝั่ง ให้กำหนดกิจกรรมฝั่งอ่อนอย่างเจาะจง
 - แยกกิจกรรมที่ผ่านมาออกจากแผน 7 วันข้างหน้า ห้ามนับแผนอนาคตเป็นผลงานแล้ว
 ถ้าถามว่าวันนี้/สัปดาห์นี้ควรทำอะไร ให้กำหนดเป้าหมาย 7 วันเป็นจำนวนครั้งของกิจกรรม ระบุฝั่งซ้ายหรือขวา และเชื่อมกับชื่อ Focus Candidate ที่ควรทำงานด้วย

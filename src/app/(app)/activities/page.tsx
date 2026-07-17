@@ -2,14 +2,19 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import {
+  Bell,
   CalendarDays,
+  CheckCircle2,
   ChevronLeft,
   ChevronRight,
   Clock3,
   Pencil,
   Plus,
   Save,
+  Target,
   Trash2,
+  TrendingUp,
+  UserRoundCheck,
   Users,
   X,
 } from 'lucide-react'
@@ -30,6 +35,24 @@ const ACTIVITY_OPTIONS = [
 ] as const
 
 type ActivityType = (typeof ACTIVITY_OPTIONS)[number]['value']
+type ActivityStatus = 'planned' | 'completed' | 'cancelled'
+type ActivityOutcome = 'none' | 'contacted' | 'appointment_booked' | 'attended' | 'follow_up' | 'sponsored' | 'startup_completed'
+
+const STATUS_OPTIONS: Array<{ value: ActivityStatus; label: string }> = [
+  { value: 'planned', label: 'วางแผนไว้' },
+  { value: 'completed', label: 'ทำแล้ว' },
+  { value: 'cancelled', label: 'ยกเลิก' },
+]
+
+const OUTCOME_OPTIONS: Array<{ value: ActivityOutcome; label: string }> = [
+  { value: 'none', label: 'ยังไม่มีผลลัพธ์' },
+  { value: 'contacted', label: 'ติดต่อได้' },
+  { value: 'appointment_booked', label: 'นัดหมายสำเร็จ' },
+  { value: 'attended', label: 'เข้าร่วม Meeting' },
+  { value: 'follow_up', label: 'รอติดตามผล' },
+  { value: 'sponsored', label: 'สมัครสมาชิก' },
+  { value: 'startup_completed', label: 'Start Up สำเร็จ' },
+]
 
 interface Activity {
   id: string
@@ -40,6 +63,11 @@ interface Activity {
   details: string
   leftCount: number
   rightCount: number
+  status?: ActivityStatus
+  outcome?: ActivityOutcome
+  contactName?: string
+  outcomeNotes?: string
+  followUpDate?: string
 }
 
 interface ActivityForm {
@@ -51,6 +79,26 @@ interface ActivityForm {
   details: string
   leftCount: number
   rightCount: number
+  status: ActivityStatus
+  outcome: ActivityOutcome
+  contactName: string
+  outcomeNotes: string
+  followUpDate: string
+}
+
+interface ActivityAnalysis {
+  funnel: {
+    outreach: number; appointments: number; meetings: number; followUps: number; sponsors: number; startups: number
+    outreachToAppointmentPct: number | null; appointmentToMeetingPct: number | null; meetingToSponsorPct: number | null
+  }
+  planVsActual: { planned7: number; completed7: number; cancelled7: number; completionPct: number | null }
+  weeklyScorecard: {
+    score: number; grade: 'A' | 'B' | 'C' | 'D'; consistencyScore: number; conversionScore: number
+    weakLegScore: number; sponsorScore: number; startupScore: number; weakSide: 'L' | 'R'; weakLegParticipants: number; summary: string
+  }
+  notifications: Array<{
+    id: string; severity: 'high' | 'medium' | 'low'; title: string; detail: string; date?: string; activityId?: string
+  }>
 }
 
 const WEEKDAYS = ['อา.', 'จ.', 'อ.', 'พ.', 'พฤ.', 'ศ.', 'ส.']
@@ -68,6 +116,7 @@ function monthKey(date: Date): string {
 }
 
 function newForm(date: string): ActivityForm {
+  const status: ActivityStatus = date <= dateKey(new Date()) ? 'completed' : 'planned'
   return {
     date,
     startTime: '09:00',
@@ -76,6 +125,11 @@ function newForm(date: string): ActivityForm {
     details: '',
     leftCount: 0,
     rightCount: 0,
+    status,
+    outcome: 'none',
+    contactName: '',
+    outcomeNotes: '',
+    followUpDate: '',
   }
 }
 
@@ -100,6 +154,7 @@ function getMonthCells(viewDate: Date) {
 export default function ActivitiesPage() {
   const [viewDate, setViewDate] = useState(() => new Date())
   const [activities, setActivities] = useState<Activity[]>([])
+  const [analysis, setAnalysis] = useState<ActivityAnalysis | null>(null)
   const [form, setForm] = useState<ActivityForm | null>(null)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -131,7 +186,10 @@ export default function ActivitiesPage() {
       .then(async (response) => {
         const data = await response.json()
         if (!response.ok) throw new Error(data.error || 'โหลดข้อมูลไม่สำเร็จ')
-        if (active) setActivities(data.activities ?? [])
+        if (active) {
+          setActivities(data.activities ?? [])
+          setAnalysis(data.analysis ?? null)
+        }
       })
       .catch((err) => {
         if (active) setError(err instanceof Error ? err.message : 'โหลดข้อมูลไม่สำเร็จ')
@@ -148,7 +206,14 @@ export default function ActivitiesPage() {
 
   function openEdit(activity: Activity) {
     setError('')
-    setForm({ ...activity })
+    setForm({
+      ...activity,
+      status: activity.status ?? (activity.date <= today ? 'completed' : 'planned'),
+      outcome: activity.outcome ?? 'none',
+      contactName: activity.contactName ?? '',
+      outcomeNotes: activity.outcomeNotes ?? '',
+      followUpDate: activity.followUpDate ?? '',
+    })
   }
 
   async function saveActivity(event: React.FormEvent) {
@@ -168,6 +233,7 @@ export default function ActivitiesPage() {
         const next = current.filter((item) => item.id !== data.activity.id)
         return [...next, data.activity].sort((a, b) => `${a.date}${a.startTime}`.localeCompare(`${b.date}${b.startTime}`))
       })
+      setAnalysis(data.analysis ?? null)
       setForm(null)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'บันทึกไม่สำเร็จ')
@@ -186,6 +252,7 @@ export default function ActivitiesPage() {
       const data = await response.json()
       if (!response.ok) throw new Error(data.error || 'ลบไม่สำเร็จ')
       setActivities((current) => current.filter((item) => item.id !== form.id))
+      setAnalysis(data.analysis ?? null)
       setForm(null)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'ลบไม่สำเร็จ')
@@ -223,6 +290,93 @@ export default function ActivitiesPage() {
           </div>
         </div>
       </div>
+
+      {analysis && (
+        <>
+          <section className="mb-5 grid gap-px overflow-hidden rounded-lg border border-slate-700 bg-slate-700 lg:grid-cols-[240px_1fr_1fr]">
+            <div className="bg-slate-900 p-4 sm:p-5">
+              <div className="flex items-center justify-between">
+                <span className="flex items-center gap-2 text-sm font-semibold text-slate-300"><Target className="h-4 w-4 text-brand-400" /> Weekly Score</span>
+                <span className={`grid h-9 w-9 place-items-center rounded-md text-lg font-bold ${analysis.weeklyScorecard.grade === 'A' ? 'bg-emerald-500/20 text-emerald-300' : analysis.weeklyScorecard.grade === 'B' ? 'bg-cyan-500/20 text-cyan-300' : analysis.weeklyScorecard.grade === 'C' ? 'bg-amber-500/20 text-amber-300' : 'bg-red-500/20 text-red-300'}`}>{analysis.weeklyScorecard.grade}</span>
+              </div>
+              <p className="mt-3 text-3xl font-bold text-white">{analysis.weeklyScorecard.score}<span className="text-base font-normal text-slate-500">/100</span></p>
+              <p className="mt-2 text-xs leading-5 text-slate-400">{analysis.weeklyScorecard.summary}</p>
+            </div>
+
+            <div className="bg-slate-950 p-4 sm:p-5">
+              <div className="mb-3 flex items-center gap-2 text-sm font-semibold text-slate-300"><TrendingUp className="h-4 w-4 text-cyan-400" /> แผนเทียบผลงาน 7 วัน</div>
+              <div className="grid grid-cols-3 gap-3">
+                <div><p className="text-xs text-slate-500">วางแผน</p><p className="mt-1 text-xl font-semibold text-white">{analysis.planVsActual.planned7}</p></div>
+                <div><p className="text-xs text-slate-500">ทำแล้ว</p><p className="mt-1 text-xl font-semibold text-emerald-300">{analysis.planVsActual.completed7}</p></div>
+                <div><p className="text-xs text-slate-500">สำเร็จ</p><p className="mt-1 text-xl font-semibold text-cyan-300">{analysis.planVsActual.completionPct ?? 0}%</p></div>
+              </div>
+              <div className="mt-4 h-2 overflow-hidden rounded bg-slate-800">
+                <div className="h-full bg-cyan-500" style={{ width: `${Math.min(100, analysis.planVsActual.completionPct ?? 0)}%` }} />
+              </div>
+            </div>
+
+            <div className="bg-slate-950 p-4 sm:p-5">
+              <div className="mb-3 flex items-center gap-2 text-sm font-semibold text-slate-300"><CheckCircle2 className="h-4 w-4 text-emerald-400" /> องค์ประกอบคะแนน</div>
+              <div className="grid grid-cols-2 gap-x-5 gap-y-3 text-xs">
+                {[
+                  ['ความสม่ำเสมอ', analysis.weeklyScorecard.consistencyScore, 25],
+                  ['Conversion', analysis.weeklyScorecard.conversionScore, 25],
+                  [`Weak Leg ${analysis.weeklyScorecard.weakSide === 'L' ? 'ซ้าย' : 'ขวา'}`, analysis.weeklyScorecard.weakLegScore, 20],
+                  ['Sponsor', analysis.weeklyScorecard.sponsorScore, 15],
+                  ['Start Up', analysis.weeklyScorecard.startupScore, 15],
+                ].map(([label, value, max]) => (
+                  <div key={String(label)}>
+                    <div className="mb-1 flex justify-between text-slate-400"><span>{label}</span><span>{value}/{max}</span></div>
+                    <div className="h-1.5 overflow-hidden rounded bg-slate-800"><div className="h-full bg-brand-500" style={{ width: `${(Number(value) / Number(max)) * 100}%` }} /></div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </section>
+
+          <section className="mb-5 border-y border-slate-800 py-4">
+            <div className="mb-3 flex items-center gap-2 text-sm font-semibold text-slate-300"><UserRoundCheck className="h-4 w-4 text-cyan-400" /> Conversion Funnel 30 วัน</div>
+            <div className="grid grid-cols-3 gap-2 sm:grid-cols-6">
+              {[
+                ['Outreach', analysis.funnel.outreach],
+                ['นัดหมาย', analysis.funnel.appointments],
+                ['Meeting', analysis.funnel.meetings],
+                ['Follow-up', analysis.funnel.followUps],
+                ['Sponsor', analysis.funnel.sponsors],
+                ['Start Up', analysis.funnel.startups],
+              ].map(([label, value], index) => (
+                <div key={String(label)} className="border-l-2 border-slate-700 bg-slate-900/60 px-3 py-3 first:border-cyan-500 last:border-emerald-500">
+                  <p className="text-[11px] text-slate-500">{label}</p>
+                  <p className="mt-1 text-xl font-semibold text-white">{value}</p>
+                  {index < 3 && <p className="mt-1 text-[10px] text-slate-600">{(index === 0 ? analysis.funnel.outreachToAppointmentPct : index === 1 ? analysis.funnel.appointmentToMeetingPct : analysis.funnel.meetingToSponsorPct) ?? 0}% ขั้นถัดไป</p>}
+                </div>
+              ))}
+            </div>
+          </section>
+
+          {analysis.notifications.length > 0 && (
+            <section className="mb-5">
+              <div className="mb-3 flex items-center gap-2 text-sm font-semibold text-slate-300"><Bell className="h-4 w-4 text-amber-400" /> ต้องทำวันนี้ ({analysis.notifications.length})</div>
+              <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-3">
+                {analysis.notifications.slice(0, 6).map((notice) => (
+                  <button
+                    type="button"
+                    key={notice.id}
+                    onClick={() => {
+                      const activity = activities.find((item) => item.id === notice.activityId)
+                      if (activity) openEdit(activity)
+                    }}
+                    className={`min-h-20 border-l-2 bg-slate-900 px-3 py-2.5 text-left transition-colors hover:bg-slate-800 ${notice.severity === 'high' ? 'border-red-500' : notice.severity === 'medium' ? 'border-amber-500' : 'border-cyan-500'}`}
+                  >
+                    <p className="text-sm font-semibold text-white">{notice.title}</p>
+                    <p className="mt-1 text-xs text-slate-400">{notice.detail}</p>
+                  </button>
+                ))}
+              </div>
+            </section>
+          )}
+        </>
+      )}
 
       <section className="relative overflow-hidden rounded-lg border border-slate-700 bg-slate-950">
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-700 bg-slate-900 px-3 py-3 sm:px-5">
@@ -377,6 +531,60 @@ export default function ActivitiesPage() {
                   {ACTIVITY_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
                 </select>
               </label>
+
+              <div>
+                <span className="mb-1.5 block text-sm font-medium text-slate-300">สถานะ</span>
+                <div className="grid grid-cols-3 overflow-hidden rounded-md border border-slate-700">
+                  {STATUS_OPTIONS.map((option) => (
+                    <button
+                      key={option.value}
+                      type="button"
+                      onClick={() => setForm({ ...form, status: option.value })}
+                      className={`h-10 border-r border-slate-700 text-sm font-medium last:border-r-0 ${form.status === option.value ? 'bg-brand-500 text-white' : 'bg-slate-950 text-slate-400 hover:bg-slate-800'}`}
+                    >
+                      {option.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="grid gap-3 sm:grid-cols-2">
+                <label className="block">
+                  <span className="mb-1.5 block text-sm font-medium text-slate-300">ผลลัพธ์</span>
+                  <select value={form.outcome} onChange={(event) => setForm({ ...form, outcome: event.target.value as ActivityOutcome })} className="h-11 w-full rounded-md border border-slate-700 bg-slate-950 px-3 text-white outline-none focus:border-brand-500">
+                    {OUTCOME_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+                  </select>
+                </label>
+                <label className="block">
+                  <span className="mb-1.5 block text-sm font-medium text-slate-300">ชื่อผู้ติดต่อ/สมาชิก</span>
+                  <input
+                    type="text"
+                    maxLength={160}
+                    value={form.contactName}
+                    onChange={(event) => setForm({ ...form, contactName: event.target.value })}
+                    placeholder="ชื่อที่ต้องติดตาม"
+                    className="h-11 w-full rounded-md border border-slate-700 bg-slate-950 px-3 text-white outline-none placeholder:text-slate-600 focus:border-brand-500"
+                  />
+                </label>
+              </div>
+
+              <div className="grid gap-3 sm:grid-cols-2">
+                <label className="block">
+                  <span className="mb-1.5 block text-sm font-medium text-slate-300">วันติดตามผล</span>
+                  <input type="date" required={form.outcome === 'follow_up'} value={form.followUpDate} onChange={(event) => setForm({ ...form, followUpDate: event.target.value })} className="h-11 w-full rounded-md border border-slate-700 bg-slate-950 px-3 text-white outline-none focus:border-amber-500" />
+                </label>
+                <label className="block">
+                  <span className="mb-1.5 block text-sm font-medium text-slate-300">หมายเหตุผลลัพธ์</span>
+                  <input
+                    type="text"
+                    maxLength={1000}
+                    value={form.outcomeNotes}
+                    onChange={(event) => setForm({ ...form, outcomeNotes: event.target.value })}
+                    placeholder="คำตอบหรือขั้นตอนถัดไป"
+                    className="h-11 w-full rounded-md border border-slate-700 bg-slate-950 px-3 text-white outline-none placeholder:text-slate-600 focus:border-brand-500"
+                  />
+                </label>
+              </div>
 
               <label className="block">
                 <span className="mb-1.5 block text-sm font-medium text-slate-300">รายละเอียด</span>

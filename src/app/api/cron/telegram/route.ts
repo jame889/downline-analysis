@@ -3,6 +3,7 @@ import fs from 'fs'
 import path from 'path'
 import { ROOT_MEMBER_ID } from '@/lib/auth'
 import { getAvailableMonths, getMembersForMonth, getSubtreeIds } from '@/lib/db'
+import { getDailyActivityAnalysis } from '@/lib/daily-activities'
 
 export const dynamic = 'force-dynamic'
 
@@ -110,11 +111,29 @@ async function buildWatchlistMessage(memberId: string): Promise<string> {
   )
 }
 
+async function buildActivityMessage(memberId: string): Promise<string> {
+  const activity = await getDailyActivityAnalysis(memberId)
+  const alerts = activity.notifications.slice(0, 8)
+  const lines = alerts.length > 0
+    ? alerts.map((item) => `- ${item.title}: ${item.detail}`)
+    : ['- ไม่มีงาน Follow-up ค้างหรือกิจกรรมที่ต้องแจ้งเตือนวันนี้']
+
+  return (
+    `<b>Coach JOE - Daily Action</b>\n\n` +
+    `Weekly Score: ${activity.weeklyScorecard.score}/100 (${activity.weeklyScorecard.grade})\n` +
+    `แผน 7 วัน: ทำแล้ว ${activity.planVsActual.completed7}/${activity.planVsActual.planned7} (${activity.planVsActual.completionPct ?? 0}%)\n` +
+    `Funnel: Outreach ${activity.funnel.outreach} → นัด ${activity.funnel.appointments} → Meeting ${activity.funnel.meetings} → Sponsor ${activity.funnel.sponsors} → Start Up ${activity.funnel.startups}\n\n` +
+    `${lines.join('\n')}\n\n` +
+    `Priority: ${activity.weeklyScorecard.summary}`
+  )
+}
+
 // Map cron type to notification type and day description
-const CRON_SCHEDULES: Record<string, { type: 'weekly' | 'wakeup' | 'watchlist'; label: string }> = {
+const CRON_SCHEDULES: Record<string, { type: 'weekly' | 'wakeup' | 'watchlist' | 'activity'; label: string }> = {
   weekly: { type: 'weekly', label: 'Weekly Report (จันทร์ 8:00)' },
   wakeup: { type: 'wakeup', label: 'Wakeup Alert (อังคาร-ศุกร์ 9:00)' },
   watchlist: { type: 'watchlist', label: 'Watchlist (อาทิตย์ 10:00)' },
+  activity: { type: 'activity', label: 'Daily Activity (ทุกวัน 8:00)' },
 }
 
 export async function GET(request: NextRequest) {
@@ -159,6 +178,9 @@ export async function GET(request: NextRequest) {
         break
       case 'watchlist':
         message = await buildWatchlistMessage(memberId)
+        break
+      case 'activity':
+        message = await buildActivityMessage(memberId)
         break
     }
 

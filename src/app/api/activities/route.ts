@@ -1,11 +1,17 @@
 import { randomUUID } from 'crypto'
 import { NextRequest, NextResponse } from 'next/server'
 import { getSession } from '@/lib/auth'
+import { getAvailableMonths, getMembersForMonth } from '@/lib/db'
 import {
   ACTIVITY_TYPES,
+  ACTIVITY_OUTCOMES,
+  ACTIVITY_STATUSES,
   deleteDailyActivity,
+  getDailyActivityAnalysis,
   loadDailyActivities,
   saveDailyActivity,
+  type ActivityOutcome,
+  type ActivityStatus,
   type ActivityType,
   type DailyActivity,
 } from '@/lib/daily-activities'
@@ -31,6 +37,25 @@ function isValidDate(value: string): boolean {
     && date.getUTCDate() === day
 }
 
+function todayInBangkok(): string {
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Bangkok',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(new Date())
+}
+
+async function getBusinessWeakSide(memberId: string): Promise<'L' | 'R' | undefined> {
+  const months = (await getAvailableMonths()).slice().sort()
+  const latestMonth = months[months.length - 1]
+  if (!latestMonth) return undefined
+  const members = await getMembersForMonth(latestMonth)
+  const member = members.find((item) => item.id === memberId)
+  if (!member) return undefined
+  return (member.report.total_vol_left ?? 0) <= (member.report.total_vol_right ?? 0) ? 'L' : 'R'
+}
+
 export async function GET(request: NextRequest) {
   const session = await getSession()
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -45,7 +70,9 @@ export async function GET(request: NextRequest) {
     .filter((item) => item.memberId === session.memberId && item.date.startsWith(`${month}-`))
     .sort((a, b) => `${a.date}T${a.startTime}`.localeCompare(`${b.date}T${b.startTime}`))
 
-  return NextResponse.json({ activities })
+  const weakSide = await getBusinessWeakSide(session.memberId)
+  const analysis = await getDailyActivityAnalysis(session.memberId, new Date(), weakSide)
+  return NextResponse.json({ activities, analysis })
 }
 
 export async function POST(request: NextRequest) {
@@ -59,6 +86,9 @@ export async function POST(request: NextRequest) {
     const endTime = String(body.endTime ?? '')
     const type = String(body.type ?? '') as ActivityType
     const details = String(body.details ?? '').trim().slice(0, 1000)
+    const contactName = String(body.contactName ?? '').trim().slice(0, 160)
+    const outcomeNotes = String(body.outcomeNotes ?? '').trim().slice(0, 1000)
+    const followUpDate = String(body.followUpDate ?? '')
 
     if (!isValidDate(date) || !TIME_PATTERN.test(startTime)) {
       return NextResponse.json({ error: 'กรุณาระบุวันที่และเวลาให้ถูกต้อง' }, { status: 400 })
@@ -69,6 +99,9 @@ export async function POST(request: NextRequest) {
     if (!ACTIVITY_TYPES.includes(type)) {
       return NextResponse.json({ error: 'ประเภทกิจกรรมไม่ถูกต้อง' }, { status: 400 })
     }
+    if (followUpDate && !isValidDate(followUpDate)) {
+      return NextResponse.json({ error: 'วันติดตามผลไม่ถูกต้อง' }, { status: 400 })
+    }
 
     const values = await loadDailyActivities()
     const requestedId = typeof body.id === 'string' ? body.id : ''
@@ -76,6 +109,13 @@ export async function POST(request: NextRequest) {
     if (existing && existing.memberId !== session.memberId) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
+
+    const requestedStatus = String(body.status ?? existing?.status ?? '') as ActivityStatus
+    const requestedOutcome = String(body.outcome ?? existing?.outcome ?? 'none') as ActivityOutcome
+    const status = ACTIVITY_STATUSES.includes(requestedStatus)
+      ? requestedStatus
+      : date <= todayInBangkok() ? 'completed' : 'planned'
+    const outcome = ACTIVITY_OUTCOMES.includes(requestedOutcome) ? requestedOutcome : 'none'
 
     const now = new Date().toISOString()
     const activity: DailyActivity = {
@@ -88,12 +128,19 @@ export async function POST(request: NextRequest) {
       details,
       leftCount: safeCount(body.leftCount),
       rightCount: safeCount(body.rightCount),
+      status,
+      outcome,
+      contactName,
+      outcomeNotes,
+      followUpDate,
       createdAt: existing?.createdAt ?? now,
       updatedAt: now,
     }
 
     await saveDailyActivity(activity)
-    return NextResponse.json({ success: true, activity })
+    const weakSide = await getBusinessWeakSide(session.memberId)
+    const analysis = await getDailyActivityAnalysis(session.memberId, new Date(), weakSide)
+    return NextResponse.json({ success: true, activity, analysis })
   } catch (error) {
     console.error('[activities] Failed to save activity', error)
     return NextResponse.json({ error: 'ไม่สามารถบันทึกกิจกรรมได้' }, { status: 500 })
@@ -110,7 +157,9 @@ export async function DELETE(request: NextRequest) {
   try {
     const deleted = await deleteDailyActivity(id, session.memberId)
     if (!deleted) return NextResponse.json({ error: 'ไม่พบกิจกรรม' }, { status: 404 })
-    return NextResponse.json({ success: true })
+    const weakSide = await getBusinessWeakSide(session.memberId)
+    const analysis = await getDailyActivityAnalysis(session.memberId, new Date(), weakSide)
+    return NextResponse.json({ success: true, analysis })
   } catch (error) {
     console.error('[activities] Failed to delete activity', error)
     return NextResponse.json({ error: 'ไม่สามารถลบกิจกรรมได้' }, { status: 500 })

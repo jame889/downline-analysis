@@ -200,7 +200,7 @@ export async function GET(req: NextRequest) {
 
   const [growth, activityAnalysis] = await Promise.all([
     getGrowthDashboardData(rootId, 9),
-    getDailyActivityAnalysis(rootId),
+    getDailyActivityAnalysis(rootId, new Date(), weakSide),
   ])
 
   const activity30 = activityAnalysis.recent30
@@ -220,12 +220,20 @@ export async function GET(req: NextRequest) {
         detail: `บันทึกแล้ว ${activity30.totalActivities} กิจกรรม ควรวางกิจกรรมอย่างน้อย 3 วันต่อสัปดาห์และติดตามผลทุกวัน`,
       })
     }
-    if (activity30.outreachCount > 0 && activity30.meetingCount === 0) {
+    if (activityAnalysis.funnel.outreach > 0 && activityAnalysis.funnel.appointments === 0) {
       actions.push({
         priority: 'high',
         category: 'Conversion',
-        title: `ทำ Outreach ${activity30.outreachCount} ครั้ง แต่ยังไม่มี Meeting`,
-        detail: 'คอขวดอยู่ช่วงเปลี่ยนการติดต่อเป็นนัดหมาย ให้ทบทวนรายชื่อ ข้อความเชิญ และ Follow-up ภายใน 24 ชั่วโมง',
+        title: `ทำ Outreach ${activityAnalysis.funnel.outreach} ครั้ง แต่ยังเปลี่ยนเป็นนัดหมายไม่ได้`,
+        detail: 'คอขวดอยู่ช่วงข้อความเชิญและการติดตามครั้งแรก ให้ทบทวนรายชื่อและ Follow-up ภายใน 24 ชั่วโมง',
+      })
+    }
+    if (activityAnalysis.funnel.meetings > 0 && activityAnalysis.funnel.sponsors === 0) {
+      actions.push({
+        priority: 'high',
+        category: 'Closing',
+        title: `มี Meeting ${activityAnalysis.funnel.meetings} ครั้ง แต่ Sponsor ยังเป็น 0`,
+        detail: 'คอขวดอยู่หลัง Meeting ให้ถามการตัดสินใจ นัด Follow-up และกำหนดวัน Start Up ให้ชัดเจน',
       })
     }
     if (activity30.totalActivities >= 8 && myPersonalSponsors.length === 0) {
@@ -247,6 +255,24 @@ export async function GET(req: NextRequest) {
         detail: `30 วันล่าสุด ฝั่งอ่อนมีผู้เข้าร่วม ${weakParticipants} คน เทียบฝั่งแข็ง ${strongParticipants} คน ให้จัดกิจกรรม 7 วันถัดไปเน้นฝั่งอ่อน`,
       })
     }
+  }
+
+  const overdueFollowUps = activityAnalysis.notifications.filter((item) => item.id.startsWith('followup-'))
+  if (overdueFollowUps.length > 0) {
+    actions.push({
+      priority: 'high',
+      category: 'Follow-up',
+      title: `มีงาน Follow-up ถึงกำหนด ${overdueFollowUps.length} รายการ`,
+      detail: `เคลียร์งานติดตามก่อนเพิ่มรายชื่อใหม่: ${overdueFollowUps.slice(0, 3).map((item) => item.title.replace(/^ติดตาม /, '')).join(', ')}`,
+    })
+  }
+  if (activityAnalysis.planVsActual.planned7 > 0 && (activityAnalysis.planVsActual.completionPct ?? 0) < 70) {
+    actions.push({
+      priority: 'medium',
+      category: 'Execution',
+      title: `ทำตามแผน 7 วันได้ ${activityAnalysis.planVsActual.completionPct ?? 0}%`,
+      detail: `วางแผน ${activityAnalysis.planVsActual.planned7} รายการ ทำแล้ว ${activityAnalysis.planVsActual.completed7} รายการ ให้ลดงานใหม่และปิดงานที่ค้างก่อน`,
+    })
   }
 
   if (activityAnalysis.upcoming7.totalActivities === 0) {
