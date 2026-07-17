@@ -178,7 +178,7 @@ function ChatChartNewMembers({ newMembers }: { newMembers: CoachData['newMembers
 const CHART_TAG = /\[CHART:(balance|levels|safezone|newmembers)\]/g
 
 function MessageContent({ content, coachData }: { content: string; coachData: CoachData }) {
-  const parts = content.split(CHART_TAG)
+  const parts = content.split(/\[CHART:(?:balance|levels|safezone|newmembers)\]/g)
   const tags: string[] = []
   let m: RegExpExecArray | null
   const re = new RegExp(CHART_TAG.source, 'g')
