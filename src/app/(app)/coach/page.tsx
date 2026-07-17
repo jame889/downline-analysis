@@ -210,6 +210,7 @@ function providerLabel(provider: string | undefined) {
   if (provider === 'openrouter') return 'OpenRouter AI'
   if (provider === 'cloudflare') return 'Cloudflare AI'
   if (provider === 'data') return 'Coach Data Engine'
+  if (provider === 'fallback') return 'Coach Data Engine'
   return 'Cloud AI'
 }
 
@@ -319,7 +320,7 @@ function ChatBot({ coachData }: { coachData: CoachData }) {
       const responseProvider = res.headers.get('X-Coach-Provider')
       if (responseProvider) {
         setAiProvider(providerLabel(responseProvider))
-        setAiStatus(responseProvider === 'data' ? 'fallback' : 'online')
+        setAiStatus(responseProvider === 'fallback' ? 'fallback' : 'online')
       }
 
       const reader = res.body.getReader()

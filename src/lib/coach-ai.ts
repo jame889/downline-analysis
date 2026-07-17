@@ -22,7 +22,7 @@ export type ProviderHealth = {
 
 const cleanEnv = (value: string | undefined) => value?.replace(/\\n|\n/g, '').replace(/^"|"$/g, '').trim() ?? ''
 const TIMEOUT_MS = Number(cleanEnv(process.env.AI_TIMEOUT_MS)) || 22_000
-const MAX_TOKENS = Number(cleanEnv(process.env.AI_MAX_TOKENS)) || 650
+const MAX_TOKENS = Number(cleanEnv(process.env.AI_MAX_TOKENS)) || 900
 
 type ProviderConfig = {
   provider: CoachAiProvider

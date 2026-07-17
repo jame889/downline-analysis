@@ -481,6 +481,6 @@ export async function POST(req: NextRequest) {
       durationMs: Date.now() - startedAt,
       ...errorDetails(e),
     }))
-    return ndjsonResponse(fallbackReply(payload?.coachData ?? null, payload?.messages ?? []))
+    return ndjsonResponse(fallbackReply(payload?.coachData ?? null, payload?.messages ?? []), 'fallback')
   }
 }
