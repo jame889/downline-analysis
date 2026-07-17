@@ -8,6 +8,11 @@ import {
   getBundledHistoryReport,
 } from './history-db'
 import { loadMemberMbtiOverrides } from './member-mbti'
+import {
+  loadBusinessReportMonths,
+  loadBusinessReportSnapshot,
+  loadLatestBusinessReportSnapshot,
+} from './business-report-sync'
 
 const DATA_DIR = path.join(process.cwd(), 'data')
 const MEMBERS_FILE = path.join(DATA_DIR, 'members.json')
@@ -74,12 +79,16 @@ async function getMonthsSupabase(): Promise<string[]> {
 
 async function loadMembers(): Promise<Record<string, Member>> {
   const local = loadMembersLocal()
-  const [sb, mbtiOverrides] = await Promise.all([
-    USE_SUPABASE ? loadMembersSupabase() : Promise.resolve({} as Record<string, Member>),
+  const [latestSnapshot, mbtiOverrides] = await Promise.all([
+    loadLatestBusinessReportSnapshot(),
     loadMemberMbtiOverrides(),
   ])
-  // Supabase receives the latest daily report; bundled history is the offline fallback.
-  const merged = { ...local, ...sb }
+  const live = latestSnapshot?.members ?? {}
+  const sb = Object.keys(live).length === 0 && USE_SUPABASE
+    ? await loadMembersSupabase()
+    : {}
+  // The cloud snapshot owns the latest report; bundled history is the offline fallback.
+  const merged = { ...local, ...sb, ...live }
   for (const [memberId, mbti] of Object.entries(mbtiOverrides)) {
     if (merged[memberId]) merged[memberId] = { ...merged[memberId], mbti }
   }
@@ -87,6 +96,8 @@ async function loadMembers(): Promise<Record<string, Member>> {
 }
 
 async function loadReport(month: string): Promise<MonthlyReport[]> {
+  const live = await loadBusinessReportSnapshot(month)
+  if (live?.reports.length) return live.reports
   if (!USE_SUPABASE) return loadReportLocal(month)
   const sb = await loadReportSupabase(month)
   if (sb.length > 0) return sb
@@ -96,12 +107,12 @@ async function loadReport(month: string): Promise<MonthlyReport[]> {
 // ── Public API (async) ────────────────────────────────────────────────────────
 
 export async function getAvailableMonths(): Promise<string[]> {
-  if (!USE_SUPABASE) return getMonthsLocal().sort().reverse()
-  const [sbMonths, localMonths] = await Promise.all([
-    getMonthsSupabase(),
+  const [liveMonths, localMonths] = await Promise.all([
+    loadBusinessReportMonths(),
     Promise.resolve(getMonthsLocal()),
   ])
-  const all = new Set([...sbMonths, ...localMonths])
+  const sbMonths = liveMonths.length === 0 && USE_SUPABASE ? await getMonthsSupabase() : []
+  const all = new Set([...liveMonths, ...sbMonths, ...localMonths])
   return Array.from(all).sort().reverse()
 }
 

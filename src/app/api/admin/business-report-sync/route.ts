@@ -1,6 +1,10 @@
 import { timingSafeEqual } from 'crypto'
 import { NextRequest, NextResponse } from 'next/server'
-import { saveBusinessReportSyncStatus } from '@/lib/business-report-sync'
+import {
+  loadBusinessReportSnapshot,
+  saveBusinessReportSnapshot,
+  saveBusinessReportSyncStatus,
+} from '@/lib/business-report-sync'
 import { upsertMembers, upsertMonthlyReports } from '@/lib/db'
 import { sbSelect } from '@/lib/supabase'
 import { loadTelegramConfigs, sendTelegramMessage } from '@/lib/telegram-config'
@@ -77,25 +81,40 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   if (!authorized(request)) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  if (!process.env.SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
-    return NextResponse.json({ error: 'Supabase is not configured' }, { status: 503 })
-  }
-
   try {
     const validation = validatePayload(await request.json())
     if (!validation.payload) return NextResponse.json({ error: validation.error }, { status: 400 })
     const { month, checksum, members, reports } = validation.payload
 
-    const existing = await sbSelect<{ member_id: string }>(
-      'monthly_reports',
-      `month=eq.${encodeURIComponent(month)}&select=member_id`
-    )
-    if (existing.length >= 100 && reports.length < Math.floor(existing.length * 0.9)) {
-      return NextResponse.json({ error: `Suspicious row decrease: ${existing.length} to ${reports.length}` }, { status: 409 })
+    const existingSnapshot = await loadBusinessReportSnapshot(month)
+    let existingCount = existingSnapshot?.reports.length ?? 0
+    if (existingCount === 0 && process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY) {
+      try {
+        const existing = await sbSelect<{ member_id: string }>(
+          'monthly_reports',
+          `month=eq.${encodeURIComponent(month)}&select=member_id`
+        )
+        existingCount = existing.length
+      } catch (error) {
+        console.warn('[business-report-sync] Supabase count unavailable', error)
+      }
+    }
+    if (existingCount >= 100 && reports.length < Math.floor(existingCount * 0.9)) {
+      return NextResponse.json({ error: `Suspicious row decrease: ${existingCount} to ${reports.length}` }, { status: 409 })
     }
 
-    await upsertMembers(members)
-    await upsertMonthlyReports(month, reports)
+    const syncedAt = new Date().toISOString()
+    await saveBusinessReportSnapshot({ month, checksum, members, reports, syncedAt })
+    let supabaseSynced = false
+    if (process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY) {
+      try {
+        await upsertMembers(members)
+        await upsertMonthlyReports(month, reports)
+        supabaseSynced = true
+      } catch (error) {
+        console.warn('[business-report-sync] Supabase sync unavailable; Blob snapshot saved', error)
+      }
+    }
     const telegramNotified = await notifyRoot(month, reports.length, checksum)
     const status = {
       ok: true,
@@ -103,8 +122,9 @@ export async function POST(request: NextRequest) {
       rows: reports.length,
       members: Object.keys(members).length,
       checksum,
-      syncedAt: new Date().toISOString(),
+      syncedAt,
       telegramNotified,
+      supabaseSynced,
     }
     await saveBusinessReportSyncStatus(status)
     return NextResponse.json(status)
