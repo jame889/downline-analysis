@@ -213,6 +213,7 @@ function ChatBot({ coachData }: { coachData: CoachData }) {
   const [streaming, setStreaming] = useState(false)
   const [ttsEnabled, setTtsEnabled] = useState(false)
   const [speaking, setSpeaking] = useState(false)
+  const [aiStatus, setAiStatus] = useState<'checking' | 'online' | 'fallback'>('checking')
   const bottomRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const prevStreamingRef = useRef(false)
@@ -221,6 +222,25 @@ function ChatBot({ coachData }: { coachData: CoachData }) {
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages])
+
+  useEffect(() => {
+    let mounted = true
+    async function checkAiStatus() {
+      try {
+        const response = await fetch('/api/chat', { cache: 'no-store' })
+        const data = await response.json()
+        if (mounted) setAiStatus(response.ok && data.online ? 'online' : 'fallback')
+      } catch {
+        if (mounted) setAiStatus('fallback')
+      }
+    }
+    checkAiStatus()
+    const interval = window.setInterval(checkAiStatus, 60_000)
+    return () => {
+      mounted = false
+      window.clearInterval(interval)
+    }
+  }, [])
 
   // Auto-speak when streaming finishes
   useEffect(() => {
@@ -367,9 +387,13 @@ function ChatBot({ coachData }: { coachData: CoachData }) {
               : ttsEnabled ? '🔊' : '🔇'}
             <span>{ttsEnabled ? 'เสียงเปิด' : 'เสียงปิด'}</span>
           </button>
-          <span className="flex items-center gap-1.5 text-xs text-green-400">
-            <span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />
-            Online
+          <span className={`flex items-center gap-1.5 text-xs ${
+            aiStatus === 'online' ? 'text-green-400' : aiStatus === 'fallback' ? 'text-amber-400' : 'text-slate-400'
+          }`}>
+            <span className={`w-1.5 h-1.5 rounded-full ${
+              aiStatus === 'online' ? 'bg-green-400 animate-pulse' : aiStatus === 'fallback' ? 'bg-amber-400' : 'bg-slate-500 animate-pulse'
+            }`} />
+            {aiStatus === 'online' ? 'Online' : aiStatus === 'fallback' ? 'Fallback' : 'กำลังตรวจสอบ'}
           </span>
         </div>
       </div>

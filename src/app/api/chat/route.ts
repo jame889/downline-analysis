@@ -16,6 +16,36 @@ const SUPABASE_KEY = cleanEnv(process.env.SUPABASE_SERVICE_ROLE_KEY)
 const BUCKET = 'knowledge'
 const USE_SUPABASE = !!(SUPABASE_URL && SUPABASE_KEY)
 
+function errorDetails(error: unknown) {
+  const value = error as { name?: string; message?: string; cause?: { code?: string; message?: string } }
+  return {
+    error: value?.message ?? String(error),
+    code: value?.cause?.code ?? value?.name ?? 'UNKNOWN',
+  }
+}
+
+export async function GET() {
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), 5_000)
+  try {
+    const response = await fetch(`${OLLAMA_URL}/api/tags`, {
+      signal: controller.signal,
+      cache: 'no-store',
+    })
+    if (!response.ok) {
+      return Response.json({ online: false, status: response.status }, { status: 503 })
+    }
+    const data = await response.json() as { models?: Array<{ name?: string }> }
+    const modelAvailable = (data.models ?? []).some((item) => item.name === MODEL)
+    return Response.json({ online: true, model: MODEL, modelAvailable })
+  } catch (error) {
+    console.warn(JSON.stringify({ level: 'warn', message: 'ollama_health_failed', ...errorDetails(error) }))
+    return Response.json({ online: false }, { status: 503 })
+  } finally {
+    clearTimeout(timeout)
+  }
+}
+
 function sbHeaders() {
   return {
     apikey: SUPABASE_KEY,
@@ -360,6 +390,7 @@ Hybrid 20/80: 20% Frontline (Speed) + 80% การขุดลึก (Stability
 }
 
 export async function POST(req: NextRequest) {
+  const startedAt = Date.now()
   let payload: { messages: Array<{ role: string; content: string }>; coachData: Record<string, unknown> | null } | null = null
   try {
     payload = await req.json()
@@ -378,27 +409,37 @@ export async function POST(req: NextRequest) {
     const controller = new AbortController()
     const timeout = setTimeout(() => controller.abort(), OLLAMA_TIMEOUT_MS)
 
-    const ollamaRes = await fetch(`${OLLAMA_URL}/api/chat`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      signal: controller.signal,
-      body: JSON.stringify({
-        model: MODEL,
-        messages: [
-          { role: 'system', content: systemPrompt },
-          ...messages,
-        ],
-        stream: true,
-        options: {
-          num_ctx: OLLAMA_NUM_CTX,
-          num_predict: OLLAMA_NUM_PREDICT,
-          temperature: 0.4,
-        },
-      }),
-    })
-    clearTimeout(timeout)
+    let ollamaRes: Response
+    try {
+      ollamaRes = await fetch(`${OLLAMA_URL}/api/chat`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        signal: controller.signal,
+        body: JSON.stringify({
+          model: MODEL,
+          messages: [
+            { role: 'system', content: systemPrompt },
+            ...messages,
+          ],
+          stream: true,
+          options: {
+            num_ctx: OLLAMA_NUM_CTX,
+            num_predict: OLLAMA_NUM_PREDICT,
+            temperature: 0.4,
+          },
+        }),
+      })
+    } finally {
+      clearTimeout(timeout)
+    }
 
     if (!ollamaRes.ok) {
+      console.warn(JSON.stringify({
+        level: 'warn',
+        message: 'ollama_chat_rejected',
+        status: ollamaRes.status,
+        durationMs: Date.now() - startedAt,
+      }))
       return ndjsonResponse(fallbackReply(coachData, messages))
     }
 
@@ -411,7 +452,12 @@ export async function POST(req: NextRequest) {
       },
     })
   } catch (e) {
-    console.warn('[chat] fallback response', e)
+    console.warn(JSON.stringify({
+      level: 'warn',
+      message: 'ollama_chat_failed',
+      durationMs: Date.now() - startedAt,
+      ...errorDetails(e),
+    }))
     return ndjsonResponse(fallbackReply(payload?.coachData ?? null, payload?.messages ?? []))
   }
 }
