@@ -66,6 +66,7 @@ export default function TelegramPage() {
   const [botToken, setBotToken] = useState('')
   const [chatId, setChatId] = useState('')
   const [showToken, setShowToken] = useState(false)
+  const [globalBotAvailable, setGlobalBotAvailable] = useState(false)
   const [accordionOpen, setAccordionOpen] = useState(false)
   const [saving, setSaving] = useState(false)
   const [saveMsg, setSaveMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
@@ -84,6 +85,7 @@ export default function TelegramPage() {
       .then((r) => r.json())
       .then((d) => {
         setConfigured(d.configured)
+        setGlobalBotAvailable(Boolean(d.globalBotAvailable))
         if (d.config) {
           setConfig(d.config)
           setChatId(d.config.chatId ?? '')
@@ -206,7 +208,7 @@ export default function TelegramPage() {
 
         {/* Bot Token */}
         <div className="space-y-1.5">
-          <label className="text-sm text-slate-400">Bot Token <span className="text-slate-600">(ไม่บังคับ หากใช้ Bot กลาง)</span></label>
+          <label className="text-sm text-slate-400">Bot Token <span className="text-slate-600">({globalBotAvailable ? 'ไม่บังคับ ใช้ Bot กลางได้' : 'จำเป็นสำหรับการเชื่อมต่อครั้งแรก'})</span></label>
           <div className="relative">
             <input
               type={showToken ? 'text' : 'password'}

@@ -20,6 +20,21 @@ function safeNotifications(value: unknown): Partial<Record<TelegramNotificationT
   )
 }
 
+async function validateTelegramConnection(botToken: string, chatId: string): Promise<string | null> {
+  try {
+    const [botResponse, chatResponse] = await Promise.all([
+      fetch(`https://api.telegram.org/bot${botToken}/getMe`, { cache: 'no-store' }),
+      fetch(`https://api.telegram.org/bot${botToken}/getChat?chat_id=${encodeURIComponent(chatId)}`, { cache: 'no-store' }),
+    ])
+    const [botResult, chatResult] = await Promise.all([botResponse.json(), chatResponse.json()])
+    if (!botResult.ok) return 'Bot Token ไม่ถูกต้อง'
+    if (!chatResult.ok) return 'Chat ID ไม่ถูกต้อง หรือยังไม่ได้กด /start กับ Bot'
+    return null
+  } catch {
+    return 'ไม่สามารถตรวจสอบกับ Telegram ได้ กรุณาลองใหม่'
+  }
+}
+
 export async function GET() {
   try {
     const session = await getSession()
@@ -29,6 +44,7 @@ export async function GET() {
     const config = configs[session.memberId] ?? null
     return NextResponse.json({
       configured: Boolean(config?.chatId && config.enabled),
+      globalBotAvailable: Boolean(process.env.TELEGRAM_BOT_TOKEN),
       config: config
         ? {
             chatId: config.chatId,
@@ -55,6 +71,14 @@ export async function POST(request: NextRequest) {
     if (!chatId) return NextResponse.json({ error: 'chatId is required' }, { status: 400 })
 
     const botToken = typeof body.botToken === 'string' ? body.botToken.trim().slice(0, 300) : undefined
+    const configs = await loadTelegramConfigs()
+    const effectiveBotToken = botToken || configs[session.memberId]?.botToken || process.env.TELEGRAM_BOT_TOKEN
+    if (!effectiveBotToken) {
+      return NextResponse.json({ error: 'กรุณาระบุ Bot Token' }, { status: 400 })
+    }
+    const connectionError = await validateTelegramConnection(effectiveBotToken, chatId)
+    if (connectionError) return NextResponse.json({ error: connectionError }, { status: 400 })
+
     const config = await updateTelegramConfig(session.memberId, {
       chatId,
       ...(botToken !== undefined ? { botToken } : {}),
