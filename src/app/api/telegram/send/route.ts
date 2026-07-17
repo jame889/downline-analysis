@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getSession } from '@/lib/auth'
 import { getAvailableMonths, getMembersForMonth, getSubtreeIds } from '@/lib/db'
 import { getDailyActivityAnalysis } from '@/lib/daily-activities'
-import { loadTelegramConfigs, sendTelegramMessage, type TelegramNotificationType } from '@/lib/telegram-config'
+import { getTelegramBotToken, loadTelegramConfigs, sendTelegramMessage, type TelegramNotificationType } from '@/lib/telegram-config'
 
 export const dynamic = 'force-dynamic'
 
@@ -125,7 +125,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Telegram not configured or disabled' }, { status: 400 })
     }
 
-    const botToken = memberConfig.botToken ?? process.env.TELEGRAM_BOT_TOKEN
+    const botToken = getTelegramBotToken(config, session.memberId)
     if (!botToken) {
       return NextResponse.json({ error: 'No bot token configured' }, { status: 400 })
     }

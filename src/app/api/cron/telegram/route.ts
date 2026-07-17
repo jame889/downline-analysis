@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getAvailableMonths, getMembersForMonth, getSubtreeIds } from '@/lib/db'
 import { getDailyActivityAnalysis } from '@/lib/daily-activities'
-import { loadTelegramConfigs, notificationEnabled, sendTelegramMessage } from '@/lib/telegram-config'
+import { getTelegramBotToken, loadTelegramConfigs, notificationEnabled, sendTelegramMessage } from '@/lib/telegram-config'
 
 export const dynamic = 'force-dynamic'
 
@@ -124,14 +124,13 @@ export async function GET(request: NextRequest) {
   }
 
   const allConfigs = await loadTelegramConfigs()
-  const globalBotToken = process.env.TELEGRAM_BOT_TOKEN
 
   const results: { memberId: string; success: boolean; error?: string }[] = []
 
   for (const [memberId, config] of Object.entries(allConfigs)) {
     if (!config.enabled || !notificationEnabled(config, schedule.type)) continue
 
-    const botToken = config.botToken ?? globalBotToken
+    const botToken = getTelegramBotToken(allConfigs, memberId)
     if (!botToken) {
       results.push({ memberId, success: false, error: 'No bot token' })
       continue

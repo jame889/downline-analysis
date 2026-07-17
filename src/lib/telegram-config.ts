@@ -28,6 +28,13 @@ export interface TelegramConfig {
 export type TelegramConfigStore = Record<string, TelegramConfig>
 type BlobStore = { values: TelegramConfigStore; etag?: string }
 
+export function getTelegramBotToken(configs: TelegramConfigStore, memberId?: string): string | undefined {
+  const rootId = process.env.NEXT_PUBLIC_ROOT_MEMBER_ID ?? '900057'
+  return (memberId ? configs[memberId]?.botToken : undefined)
+    ?? configs[rootId]?.botToken
+    ?? process.env.TELEGRAM_BOT_TOKEN
+}
+
 function hasBlobStorage(): boolean {
   return Boolean(process.env.BLOB_READ_WRITE_TOKEN || process.env.BLOB_STORE_ID)
 }

@@ -3,6 +3,7 @@ import { getSession } from '@/lib/auth'
 import {
   DEFAULT_TELEGRAM_NOTIFICATIONS,
   TELEGRAM_NOTIFICATION_TYPES,
+  getTelegramBotToken,
   loadTelegramConfigs,
   updateTelegramConfig,
   type TelegramNotificationType,
@@ -42,16 +43,17 @@ export async function GET() {
 
     const configs = await loadTelegramConfigs()
     const config = configs[session.memberId] ?? null
+    const sharedBotToken = getTelegramBotToken(configs)
     return NextResponse.json({
       configured: Boolean(config?.chatId && config.enabled),
-      globalBotAvailable: Boolean(process.env.TELEGRAM_BOT_TOKEN),
+      globalBotAvailable: Boolean(sharedBotToken),
       config: config
         ? {
             chatId: config.chatId,
             enabled: config.enabled,
             createdAt: config.createdAt,
             notifications: { ...DEFAULT_TELEGRAM_NOTIFICATIONS, ...config.notifications },
-            hasBotToken: Boolean(config.botToken || process.env.TELEGRAM_BOT_TOKEN),
+            hasBotToken: Boolean(getTelegramBotToken(configs, session.memberId)),
           }
         : null,
     })
@@ -72,7 +74,7 @@ export async function POST(request: NextRequest) {
 
     const botToken = typeof body.botToken === 'string' ? body.botToken.trim().slice(0, 300) : undefined
     const configs = await loadTelegramConfigs()
-    const effectiveBotToken = botToken || configs[session.memberId]?.botToken || process.env.TELEGRAM_BOT_TOKEN
+    const effectiveBotToken = botToken || getTelegramBotToken(configs, session.memberId)
     if (!effectiveBotToken) {
       return NextResponse.json({ error: 'กรุณาระบุ Bot Token' }, { status: 400 })
     }
@@ -93,7 +95,7 @@ export async function POST(request: NextRequest) {
         enabled: config.enabled,
         createdAt: config.createdAt,
         notifications: { ...DEFAULT_TELEGRAM_NOTIFICATIONS, ...config.notifications },
-        hasBotToken: Boolean(config.botToken || process.env.TELEGRAM_BOT_TOKEN),
+        hasBotToken: Boolean(getTelegramBotToken({ ...configs, [session.memberId]: config }, session.memberId)),
       },
     })
   } catch (error) {
