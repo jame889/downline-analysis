@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import {
-  checkPassword, getMemberName, memberExists,
+  checkPassword,
   createToken, SESSION_COOKIE, ROOT_MEMBER_ID
 } from '@/lib/auth'
+import { getAllMembers } from '@/lib/db'
 import fs from 'fs'
 import path from 'path'
 
@@ -15,7 +16,8 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'กรุณากรอกรหัสสมาชิกและรหัสผ่าน' }, { status: 400 })
   }
 
-  if (!memberExists(memberId)) {
+  const member = (await getAllMembers())[memberId]
+  if (!member) {
     return NextResponse.json({ error: 'ไม่พบรหัสสมาชิกนี้' }, { status: 401 })
   }
 
@@ -32,7 +34,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'รหัสผ่านไม่ถูกต้อง' }, { status: 401 })
   }
 
-  const name = getMemberName(memberId)
+  const name = member.name
   const isAdmin = memberId === ROOT_MEMBER_ID
 
   const token = await createToken({ memberId, name, isAdmin })
@@ -45,7 +47,7 @@ export async function POST(req: NextRequest) {
       : { logins: [] }
     activity.logins.push({
       memberId,
-      name: getMemberName(memberId),
+      name,
       timestamp: new Date().toISOString(),
       ip: req.headers.get('x-forwarded-for') ?? req.headers.get('x-real-ip') ?? 'unknown',
     })

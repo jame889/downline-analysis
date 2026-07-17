@@ -85,7 +85,7 @@ def process_file(ws, month: str, members: dict) -> list[dict]:
         (
             level, member_cell, join_date, highest_pos, income_pos,
             promo_goal, country, lv, free_active_end, monthly_bv,
-            # SPS export labels are reversed: K contains Sponsor, L contains Upline.
+            # SPS labels are reversed in the export: K contains Sponsor, L contains Upline.
             sponsor_ref, upline_ref, is_active, is_qualified,
             left_pos, right_pos,
             total_vol_l, total_vol_r,

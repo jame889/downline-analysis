@@ -78,8 +78,8 @@ async function loadMembers(): Promise<Record<string, Member>> {
     USE_SUPABASE ? loadMembersSupabase() : Promise.resolve({} as Record<string, Member>),
     loadMemberMbtiOverrides(),
   ])
-  // Bundled history owns the organization fields; editable metadata is applied last.
-  const merged = { ...sb, ...local }
+  // Supabase receives the latest daily report; bundled history is the offline fallback.
+  const merged = { ...local, ...sb }
   for (const [memberId, mbti] of Object.entries(mbtiOverrides)) {
     if (merged[memberId]) merged[memberId] = { ...merged[memberId], mbti }
   }
