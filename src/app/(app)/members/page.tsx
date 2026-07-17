@@ -1,6 +1,7 @@
 'use client'
 import { useEffect, useState, useMemo } from 'react'
 import type { MemberWithReport } from '@/lib/types'
+import { MBTI_TYPES } from '@/lib/mbti'
 import PositionBadge from '@/components/PositionBadge'
 import Link from 'next/link'
 
@@ -12,6 +13,9 @@ export default function MembersPage() {
   const [posFilter, setPosFilter] = useState('ALL')
   const [activeFilter, setActiveFilter] = useState('ALL')
   const [mbtiFilter, setMbtiFilter] = useState('ALL')
+  const [isAdmin, setIsAdmin] = useState(false)
+  const [savingMemberId, setSavingMemberId] = useState<string | null>(null)
+  const [mbtiNotice, setMbtiNotice] = useState<{ text: string; ok: boolean } | null>(null)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
@@ -21,6 +25,13 @@ export default function MembersPage() {
         setMonths(d.months ?? [])
         if (d.months?.[0]) setSelectedMonth(d.months[0])
       })
+  }, [])
+
+  useEffect(() => {
+    fetch('/api/me')
+      .then((r) => r.json())
+      .then((d) => setIsAdmin(Boolean(d.session?.isAdmin)))
+      .catch(() => setIsAdmin(false))
   }, [])
 
   useEffect(() => {
@@ -59,6 +70,37 @@ export default function MembersPage() {
   }, [members])
 
   const totalBv = useMemo(() => filtered.reduce((s, m) => s + m.report.monthly_bv, 0), [filtered])
+
+  async function updateMbti(member: MemberWithReport, nextMbti: string) {
+    const previousMbti = member.mbti ?? null
+    const mbti = nextMbti || null
+    setSavingMemberId(member.id)
+    setMbtiNotice(null)
+    setMembers((current) => current.map((item) => (
+      item.id === member.id ? { ...item, mbti } : item
+    )))
+
+    try {
+      const response = await fetch('/api/admin/member-mbti', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ memberId: member.id, mbti }),
+      })
+      const data = await response.json()
+      if (!response.ok) throw new Error(data.error ?? 'บันทึกไม่สำเร็จ')
+      setMbtiNotice({ text: `บันทึก MBTI ของ ${member.name} แล้ว`, ok: true })
+    } catch (error) {
+      setMembers((current) => current.map((item) => (
+        item.id === member.id ? { ...item, mbti: previousMbti } : item
+      )))
+      setMbtiNotice({
+        text: error instanceof Error ? error.message : 'ไม่สามารถบันทึก MBTI ได้',
+        ok: false,
+      })
+    } finally {
+      setSavingMemberId(null)
+    }
+  }
 
   return (
     <div className="space-y-5">
@@ -119,6 +161,12 @@ export default function MembersPage() {
         </select>
       </div>
 
+      {mbtiNotice && (
+        <p className={`text-sm ${mbtiNotice.ok ? 'text-green-400' : 'text-red-400'}`} role="status">
+          {mbtiNotice.text}
+        </p>
+      )}
+
       {/* Table */}
       <div className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden">
         <div className="overflow-x-auto">
@@ -152,7 +200,18 @@ export default function MembersPage() {
                     </Link>
                   </td>
                   <td className="px-4 py-2.5 text-center">
-                    {m.mbti ? (
+                    {isAdmin ? (
+                      <select
+                        value={m.mbti?.toUpperCase() ?? ''}
+                        onChange={(e) => updateMbti(m, e.target.value)}
+                        disabled={savingMemberId === m.id}
+                        aria-label={`MBTI ของ ${m.name}`}
+                        className="min-w-20 rounded border border-cyan-800 bg-cyan-950/50 px-2 py-1 font-mono text-xs font-semibold text-cyan-300 disabled:cursor-wait disabled:opacity-60"
+                      >
+                        <option value="">ไม่ระบุ</option>
+                        {MBTI_TYPES.map((mbti) => <option key={mbti} value={mbti}>{mbti}</option>)}
+                      </select>
+                    ) : m.mbti ? (
                       <span className="inline-flex min-w-12 justify-center rounded border border-cyan-800 bg-cyan-950/50 px-2 py-1 font-mono text-xs font-semibold text-cyan-300">
                         {m.mbti.toUpperCase()}
                       </span>

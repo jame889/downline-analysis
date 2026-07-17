@@ -21,6 +21,7 @@ data/telegram.json
 data/passwords.json
 data/password_meta.json
 data/blocked.json
+data/member-mbti.json
 
 # Logs
 npm-debug.log*

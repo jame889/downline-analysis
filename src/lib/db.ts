@@ -7,6 +7,7 @@ import {
   getBundledHistoryMonths,
   getBundledHistoryReport,
 } from './history-db'
+import { loadMemberMbtiOverrides } from './member-mbti'
 
 const DATA_DIR = path.join(process.cwd(), 'data')
 const MEMBERS_FILE = path.join(DATA_DIR, 'members.json')
@@ -73,11 +74,16 @@ async function getMonthsSupabase(): Promise<string[]> {
 
 async function loadMembers(): Promise<Record<string, Member>> {
   const local = loadMembersLocal()
-  if (!USE_SUPABASE) return local
-  const sb = await loadMembersSupabase()
-  // Preserve newer Supabase-only people, while bundled history takes precedence
-  // for overlapping rows because it was parsed from the source SPS reports.
-  return { ...sb, ...local }
+  const [sb, mbtiOverrides] = await Promise.all([
+    USE_SUPABASE ? loadMembersSupabase() : Promise.resolve({} as Record<string, Member>),
+    loadMemberMbtiOverrides(),
+  ])
+  // Bundled history owns the organization fields; editable metadata is applied last.
+  const merged = { ...sb, ...local }
+  for (const [memberId, mbti] of Object.entries(mbtiOverrides)) {
+    if (merged[memberId]) merged[memberId] = { ...merged[memberId], mbti }
+  }
+  return merged
 }
 
 async function loadReport(month: string): Promise<MonthlyReport[]> {
