@@ -54,6 +54,19 @@ async function readBlob(): Promise<BlobState> {
   }
 }
 
+function isPreconditionFailure(error: unknown): boolean {
+  const value = error as { message?: string; status?: number; statusCode?: number }
+  const message = value?.message ?? String(error)
+  return error instanceof BlobPreconditionFailedError
+    || value?.status === 412
+    || value?.statusCode === 412
+    || /precondition failed|etag mismatch/i.test(message)
+}
+
+function retryDelay(attempt: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, 25 * (attempt + 1)))
+}
+
 async function mutateState<T>(mutator: (state: TelegramBotState) => T): Promise<T> {
   if (!hasBlobStorage()) {
     const state = readLocal()
@@ -63,7 +76,7 @@ async function mutateState<T>(mutator: (state: TelegramBotState) => T): Promise<
     return result
   }
 
-  for (let attempt = 0; attempt < 3; attempt++) {
+  for (let attempt = 0; attempt < 8; attempt++) {
     const { value, etag } = await readBlob()
     const result = mutator(value)
     try {
@@ -77,7 +90,8 @@ async function mutateState<T>(mutator: (state: TelegramBotState) => T): Promise<
       })
       return result
     } catch (error) {
-      if (!(error instanceof BlobPreconditionFailedError) || attempt === 2) throw error
+      if (!isPreconditionFailure(error) || attempt === 7) throw error
+      await retryDelay(attempt)
     }
   }
   throw new Error('Unable to update Telegram bot state')

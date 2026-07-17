@@ -49,6 +49,7 @@ export async function POST() {
       url: WEBHOOK_URL,
       secret_token: secret,
       allowed_updates: ['message'],
+      max_connections: 1,
       drop_pending_updates: false,
     })
     const commands = await botRequest(token, 'setMyCommands', {
