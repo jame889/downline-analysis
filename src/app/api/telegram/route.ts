@@ -1,49 +1,46 @@
 import { NextRequest, NextResponse } from 'next/server'
-import fs from 'fs'
-import path from 'path'
 import { getSession } from '@/lib/auth'
+import {
+  DEFAULT_TELEGRAM_NOTIFICATIONS,
+  TELEGRAM_NOTIFICATION_TYPES,
+  loadTelegramConfigs,
+  updateTelegramConfig,
+  type TelegramNotificationType,
+} from '@/lib/telegram-config'
 
 export const dynamic = 'force-dynamic'
 
-const DATA_DIR = path.join(process.cwd(), 'data')
-const TELEGRAM_FILE = path.join(DATA_DIR, 'telegram.json')
-
-interface TelegramConfig {
-  chatId: string
-  botToken?: string
-  enabled: boolean
-  createdAt: string
-}
-
-type TelegramData = Record<string, TelegramConfig>
-
-function loadTelegramConfig(): TelegramData {
-  if (!fs.existsSync(TELEGRAM_FILE)) return {}
-  return JSON.parse(fs.readFileSync(TELEGRAM_FILE, 'utf-8'))
-}
-
-function saveTelegramConfig(data: TelegramData): void {
-  fs.writeFileSync(TELEGRAM_FILE, JSON.stringify(data, null, 2), 'utf-8')
+function safeNotifications(value: unknown): Partial<Record<TelegramNotificationType, boolean>> | undefined {
+  if (!value || typeof value !== 'object') return undefined
+  const source = value as Record<string, unknown>
+  return Object.fromEntries(
+    TELEGRAM_NOTIFICATION_TYPES
+      .filter((type) => typeof source[type] === 'boolean')
+      .map((type) => [type, source[type] as boolean])
+  )
 }
 
 export async function GET() {
   try {
     const session = await getSession()
-    if (!session) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
+    if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-    const config = loadTelegramConfig()
-    const memberConfig = config[session.memberId] ?? null
-
+    const configs = await loadTelegramConfigs()
+    const config = configs[session.memberId] ?? null
     return NextResponse.json({
-      configured: !!memberConfig,
-      config: memberConfig
-        ? { chatId: memberConfig.chatId, enabled: memberConfig.enabled, createdAt: memberConfig.createdAt }
+      configured: Boolean(config?.chatId && config.enabled),
+      config: config
+        ? {
+            chatId: config.chatId,
+            enabled: config.enabled,
+            createdAt: config.createdAt,
+            notifications: { ...DEFAULT_TELEGRAM_NOTIFICATIONS, ...config.notifications },
+            hasBotToken: Boolean(config.botToken || process.env.TELEGRAM_BOT_TOKEN),
+          }
         : null,
     })
-  } catch (err) {
-    console.error(err)
+  } catch (error) {
+    console.error('[telegram] Failed to load config', error)
     return NextResponse.json({ error: 'Failed to load telegram config' }, { status: 500 })
   }
 }
@@ -51,30 +48,32 @@ export async function GET() {
 export async function POST(request: NextRequest) {
   try {
     const session = await getSession()
-    if (!session) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    }
+    if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
     const body = await request.json()
-    const { chatId, botToken } = body
+    const chatId = String(body.chatId ?? '').trim().slice(0, 100)
+    if (!chatId) return NextResponse.json({ error: 'chatId is required' }, { status: 400 })
 
-    if (!chatId) {
-      return NextResponse.json({ error: 'chatId is required' }, { status: 400 })
-    }
+    const botToken = typeof body.botToken === 'string' ? body.botToken.trim().slice(0, 300) : undefined
+    const config = await updateTelegramConfig(session.memberId, {
+      chatId,
+      ...(botToken !== undefined ? { botToken } : {}),
+      enabled: body.enabled !== false,
+      notifications: safeNotifications(body.notifications),
+    })
 
-    const config = loadTelegramConfig()
-    config[session.memberId] = {
-      chatId: String(chatId),
-      ...(botToken ? { botToken: String(botToken) } : {}),
-      enabled: true,
-      createdAt: config[session.memberId]?.createdAt ?? new Date().toISOString(),
-    }
-
-    saveTelegramConfig(config)
-
-    return NextResponse.json({ success: true })
-  } catch (err) {
-    console.error(err)
+    return NextResponse.json({
+      success: true,
+      config: {
+        chatId: config.chatId,
+        enabled: config.enabled,
+        createdAt: config.createdAt,
+        notifications: { ...DEFAULT_TELEGRAM_NOTIFICATIONS, ...config.notifications },
+        hasBotToken: Boolean(config.botToken || process.env.TELEGRAM_BOT_TOKEN),
+      },
+    })
+  } catch (error) {
+    console.error('[telegram] Failed to save config', error)
     return NextResponse.json({ error: 'Failed to save telegram config' }, { status: 500 })
   }
 }

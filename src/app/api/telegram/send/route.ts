@@ -1,47 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
-import fs from 'fs'
-import path from 'path'
 import { getSession } from '@/lib/auth'
 import { getAvailableMonths, getMembersForMonth, getSubtreeIds } from '@/lib/db'
+import { getDailyActivityAnalysis } from '@/lib/daily-activities'
+import { loadTelegramConfigs, sendTelegramMessage, type TelegramNotificationType } from '@/lib/telegram-config'
 
 export const dynamic = 'force-dynamic'
-
-const DATA_DIR = path.join(process.cwd(), 'data')
-const TELEGRAM_FILE = path.join(DATA_DIR, 'telegram.json')
-
-interface TelegramConfig {
-  chatId: string
-  botToken?: string
-  enabled: boolean
-  createdAt: string
-}
-
-function loadTelegramConfig(): Record<string, TelegramConfig> {
-  if (!fs.existsSync(TELEGRAM_FILE)) return {}
-  return JSON.parse(fs.readFileSync(TELEGRAM_FILE, 'utf-8'))
-}
-
-async function sendTelegramMessage(
-  chatId: string,
-  text: string,
-  botToken: string
-): Promise<boolean> {
-  try {
-    const res = await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        chat_id: chatId,
-        text,
-        parse_mode: 'HTML',
-      }),
-    })
-    const result = await res.json()
-    return result.ok === true
-  } catch {
-    return false
-  }
-}
 
 async function buildWatchlistMessage(memberId: string): Promise<string> {
   const months = (await getAvailableMonths()).slice().sort()
@@ -124,6 +87,23 @@ async function buildWakeupMessage(memberId: string): Promise<string> {
   return `<b>Re-engagement Alert ${month}</b>\n\nDownline ตรงที่ Inactive:\n${lines.slice(0, 20).join('\n')}${lines.length > 20 ? `\n... และอีก ${lines.length - 20} คน` : ''}\n\nลองติดต่อเพื่อกระตุ้นการทำงาน`
 }
 
+async function buildActivityMessage(memberId: string): Promise<string> {
+  const activity = await getDailyActivityAnalysis(memberId)
+  const alerts = activity.notifications.slice(0, 8)
+  const lines = alerts.length > 0
+    ? alerts.map((item) => `- ${item.title}: ${item.detail}`)
+    : ['- ไม่มีงาน Follow-up ค้างหรือกิจกรรมที่ต้องแจ้งเตือนวันนี้']
+
+  return (
+    `<b>Coach JOE - Daily Action</b>\n\n` +
+    `Weekly Score: ${activity.weeklyScorecard.score}/100 (${activity.weeklyScorecard.grade})\n` +
+    `แผน 7 วัน: ทำแล้ว ${activity.planVsActual.completed7}/${activity.planVsActual.planned7} (${activity.planVsActual.completionPct ?? 0}%)\n` +
+    `Funnel: Outreach ${activity.funnel.outreach} → นัด ${activity.funnel.appointments} → Meeting ${activity.funnel.meetings} → Sponsor ${activity.funnel.sponsors} → Start Up ${activity.funnel.startups}\n\n` +
+    `${lines.join('\n')}\n\n` +
+    `Priority: ${activity.weeklyScorecard.summary}`
+  )
+}
+
 export async function POST(request: NextRequest) {
   try {
     const session = await getSession()
@@ -132,13 +112,13 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json()
-    const { type } = body as { type: 'watchlist' | 'leaderboard' | 'weekly' | 'wakeup' }
+    const { type } = body as { type: TelegramNotificationType }
 
-    if (!type || !['watchlist', 'leaderboard', 'weekly', 'wakeup'].includes(type)) {
-      return NextResponse.json({ error: 'Invalid type. Must be: watchlist, leaderboard, weekly, wakeup' }, { status: 400 })
+    if (!type || !['activity', 'watchlist', 'leaderboard', 'weekly', 'wakeup'].includes(type)) {
+      return NextResponse.json({ error: 'Invalid notification type' }, { status: 400 })
     }
 
-    const config = loadTelegramConfig()
+    const config = await loadTelegramConfigs()
     const memberConfig = config[session.memberId]
 
     if (!memberConfig || !memberConfig.enabled) {
@@ -152,6 +132,9 @@ export async function POST(request: NextRequest) {
 
     let message: string
     switch (type) {
+      case 'activity':
+        message = await buildActivityMessage(session.memberId)
+        break
       case 'watchlist':
         message = await buildWatchlistMessage(session.memberId)
         break

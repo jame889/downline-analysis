@@ -5,19 +5,25 @@ interface TelegramConfig {
   chatId: string
   enabled: boolean
   createdAt: string
+  notifications?: Record<NotificationKey, boolean>
+  hasBotToken?: boolean
 }
 
+type NotificationKey = 'activity' | 'weekly' | 'watchlist' | 'leaderboard' | 'wakeup'
+
 interface NotifType {
-  key: 'weekly' | 'watchlist' | 'leaderboard' | 'wakeup'
+  key: NotificationKey
   icon: string
   label: string
+  schedule: string
 }
 
 const NOTIF_TYPES: NotifType[] = [
-  { key: 'weekly', icon: '📊', label: 'สรุปรายสัปดาห์' },
-  { key: 'watchlist', icon: '⚠️', label: 'แจ้งเตือนสมาชิกเสี่ยงหลุด' },
-  { key: 'leaderboard', icon: '🏆', label: 'Leaderboard รายเดือน' },
-  { key: 'wakeup', icon: '📣', label: 'ปลุกคนหลับ' },
+  { key: 'activity', icon: '🔔', label: 'Daily Action และ Follow-up', schedule: 'ทุกวัน 08:00' },
+  { key: 'weekly', icon: '📊', label: 'สรุปรายสัปดาห์', schedule: 'วันจันทร์ 08:00' },
+  { key: 'watchlist', icon: '⚠️', label: 'แจ้งเตือนสมาชิกเสี่ยงหลุด', schedule: 'วันอาทิตย์ 10:00' },
+  { key: 'leaderboard', icon: '🏆', label: 'Leaderboard รายเดือน', schedule: 'ส่งทดสอบได้ตามต้องการ' },
+  { key: 'wakeup', icon: '📣', label: 'ปลุกคนหลับ', schedule: 'อังคาร–ศุกร์ 09:00' },
 ]
 
 function Toggle({ checked, onChange }: { checked: boolean; onChange: (v: boolean) => void }) {
@@ -63,7 +69,8 @@ export default function TelegramPage() {
   const [accordionOpen, setAccordionOpen] = useState(false)
   const [saving, setSaving] = useState(false)
   const [saveMsg, setSaveMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
-  const [notifToggles, setNotifToggles] = useState<Record<string, boolean>>({
+  const [notifToggles, setNotifToggles] = useState<Record<NotificationKey, boolean>>({
+    activity: true,
     weekly: true,
     watchlist: true,
     leaderboard: true,
@@ -80,6 +87,7 @@ export default function TelegramPage() {
         if (d.config) {
           setConfig(d.config)
           setChatId(d.config.chatId ?? '')
+          setNotifToggles((current) => ({ ...current, ...d.config.notifications }))
         }
       })
       .catch(() => {})
@@ -96,13 +104,13 @@ export default function TelegramPage() {
       const res = await fetch('/api/telegram', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ chatId: chatId.trim(), botToken: botToken.trim() || undefined }),
+        body: JSON.stringify({ chatId: chatId.trim(), botToken: botToken.trim() || undefined, notifications: notifToggles }),
       })
       const d = await res.json()
       if (d.success) {
         setSaveMsg({ type: 'success', text: 'บันทึกการตั้งค่าเรียบร้อยแล้ว' })
         setConfigured(true)
-        setConfig({ chatId: chatId.trim(), enabled: true, createdAt: config?.createdAt ?? new Date().toISOString() })
+        setConfig(d.config)
       } else {
         setSaveMsg({ type: 'error', text: d.error ?? 'เกิดข้อผิดพลาด' })
       }
@@ -110,6 +118,28 @@ export default function TelegramPage() {
       setSaveMsg({ type: 'error', text: 'ไม่สามารถเชื่อมต่อเซิร์ฟเวอร์ได้' })
     } finally {
       setSaving(false)
+    }
+  }
+
+  async function handleToggle(type: NotificationKey, enabled: boolean) {
+    const previous = { ...notifToggles }
+    const next = { ...previous, [type]: enabled }
+    setNotifToggles(next)
+    if (!configured || !chatId.trim()) return
+
+    try {
+      const response = await fetch('/api/telegram', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ chatId: chatId.trim(), notifications: next }),
+      })
+      const data = await response.json()
+      if (!response.ok) throw new Error(data.error || 'บันทึกการแจ้งเตือนไม่สำเร็จ')
+      setConfig(data.config)
+      setSaveMsg({ type: 'success', text: 'บันทึกการแจ้งเตือนแล้ว' })
+    } catch (error) {
+      setNotifToggles(previous)
+      setSaveMsg({ type: 'error', text: error instanceof Error ? error.message : 'บันทึกการแจ้งเตือนไม่สำเร็จ' })
     }
   }
 
@@ -176,7 +206,7 @@ export default function TelegramPage() {
 
         {/* Bot Token */}
         <div className="space-y-1.5">
-          <label className="text-sm text-slate-400">Bot Token</label>
+          <label className="text-sm text-slate-400">Bot Token <span className="text-slate-600">(ไม่บังคับ หากใช้ Bot กลาง)</span></label>
           <div className="relative">
             <input
               type={showToken ? 'text' : 'password'}
@@ -257,8 +287,8 @@ export default function TelegramPage() {
             {saving ? 'กำลังบันทึก...' : 'บันทึกการตั้งค่า'}
           </button>
           <button
-            onClick={() => handleSend('weekly')}
-            disabled={sendingType === 'weekly' || !configured}
+            onClick={() => handleSend('activity')}
+            disabled={sendingType === 'activity' || !configured}
             className="px-4 py-2.5 bg-slate-800 hover:bg-slate-700 disabled:opacity-40 text-slate-300 font-medium rounded-xl transition-colors text-sm border border-slate-700"
           >
             ทดสอบส่ง
@@ -278,7 +308,7 @@ export default function TelegramPage() {
                 <span className="text-xl">{nt.icon}</span>
                 <div>
                   <p className="text-sm text-white font-medium">{nt.label}</p>
-                  <p className="text-xs text-slate-500">type: {nt.key}</p>
+                  <p className="text-xs text-slate-500">{nt.schedule}</p>
                 </div>
               </div>
               <div className="flex items-center gap-3">
@@ -300,7 +330,7 @@ export default function TelegramPage() {
                 )}
                 <Toggle
                   checked={notifToggles[nt.key]}
-                  onChange={(v) => setNotifToggles((prev) => ({ ...prev, [nt.key]: v }))}
+                  onChange={(value) => handleToggle(nt.key, value)}
                 />
               </div>
             </div>

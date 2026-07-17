@@ -1,40 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
-import fs from 'fs'
-import path from 'path'
-import { ROOT_MEMBER_ID } from '@/lib/auth'
 import { getAvailableMonths, getMembersForMonth, getSubtreeIds } from '@/lib/db'
 import { getDailyActivityAnalysis } from '@/lib/daily-activities'
+import { loadTelegramConfigs, notificationEnabled, sendTelegramMessage } from '@/lib/telegram-config'
 
 export const dynamic = 'force-dynamic'
-
-const DATA_DIR = path.join(process.cwd(), 'data')
-const TELEGRAM_FILE = path.join(DATA_DIR, 'telegram.json')
-
-interface TelegramConfig {
-  chatId: string
-  botToken?: string
-  enabled: boolean
-  createdAt: string
-}
-
-function loadTelegramConfig(): Record<string, TelegramConfig> {
-  if (!fs.existsSync(TELEGRAM_FILE)) return {}
-  return JSON.parse(fs.readFileSync(TELEGRAM_FILE, 'utf-8'))
-}
-
-async function sendTelegramMessage(chatId: string, text: string, botToken: string): Promise<boolean> {
-  try {
-    const res = await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ chat_id: chatId, text, parse_mode: 'HTML' }),
-    })
-    const result = await res.json()
-    return result.ok === true
-  } catch {
-    return false
-  }
-}
 
 async function buildWeeklyMessage(memberId: string): Promise<string> {
   const months = (await getAvailableMonths()).slice().sort()
@@ -151,16 +120,16 @@ export async function GET(request: NextRequest) {
 
   const schedule = CRON_SCHEDULES[cronType]
   if (!schedule) {
-    return NextResponse.json({ error: 'Invalid cron type. Use: weekly, wakeup, watchlist' }, { status: 400 })
+    return NextResponse.json({ error: 'Invalid cron type. Use: activity, weekly, wakeup, watchlist' }, { status: 400 })
   }
 
-  const allConfigs = loadTelegramConfig()
+  const allConfigs = await loadTelegramConfigs()
   const globalBotToken = process.env.TELEGRAM_BOT_TOKEN
 
   const results: { memberId: string; success: boolean; error?: string }[] = []
 
   for (const [memberId, config] of Object.entries(allConfigs)) {
-    if (!config.enabled) continue
+    if (!config.enabled || !notificationEnabled(config, schedule.type)) continue
 
     const botToken = config.botToken ?? globalBotToken
     if (!botToken) {
