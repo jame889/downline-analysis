@@ -99,6 +99,9 @@ async function callOpenAiCompatible(config: ProviderConfig, messages: AiMessage[
     temperature: 0.3,
     max_tokens: MAX_TOKENS,
   }
+  if (isGroq && config.model === 'qwen/qwen3.6-27b') {
+    body.reasoning_effort = 'none'
+  }
   if (!isGroq) {
     body.provider = {
       data_collection: 'deny',
