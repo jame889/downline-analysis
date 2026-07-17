@@ -1,6 +1,6 @@
 import fs from 'fs'
 import path from 'path'
-import { BlobPreconditionFailedError, get, put } from '@vercel/blob'
+import { get, put } from '@vercel/blob'
 
 const BLOB_PATH = 'member-metadata/telegram-bot-state.json'
 const LOCAL_PATH = path.join(process.cwd(), 'data', 'telegram-bot-state.json')
@@ -16,7 +16,7 @@ interface TelegramBotState {
   lastActivityIds: Record<string, string>
 }
 
-type BlobState = { value: TelegramBotState; etag?: string }
+type BlobState = { value: TelegramBotState }
 
 const EMPTY_STATE: TelegramBotState = {
   processedUpdateIds: [],
@@ -50,21 +50,7 @@ async function readBlob(): Promise<BlobState> {
   if (!result || result.statusCode !== 200) return { value: structuredClone(EMPTY_STATE) }
   return {
     value: normalize(JSON.parse(await new Response(result.stream).text())),
-    etag: result.blob.etag,
   }
-}
-
-function isPreconditionFailure(error: unknown): boolean {
-  const value = error as { message?: string; status?: number; statusCode?: number }
-  const message = value?.message ?? String(error)
-  return error instanceof BlobPreconditionFailedError
-    || value?.status === 412
-    || value?.statusCode === 412
-    || /precondition failed|etag mismatch/i.test(message)
-}
-
-function retryDelay(attempt: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, 25 * (attempt + 1)))
 }
 
 async function mutateState<T>(mutator: (state: TelegramBotState) => T): Promise<T> {
@@ -76,25 +62,16 @@ async function mutateState<T>(mutator: (state: TelegramBotState) => T): Promise<
     return result
   }
 
-  for (let attempt = 0; attempt < 8; attempt++) {
-    const { value, etag } = await readBlob()
-    const result = mutator(value)
-    try {
-      await put(BLOB_PATH, JSON.stringify(value), {
-        access: 'private',
-        addRandomSuffix: false,
-        allowOverwrite: Boolean(etag),
-        cacheControlMaxAge: 60,
-        contentType: 'application/json',
-        ...(etag ? { ifMatch: etag } : {}),
-      })
-      return result
-    } catch (error) {
-      if (!isPreconditionFailure(error) || attempt === 7) throw error
-      await retryDelay(attempt)
-    }
-  }
-  throw new Error('Unable to update Telegram bot state')
+  const { value } = await readBlob()
+  const result = mutator(value)
+  await put(BLOB_PATH, JSON.stringify(value), {
+    access: 'private',
+    addRandomSuffix: false,
+    allowOverwrite: true,
+    cacheControlMaxAge: 60,
+    contentType: 'application/json',
+  })
+  return result
 }
 
 export async function claimTelegramUpdate(updateId: string): Promise<boolean> {
