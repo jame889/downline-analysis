@@ -36,7 +36,7 @@ interface HistoryRow {
   weak_leg_thb: number
 }
 
-interface DownlineRow {
+interface SponsoredRow {
   id: string
   name: string
   join_date: string
@@ -225,7 +225,7 @@ export default function MyPage() {
   const [member, setMember] = useState<Member | null>(null)
   const [myReport, setMyReport] = useState<Report | null>(null)
   const [history, setHistory] = useState<HistoryRow[]>([])
-  const [directDownlines, setDirectDownlines] = useState<DownlineRow[]>([])
+  const [directSponsored, setDirectSponsored] = useState<SponsoredRow[]>([])
   const [orgStats, setOrgStats] = useState<OrgStats | null>(null)
   const [treeNodes, setTreeNodes] = useState<TreeNode[]>([])
   const [loading, setLoading] = useState(true)
@@ -243,7 +243,7 @@ export default function MyPage() {
         setMember(d.member)
         setMyReport(d.myReport)
         setHistory(d.history ?? [])
-        setDirectDownlines(d.directDownlines ?? [])
+        setDirectSponsored(d.directSponsored ?? [])
         setOrgStats(d.orgStats)
         setTreeNodes(d.treeNodes ?? [])
         if (!selectedMonth) setMonths(d.months ?? [])
@@ -275,7 +275,7 @@ export default function MyPage() {
         setMember(d.member)
         setMyReport(d.myReport)
         setHistory(d.history ?? [])
-        setDirectDownlines(d.directDownlines ?? [])
+        setDirectSponsored(d.directSponsored ?? [])
         setOrgStats(d.orgStats)
         setTreeNodes(d.treeNodes ?? [])
         setMonths(d.months ?? [])
@@ -391,8 +391,8 @@ export default function MyPage() {
             <p className="text-xs text-green-500 mt-1">Active {orgStats.active}</p>
           </div>
           <div className="bg-slate-900 border border-slate-800 rounded-xl p-4">
-            <p className="text-xs text-slate-400 mb-1">Downline โดยตรง</p>
-            <p className="text-2xl font-bold text-white">{directDownlines.length}</p>
+            <p className="text-xs text-slate-400 mb-1">ผู้ได้รับการ Sponsor ตรง</p>
+            <p className="text-2xl font-bold text-white">{directSponsored.length}</p>
           </div>
           <div className="bg-slate-900 border border-slate-800 rounded-xl p-4">
             <p className="text-xs text-slate-400 mb-1">BV รวมองค์กร</p>
@@ -505,11 +505,11 @@ export default function MyPage() {
         </div>
       )}
 
-      {/* Direct downlines */}
-      {directDownlines.length > 0 && (
+      {/* Personally sponsored members */}
+      {directSponsored.length > 0 && (
         <div className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden">
           <div className="px-5 py-4 border-b border-slate-800">
-            <h2 className="text-sm font-semibold text-slate-300">Downline โดยตรง ({directDownlines.length} คน)</h2>
+            <h2 className="text-sm font-semibold text-slate-300">ผู้ได้รับการ Sponsor ตรง ({directSponsored.length} คน)</h2>
           </div>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
@@ -527,7 +527,7 @@ export default function MyPage() {
                 </tr>
               </thead>
               <tbody>
-                {directDownlines.map((d) => (
+                {directSponsored.map((d) => (
                   <tr key={d.id} className={`border-b border-slate-800/50 hover:bg-slate-800/30 transition-colors ${focusMemberId === d.id ? 'bg-slate-800/40' : ''}`}>
                     <td className="px-4 py-2.5">
                       <Link href={`/members/${d.id}`} className="hover:text-brand-400">

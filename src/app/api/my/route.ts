@@ -21,34 +21,40 @@ export async function GET(req: NextRequest) {
   ])
   const history = await getMemberHistory(session.memberId)
 
-  // Direct downlines for current month
+  // Organization and report data for the selected month
   const [subtreeMembers, monthMembers] = await Promise.all([
     getMembersForMonthSubtree(month, session.memberId),
     getMembersForMonth(month),
   ])
   const myReport = subtreeMembers.find((m) => m.id === session.memberId)?.report ?? null
 
-  // Direct downlines = members in subtree at level immediately below me
-  const directDownlines = subtreeMembers
-    .filter((m) => m.upline_id === session.memberId)
-    .map((m) => ({
-      id: m.id,
-      name: m.name,
-      join_date: m.join_date,
-      position: m.report.highest_position,
-      is_active: m.report.is_active,
-      is_qualified: m.report.is_qualified,
-      monthly_bv: m.report.monthly_bv,
-      monthly_thb: bvToThb(m.report.monthly_bv),
-      total_vol_left: m.report.total_vol_left,
-      total_vol_right: m.report.total_vol_right,
-      level: m.report.level,
-    }))
+  const reportByMemberId = new Map(monthMembers.map((item) => [item.id, item.report]))
+
+  // Personal sponsors are independent from binary Placement/Upline.
+  const directSponsored = Object.values(allMembers)
+    .filter((item) => item.sponsor_id === session.memberId)
+    .flatMap((item) => {
+      const report = reportByMemberId.get(item.id)
+      if (!report) return []
+      return [{
+        id: item.id,
+        name: item.name,
+        join_date: item.join_date,
+        position: report.highest_position,
+        is_active: report.is_active,
+        is_qualified: report.is_qualified,
+        monthly_bv: report.monthly_bv,
+        monthly_thb: bvToThb(report.monthly_bv),
+        total_vol_left: report.total_vol_left,
+        total_vol_right: report.total_vol_right,
+        level: report.level,
+      }]
+    })
+    .sort((a, b) => a.id.localeCompare(b.id, undefined, { numeric: true }))
 
   // Tree data for subtree
   const treeNodes = await getTreeData(month, session.memberId)
   const visibleSponsorIds = new Set(treeNodes.map((item) => item.id))
-  const reportByMemberId = new Map(monthMembers.map((item) => [item.id, item.report]))
   const sponsorDirectory = Object.values(allMembers)
     .filter((item) => item.sponsor_id && visibleSponsorIds.has(item.sponsor_id))
     .map((item) => {
@@ -95,7 +101,7 @@ export async function GET(req: NextRequest) {
         }
       : null,
     history: historyWithThb,
-    directDownlines,
+    directSponsored,
     treeNodes,
     sponsorDirectory,
     orgStats,
