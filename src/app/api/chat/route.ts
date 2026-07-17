@@ -191,7 +191,9 @@ function buildMemberPrivacyFilter(coachData: Record<string, unknown> | null) {
   function restore(input: string) {
     let output = input
     for (const item of aliases) {
-      output = output.split(item.token).join(`${item.name} (${item.id})`)
+      const memberLabel = `${item.name} (${item.id})`
+      output = output.split(item.token).join(memberLabel)
+      output = output.split(item.token.slice(1, -1)).join(memberLabel)
     }
     return output
   }
@@ -412,6 +414,8 @@ Hybrid 20/80: 20% Frontline (Speed) + 80% การขุดลึก (Stability
 ขุดลึกจนเจอผู้นำ 2-3 คนซ้อนกัน แล้วหยุดขุดสายนั้น
 
 ตอบเป็นภาษาไทย สั้น กระชับ ตรงประเด็น ใช้ข้อมูลข้างต้นประกอบคำแนะนำเสมอ
+ชื่อสมาชิกถูกปกปิดเป็น token รูปแบบ [MEMBER_001] ให้คัดลอก token ทั้งคำรวมวงเล็บเหลี่ยมทุกครั้ง ห้ามย่อเป็นตัวเลขหรือแก้รูปแบบ ระบบจะแปลงกลับเป็นชื่อจริงภายหลัง
+ห้ามใช้ Markdown table ให้ตอบเป็นหัวข้อสั้นและรายการลำดับเลข เพื่อให้แสดงผลบนหน้าจอมือถือได้อ่านง่าย
 ห้ามตอบกว้างๆ ถ้าผู้ใช้ถามว่า "กับใคร", "คนไหน", "ต้องลงไปทำงานกับใคร", "ขึ้น Gold/Diamond ทำกับใคร" ให้ตอบเป็นรายชื่อจริงจาก Focus Candidates อย่างน้อย 3 คน พร้อม ID, ฝั่ง, score, เหตุผลเชิงตัวเลข และงาน 7 วันถัดไป
 ถ้าถามเรื่อง Diamond ให้เริ่มด้วยชื่อคนอันดับ 1 ทันที แล้วตามด้วย gap Diamond และลำดับคนที่ควรโค้ช
 คำถามผู้แนะนำ/สปอนเซอร์/upline จะถูกตอบจาก Coach Data Engine ก่อนส่งมาถึงคุณ ห้ามเดาความสัมพันธ์ของสมาชิกเอง
