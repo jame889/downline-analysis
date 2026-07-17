@@ -10,8 +10,18 @@ const ROOT_MEMBER_ID = process.env.NEXT_PUBLIC_ROOT_MEMBER_ID ?? '900057'
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl
 
-  // Always allow static assets, auth endpoints, and chat API
-  if (pathname.startsWith('/_next') || pathname.startsWith('/api/auth') || pathname.startsWith('/api/chat')) {
+  // Machine-to-machine routes authenticate with their own bearer secrets.
+  const isMachineRoute =
+    pathname === '/api/admin/business-report-sync' ||
+    pathname === '/api/cron/telegram'
+
+  // Always allow static assets, auth endpoints, chat API, and signed machine routes.
+  if (
+    pathname.startsWith('/_next') ||
+    pathname.startsWith('/api/auth') ||
+    pathname.startsWith('/api/chat') ||
+    isMachineRoute
+  ) {
     return NextResponse.next()
   }
 
