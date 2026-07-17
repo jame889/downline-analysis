@@ -11,6 +11,7 @@ export default function MembersPage() {
   const [search, setSearch] = useState('')
   const [posFilter, setPosFilter] = useState('ALL')
   const [activeFilter, setActiveFilter] = useState('ALL')
+  const [mbtiFilter, setMbtiFilter] = useState('ALL')
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
@@ -41,9 +42,21 @@ export default function MembersPage() {
       const matchActive = activeFilter === 'ALL'
         || (activeFilter === 'Y' && m.report.is_active)
         || (activeFilter === 'N' && !m.report.is_active)
-      return matchSearch && matchPos && matchActive
+      const memberMbti = m.mbti?.trim().toUpperCase() ?? ''
+      const matchMbti = mbtiFilter === 'ALL'
+        || (mbtiFilter === 'UNSPECIFIED' && !memberMbti)
+        || memberMbti === mbtiFilter
+      return matchSearch && matchPos && matchActive && matchMbti
     })
-  }, [members, search, posFilter, activeFilter])
+  }, [members, search, posFilter, activeFilter, mbtiFilter])
+
+  const mbtiOptions = useMemo(() => {
+    return Array.from(new Set(
+      members
+        .map((m) => m.mbti?.trim().toUpperCase())
+        .filter((mbti): mbti is string => Boolean(mbti))
+    )).sort()
+  }, [members])
 
   const totalBv = useMemo(() => filtered.reduce((s, m) => s + m.report.monthly_bv, 0), [filtered])
 
@@ -93,6 +106,16 @@ export default function MembersPage() {
           <option value="ALL">Active ทั้งหมด</option>
           <option value="Y">Active</option>
           <option value="N">Inactive</option>
+        </select>
+
+        <select
+          value={mbtiFilter}
+          onChange={(e) => setMbtiFilter(e.target.value)}
+          className="bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white"
+        >
+          <option value="ALL">MBTI ทั้งหมด</option>
+          {mbtiOptions.map((mbti) => <option key={mbti} value={mbti}>{mbti}</option>)}
+          <option value="UNSPECIFIED">ยังไม่ระบุ MBTI</option>
         </select>
       </div>
 
