@@ -3,6 +3,7 @@ import { cookies } from 'next/headers'
 import fs from 'fs'
 import path from 'path'
 import crypto from 'crypto'
+import { getBundledHistoryMembers } from './history-db'
 
 const SECRET_TEXT = process.env.JWT_SECRET ?? 'downline-sps-secret-key-2026-internal'
 const SECRET = new TextEncoder().encode(SECRET_TEXT)
@@ -46,6 +47,17 @@ export async function getSession(): Promise<SessionPayload | null> {
 
 const DATA_DIR = path.join(process.cwd(), 'data')
 
+function loadAuthMembers(): Record<string, { name?: string }> {
+  const mFile = path.join(DATA_DIR, 'members.json')
+  const legacy: Record<string, { name?: string }> = fs.existsSync(mFile)
+    ? JSON.parse(fs.readFileSync(mFile, 'utf-8'))
+    : {}
+
+  // Keep authentication in sync with the member data used by the dashboard.
+  // Bundled history contains newer members that may not exist in members.json.
+  return { ...legacy, ...getBundledHistoryMembers() }
+}
+
 export function passwordOverrideCookieName(memberId: string): string {
   return `${PASSWORD_COOKIE_PREFIX}${memberId.replace(/[^a-zA-Z0-9_-]/g, '')}`
 }
@@ -81,15 +93,11 @@ export function checkPassword(memberId: string, password: string): boolean {
 }
 
 export function getMemberName(memberId: string): string {
-  const mFile = path.join(DATA_DIR, 'members.json')
-  if (!fs.existsSync(mFile)) return memberId
-  const members: Record<string, { name: string }> = JSON.parse(fs.readFileSync(mFile, 'utf-8'))
+  const members = loadAuthMembers()
   return members[memberId]?.name ?? memberId
 }
 
 export function memberExists(memberId: string): boolean {
-  const mFile = path.join(DATA_DIR, 'members.json')
-  if (!fs.existsSync(mFile)) return false
-  const members: Record<string, unknown> = JSON.parse(fs.readFileSync(mFile, 'utf-8'))
+  const members = loadAuthMembers()
   return memberId in members
 }
