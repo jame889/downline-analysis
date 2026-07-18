@@ -3,6 +3,7 @@ import { getSession } from '@/lib/auth'
 import { getAllMembers, getAvailableMonths, getReportsForMonths } from '@/lib/db'
 import { getGrowthDashboardData } from '@/lib/growth'
 import { getDailyActivityAnalysis } from '@/lib/daily-activities'
+import { analyzeKeymanStructure } from '@/lib/keyman-analysis'
 import type { Member } from '@/lib/types'
 
 export const dynamic = 'force-dynamic'
@@ -202,6 +203,7 @@ export async function GET(req: NextRequest) {
     getGrowthDashboardData(rootId, 9),
     getDailyActivityAnalysis(rootId, new Date(), weakSide),
   ])
+  const keymanStructure = analyzeKeymanStructure(rootId, members, reportsByMonth[latestMonth] ?? [])
 
   const activity30 = activityAnalysis.recent30
   if (activity30.totalActivities === 0) {
@@ -331,6 +333,7 @@ export async function GET(req: NextRequest) {
     diamond: growth?.diamond ?? null,
     focusCandidates: growth?.focusCandidates ?? [],
     growthInsights: growth?.insights ?? [],
+    keymanStructure,
     memberDirectory,
     activityAnalysis,
   })

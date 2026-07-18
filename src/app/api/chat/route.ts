@@ -188,6 +188,7 @@ function buildMemberPrivacyFilter(coachData: Record<string, unknown> | null) {
     gen1?: Array<{ id?: string; name?: string }>
     newMembers?: Array<{ id?: string; name?: string }>
     focusCandidates?: Array<{ id?: string; name?: string }>
+    keymanStructure?: { left?: Array<{ id?: string; name?: string }>; right?: Array<{ id?: string; name?: string }> }
   } | null
   const members = new Map<string, string>()
   const add = (member: { id?: string; name?: string } | undefined) => {
@@ -198,6 +199,8 @@ function buildMemberPrivacyFilter(coachData: Record<string, unknown> | null) {
   d?.gen1?.forEach(add)
   d?.newMembers?.forEach(add)
   d?.focusCandidates?.forEach(add)
+  d?.keymanStructure?.left?.forEach(add)
+  d?.keymanStructure?.right?.forEach(add)
 
   const aliases = Array.from(members, ([id, name], index) => ({
     id,
@@ -230,6 +233,38 @@ function buildMemberPrivacyFilter(coachData: Record<string, unknown> | null) {
   }
 
   return { protect, restore }
+}
+
+type KeymanPromptEntry = {
+  id: string; name: string; side: string; position: string; isActive: boolean
+  leftBv: number; rightBv: number; newBv: number; activeLeft: number; activeRight: number
+  teamSize: number; opportunityScore: number; bottlenecks: string[]
+  closestRank: null | { label: string; progressPct: number; leftGap: number; rightGap: number; activeLeftGap: number; activeRightGap: number }
+}
+
+function isKeymanStructureQuestion(question: string) {
+  return /keyman|คีย์แมน|คะแนนซ้ายขวา|ใกล้.*(?:star|bronze|silver|สตาร์|บรอนซ์|ซิลเวอร์)|ขาด.*(?:star|bronze|silver|สตาร์|บรอนซ์|ซิลเวอร์)/i.test(question)
+}
+
+function keymanStructureReply(coachData: Record<string, unknown>, question: string): string | null {
+  if (!isKeymanStructureQuestion(question)) return null
+  const d = coachData as { keymanStructure?: { left: KeymanPromptEntry[]; right: KeymanPromptEntry[] } }
+  if (!d.keymanStructure) return null
+
+  const format = (item: KeymanPromptEntry, index: number) => {
+    const gap = item.closestRank
+    const target = gap
+      ? `ใกล้ ${gap.label} ${gap.progressPct}% · ขาด BV ซ้าย ${formatNumber(gap.leftGap)} / ขวา ${formatNumber(gap.rightGap)} · ขาด Active FA ซ้าย ${gap.activeLeftGap} / ขวา ${gap.activeRightGap}`
+      : 'ผ่าน Silver แล้ว'
+    return `${index + 1}. ${item.name} (${item.id}) · ${item.position} · L/R ${formatNumber(item.leftBv)}/${formatNumber(item.rightBv)} BV · New ${formatNumber(item.newBv)} BV\n   ${target}\n   จุดติดขัด: ${item.bottlenecks.join(', ')}`
+  }
+  const includeLeft = !/เฉพาะ.*ขวา|ฝั่งขวาเท่านั้น/i.test(question)
+  const includeRight = !/เฉพาะ.*ซ้าย|ฝั่งซ้ายเท่านั้น/i.test(question)
+  const lines = ['AI วิเคราะห์โครงสร้าง Keyman จาก Placement Tree เดือนล่าสุด']
+  if (includeLeft) lines.push('', 'ฝั่งซ้าย', ...(d.keymanStructure.left.length ? d.keymanStructure.left.map(format) : ['ยังไม่มี Keyman ที่มีข้อมูลผลงาน']))
+  if (includeRight) lines.push('', 'ฝั่งขวา', ...(d.keymanStructure.right.length ? d.keymanStructure.right.map(format) : ['ยังไม่มี Keyman ที่มีข้อมูลผลงาน']))
+  lines.push('', 'ลำดับทำงาน: เริ่มจากคนที่เปอร์เซ็นต์ใกล้ตำแหน่งสูง แต่ยังขาดฝั่งอ่อนหรือ Active FA น้อยที่สุด แล้วติดตามทุก 48 ชั่วโมง [CHART:balance]')
+  return lines.join('\n')
 }
 
 function isRelationshipQuestion(question: string) {
@@ -389,6 +424,13 @@ async function buildSystemPrompt(coachData: Record<string, unknown> | null): Pro
     }>
     growthInsights?: string[]
     activityAnalysis?: DailyActivityAnalysis
+    keymanStructure?: {
+      left: KeymanPromptEntry[]
+      right: KeymanPromptEntry[]
+      closestToStar: KeymanPromptEntry[]
+      closestToBronze: KeymanPromptEntry[]
+      closestToSilver: KeymanPromptEntry[]
+    }
   }
 
   const balanceStr = d.balance
@@ -412,6 +454,14 @@ async function buildSystemPrompt(coachData: Record<string, unknown> | null): Pro
   const focusCandidateStr = d.focusCandidates?.slice(0, 8).map((c, index) =>
     `${index + 1}. ${c.name} (${c.id}) ฝั่ง${c.side}, ${c.position}, score ${c.score}/100, status ${c.status}, New BV ${c.latestNewVolume.toLocaleString()}, L/R ${c.latestLeft.toLocaleString()}/${c.latestRight.toLocaleString()}, sponsor3m ${c.sponsorLast3}, movingUp3m ${c.movingUpsLast3}, leaders ${c.leadersCreated}, active ${c.activeConsistency}%, momentum ${c.momentumRatio}x, action: ${c.recommendation}`
   ).join('\n') ?? ''
+
+  const keymanLine = (c: KeymanPromptEntry, index: number) => {
+    const gap = c.closestRank
+    return `${index + 1}. ${c.name} (${c.id}), ${c.position}, L/R ${c.leftBv.toLocaleString()}/${c.rightBv.toLocaleString()} BV, New ${c.newBv.toLocaleString()} BV, Active L/R ${c.activeLeft}/${c.activeRight}, ทีม ${c.teamSize} คน, ${gap ? `ใกล้ ${gap.label} ${gap.progressPct}%, gap BV L/R ${gap.leftGap}/${gap.rightGap}, gap Active L/R ${gap.activeLeftGap}/${gap.activeRightGap}` : 'ผ่าน Silver'}, bottleneck: ${c.bottlenecks.join(', ')}`
+  }
+  const keymanStr = d.keymanStructure
+    ? `ฝั่งซ้าย:\n${d.keymanStructure.left.map(keymanLine).join('\n') || 'ไม่มีข้อมูล'}\nฝั่งขวา:\n${d.keymanStructure.right.map(keymanLine).join('\n') || 'ไม่มีข้อมูล'}`
+    : 'ยังไม่มีข้อมูล Keyman'
 
   const activity = d.activityAnalysis
   const activityTypeStr = activity?.typeBreakdown.map((item) =>
@@ -477,6 +527,9 @@ ${diamondStr}
 === คนที่ควรลงไปทำงานด้วย / Focus Candidates ===
 ${focusCandidateStr || 'ยังไม่มี candidate เพียงพอ'}
 
+=== AI วิเคราะห์โครงสร้าง Keyman ซ้าย–ขวา ===
+${keymanStr}
+
 === ผลการลงมือทำจากบันทึกกิจกรรมรายวัน ===
 ${activityStr}
 
@@ -490,6 +543,7 @@ Hybrid 20/80: 20% Frontline (Speed) + 80% การขุดลึก (Stability
 ห้ามใช้ Markdown table ให้ตอบเป็นหัวข้อสั้นและรายการลำดับเลข เพื่อให้แสดงผลบนหน้าจอมือถือได้อ่านง่าย
 ห้ามตอบกว้างๆ ถ้าผู้ใช้ถามว่า "กับใคร", "คนไหน", "ต้องลงไปทำงานกับใคร", "ขึ้น Gold/Diamond ทำกับใคร" ให้ตอบเป็นรายชื่อจริงจาก Focus Candidates อย่างน้อย 3 คน พร้อม ID, ฝั่ง, score, เหตุผลเชิงตัวเลข และงาน 7 วันถัดไป
 ถ้าถามเรื่อง Diamond ให้เริ่มด้วยชื่อคนอันดับ 1 ทันที แล้วตามด้วย gap Diamond และลำดับคนที่ควรโค้ช
+ถ้าถาม Keyman, คะแนนซ้ายขวา, Star, Bronze หรือ Silver ต้องแยกฝั่งซ้ายและขวา ระบุ L/R BV, ตำแหน่งที่ใกล้, BV ที่ขาดแต่ละข้าง, Active FA ที่ขาดแต่ละข้าง และจุดติดขัด ห้ามใช้แค่คะแนนรวมของเจ้าของบัญชี
 คำถามผู้แนะนำ/สปอนเซอร์/upline จะถูกตอบจาก Coach Data Engine ก่อนส่งมาถึงคุณ ห้ามเดาความสัมพันธ์ของสมาชิกเอง
 เมื่อให้คำแนะนำ ต้องวิเคราะห์ข้อมูลกิจกรรมร่วมกับ BV, Sponsor, Weak Leg, Momentum และ Focus Candidates เสมอ โดยใช้หลักต่อไปนี้:
 - กิจกรรมน้อยและผลไม่โต = คอขวดด้านปริมาณหรือความสม่ำเสมอ
@@ -540,6 +594,9 @@ export async function POST(req: NextRequest) {
 
       const deterministicReply = diamondWorkReply(coachData, latestQuestion)
       if (deterministicReply) return ndjsonResponse(deterministicReply)
+
+      const keymanReply = keymanStructureReply(coachData, latestQuestion)
+      if (keymanReply) return ndjsonResponse(keymanReply)
     }
 
     const systemPrompt = await buildSystemPrompt(coachData)
