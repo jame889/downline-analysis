@@ -369,19 +369,10 @@ export function analyzeKeymanStructure(
     })
   }
 
-  // A Keyman is not limited to people who generated New BV this month. Include
-  // anyone who already owns a placement structure, accumulated leg volume,
-  // current activity, or a rank above FA. Rank readiness must use accumulated
-  // left/right volume, never New BV.
+  // Keyman requires accumulated placement volume on at least one leg. People
+  // with 0/0 volume are regular team members, even when active or ranked.
   const ranked = keymen
-    .filter((item) =>
-      item.teamSize > 0 ||
-      item.leftBv > 0 ||
-      item.rightBv > 0 ||
-      item.monthlyBv > 0 ||
-      item.isActive ||
-      item.position !== 'FA'
-    )
+    .filter((item) => item.leftBv > 0 || item.rightBv > 0)
     .sort((a, b) => b.opportunityScore - a.opportunityScore || b.newBv - a.newBv)
   const near = (code: KeymanRankGap['code']) => ranked
     .filter((item) => item.closestRank?.code === code)
