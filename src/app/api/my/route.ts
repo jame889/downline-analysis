@@ -76,7 +76,7 @@ export async function GET(req: NextRequest) {
   const placementIds = getSubtreeIds(session.memberId, allMembers)
   const sponsorOrganizationIds = getSponsorSubtreeIds(session.memberId, allMembers)
   const visibleIds = new Set([...Array.from(placementIds), ...Array.from(sponsorOrganizationIds)])
-  const treeNodes = monthMembers
+  const reportedTreeNodes = monthMembers
     .filter((item) => visibleIds.has(item.id))
     .map((item) => ({
       id: item.id,
@@ -96,6 +96,26 @@ export async function GET(req: NextRequest) {
       total_vol_left: item.report.total_vol_left,
       total_vol_right: item.report.total_vol_right,
     }))
+  const connectorTreeNodes = Object.values(allMembers)
+    .filter((item) => item.placement_connector && visibleIds.has(item.id))
+    .map((item) => ({
+      id: item.id,
+      name: item.name,
+      join_date: item.join_date,
+      country: item.country,
+      upline_id: item.upline_id,
+      sponsor_id: item.sponsor_id,
+      sponsor_name: item.sponsor_id ? (allMembers[item.sponsor_id]?.name ?? '') : '',
+      level: 0,
+      highest_position: 'Connector',
+      is_active: 0,
+      is_qualified: 0,
+      monthly_bv: 0,
+      total_vol_left: 0,
+      total_vol_right: 0,
+      is_connector: true,
+    }))
+  const treeNodes = [...reportedTreeNodes, ...connectorTreeNodes]
   const visibleSponsorIds = new Set(treeNodes.map((item) => item.id))
   const sponsorDirectory = Object.values(allMembers)
     .filter((item) => item.sponsor_id && visibleSponsorIds.has(item.sponsor_id))

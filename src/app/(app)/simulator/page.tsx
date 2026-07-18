@@ -115,6 +115,11 @@ export default function SimulatorPage() {
     () => new Map(nodes.map((node) => [node.id, node])),
     [nodes]
   )
+  const connectorCount = useMemo(
+    () => nodes.filter((node) => node.is_connector).length,
+    [nodes]
+  )
+  const memberCount = nodes.length - connectorCount
 
   const selectedNode = nodeMap.get(selectedId) ?? nodeMap.get(rootId) ?? null
   const selectedHasChildren = selectedNode
@@ -235,7 +240,8 @@ export default function SimulatorPage() {
               <div>
                 <h1 className="text-base font-bold text-white">Placement Simulator 3D</h1>
                 <p className="mt-0.5 text-xs text-slate-400">
-                  {month || '-'} · {nodes.length.toLocaleString()} คน
+                  {month || '-'} · {memberCount.toLocaleString()} คน
+                  {connectorCount > 0 && ` · ${connectorCount} connector`}
                 </p>
               </div>
               <Rotate3D className="h-5 w-5 shrink-0 text-cyan-400" />
@@ -328,8 +334,12 @@ export default function SimulatorPage() {
                   </div>
                   <p className="truncate text-sm font-semibold text-white">{selectedNode.name}</p>
                 </div>
-                <span className="rounded border border-slate-700 bg-slate-900 px-2 py-1 text-xs font-bold text-amber-300">
-                  {selectedNode.highest_position || 'FA'}
+                <span className={`rounded border px-2 py-1 text-xs font-bold ${
+                  selectedNode.is_connector
+                    ? 'border-orange-700 bg-orange-950 text-orange-300'
+                    : 'border-slate-700 bg-slate-900 text-amber-300'
+                }`}>
+                  {selectedNode.is_connector ? 'CONNECTOR' : (selectedNode.highest_position || 'FA')}
                 </span>
               </div>
 
@@ -373,7 +383,9 @@ export default function SimulatorPage() {
                 </p>
                 <p className="text-slate-400">
                   สถานะ: <span className={selectedNode.is_active ? 'text-emerald-400' : 'text-slate-500'}>
-                    {selectedNode.is_active ? 'Active' : 'Inactive'}
+                    {selectedNode.is_connector
+                      ? 'ออกแล้ว · เชื่อม Placement'
+                      : selectedNode.is_active ? 'Active' : 'Inactive'}
                   </span>
                 </p>
               </div>
@@ -418,6 +430,7 @@ export default function SimulatorPage() {
           {[
             ['bg-emerald-400', 'Active'],
             ['bg-slate-500', 'Inactive'],
+            ['bg-orange-500', 'Placement connector'],
             ['bg-violet-400', 'ยุบสายงาน'],
             ['bg-cyan-400', '5 Core'],
             ['bg-amber-300', 'เลือกอยู่'],

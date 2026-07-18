@@ -24,6 +24,7 @@ LOGIN_PAGE = f"{BASE_URL}/common/login/index.do"
 LOGIN_URL = f"{BASE_URL}/common/login/loginSubmit.json"
 REPORT_PAGE = f"{BASE_URL}/myoffice/performance/getDownlineBusinessReport.do"
 DOWNLOAD_URL = f"{BASE_URL}/myoffice/performance/downloadReportExcel.do"
+BINARY_TREE_URL = f"{BASE_URL}/myoffice/chart/findMemberList.json"
 ROOT_MEMBER_ID = "900057"
 
 
@@ -73,6 +74,77 @@ def download(session: requests.Session, month: str) -> bytes:
     if len(content) < 10_000 or not content.startswith(b"PK"):
         raise RuntimeError(f"Downloaded content is not a valid XLSX ({len(content)} bytes)")
     return content
+
+
+def download_binary_tree(session: requests.Session) -> list[dict]:
+    response = session.get(
+        BINARY_TREE_URL,
+        params={
+            "distNo": ROOT_MEMBER_ID,
+            "searchType": "S",
+            "depth": "100",
+            "includeType": "I",
+        },
+        timeout=60,
+    )
+    response.raise_for_status()
+    rows = response.json()
+    if not isinstance(rows, list) or len(rows) < 100:
+        raise RuntimeError("First Thailand Binary Tree returned an invalid response")
+    if not any(str(row.get("id", "")) == ROOT_MEMBER_ID for row in rows):
+        raise RuntimeError(f"Binary Tree root {ROOT_MEMBER_ID} is missing")
+    return rows
+
+
+def merge_binary_tree(members: dict, reports: list[dict], tree_rows: list[dict]) -> int:
+    report_ids = {report["member_id"] for report in reports}
+    tree_ids: set[str] = set()
+    upline_counts: Counter = Counter()
+
+    for row in tree_rows:
+        member_id = str(row.get("id", "")).strip()
+        if not member_id or member_id in tree_ids:
+            raise RuntimeError(f"Invalid or duplicate Binary Tree member: {member_id!r}")
+        tree_ids.add(member_id)
+
+        upline_id = str(row.get("parentid", "")).strip() or None
+        sponsor_id = str(row.get("parentid_1", "")).strip() or None
+        if upline_id:
+            upline_counts[upline_id] += 1
+
+        connector = str(row.get("status", "")).strip() != "S"
+        member = members.get(member_id)
+        if member is None:
+            name = str(row.get("dist_engname") or row.get("dist_name") or member_id)
+            members[member_id] = {
+                "id": member_id,
+                "name": name.replace("(탈)", "").strip(),
+                "join_date": str(row.get("regdate") or ""),
+                "country": str(row.get("nation") or ""),
+                "lv": 0,
+                "upline_id": upline_id,
+                "sponsor_id": sponsor_id,
+                "placement_connector": connector,
+            }
+        else:
+            # The Binary Tree endpoint is authoritative for Placement and Sponsor.
+            member["upline_id"] = upline_id
+            member["sponsor_id"] = sponsor_id
+            if connector:
+                member["placement_connector"] = True
+            else:
+                member.pop("placement_connector", None)
+
+    invalid_uplines = [member_id for member_id, count in upline_counts.items() if count > 2]
+    if invalid_uplines:
+        raise RuntimeError(f"Invalid Binary Tree placement under: {', '.join(invalid_uplines[:5])}")
+
+    missing_report_members = report_ids - tree_ids
+    if missing_report_members:
+        raise RuntimeError(
+            f"Business Report members missing from Binary Tree: {', '.join(sorted(missing_report_members)[:5])}"
+        )
+    return sum(1 for member in members.values() if member.get("placement_connector"))
 
 
 def parse_report(content: bytes, month: str) -> tuple[dict, list[dict]]:
@@ -149,11 +221,13 @@ def main() -> None:
     args.output_dir.mkdir(parents=True, exist_ok=True)
     session = requests.Session()
     login(session, username, password)
+    binary_tree = download_binary_tree(session)
 
     for month in selected_months(args.month, args.include_previous):
         content = download(session, month)
         checksum = hashlib.sha256(content).hexdigest()
         members, reports = parse_report(content, month)
+        connector_count = merge_binary_tree(members, reports, binary_tree)
         output_path = args.output_dir / f"business_report_SPS_{month}.xlsx"
         output_path.write_bytes(content)
         payload = {
@@ -162,7 +236,13 @@ def main() -> None:
             "members": members,
             "reports": reports,
         }
-        result = {"month": month, "rows": len(reports), "members": len(members), "checksum": checksum}
+        result = {
+            "month": month,
+            "rows": len(reports),
+            "members": len(members),
+            "placement_connectors": connector_count,
+            "checksum": checksum,
+        }
         if not args.dry_run:
             result["production"] = sync_report(sync_url, secret, payload)
         print(json.dumps(result, ensure_ascii=False))

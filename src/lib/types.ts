@@ -16,6 +16,7 @@ export interface Member {
   id: string
   name: string
   mbti?: string | null
+  placement_connector?: boolean
   join_date: string
   country: string
   lv: number

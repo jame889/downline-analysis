@@ -297,7 +297,9 @@ export async function upsertMembers(members: Record<string, Member>): Promise<vo
     saveMembersLocal(members)
     return
   }
-  const rows = Object.values(members)
+  // Connector metadata is used by the Blob-backed Placement view. Keep the
+  // Supabase members upsert compatible with the existing table schema.
+  const rows = Object.values(members).map(({ placement_connector: _, ...member }) => member)
   const batchSize = 200
   for (let i = 0; i < rows.length; i += batchSize) {
     await sbUpsert('members', rows.slice(i, i + batchSize))

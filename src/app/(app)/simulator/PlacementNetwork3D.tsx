@@ -17,6 +17,7 @@ export interface PlacementTreeNode {
   monthly_bv: number
   total_vol_left: number
   total_vol_right: number
+  is_connector?: boolean
 }
 
 interface VisualNode {
@@ -380,6 +381,7 @@ export default function PlacementNetwork3D({
     const materials = {
       active: new THREE.MeshPhongMaterial({ color: '#16a34a', emissive: '#052e16', shininess: 65 }),
       inactive: new THREE.MeshPhongMaterial({ color: '#64748b', emissive: '#0f172a', shininess: 40 }),
+      connector: new THREE.MeshPhongMaterial({ color: '#f97316', emissive: '#431407', shininess: 70 }),
       collapsed: new THREE.MeshPhongMaterial({ color: '#a855f7', emissive: '#3b0764', shininess: 80 }),
       core: new THREE.MeshPhongMaterial({ color: '#22d3ee', emissive: '#0e7490', shininess: 110 }),
       selected: new THREE.MeshPhongMaterial({ color: '#fbbf24', emissive: '#78350f', shininess: 110 }),
@@ -390,6 +392,7 @@ export default function PlacementNetwork3D({
     visualNodes.forEach((visual) => {
       const node = visual.data
       let material = node.is_active ? materials.active : materials.inactive
+      if (node.is_connector) material = materials.connector
       if (collapsedIds.has(node.id)) material = materials.collapsed
       if (coreIds.has(node.id)) material = materials.core
       if (node.id === selectedId && !paintMode) material = materials.selected
@@ -400,8 +403,10 @@ export default function PlacementNetwork3D({
       if (node.id === rootId) mesh.scale.setScalar(1.6)
       state.network.add(mesh)
 
-      if (node.id === rootId || node.id === selectedId || visual.isDetachedRoot) {
-        const prefix = visual.isDetachedRoot ? 'External Upline · ' : ''
+      if (node.id === rootId || node.id === selectedId || visual.isDetachedRoot || node.is_connector) {
+        const prefix = visual.isDetachedRoot
+          ? 'External Upline · '
+          : node.is_connector ? 'Connector · ' : ''
         const label = makeLabel(`${prefix}${node.id} · ${node.name}`)
         if (label) {
           label.position.set(visual.x * spacing, visual.y + 1.65, 0.2)
