@@ -58,13 +58,13 @@ export async function buildTelegramCoachReply(
 
   const candidates = growth?.focusCandidates.slice(0, 8) ?? []
   const keymanStructure = analyzeKeymanStructure(memberId, members, reports)
-  if (/keyman|คีย์แมน|คะแนนซ้ายขวา|ใกล้.*(?:star|bronze|silver|สตาร์|บรอนซ์|ซิลเวอร์)|ขาด.*(?:star|bronze|silver|สตาร์|บรอนซ์|ซิลเวอร์)/i.test(question)) {
+  if (/key\s*man|คีย์\s*แมน|คะแนน(?:สะสม)?ซ้ายขวา|(?:ใกล้|ขาด|ขึ้น|ตำแหน่ง).*?(?:star|bronze|silver|สตาร์|บรอนซ์|ซิลเวอร์)|(?:star|bronze|silver|สตาร์|บรอนซ์|ซิลเวอร์).*?(?:ใคร|ขาด|อีกเท่าไร)/i.test(question)) {
     const format = (item: KeymanAnalysis, index: number) => {
       const gap = item.closestRank
       const target = gap
         ? `ใกล้ ${gap.label} ${gap.progressPct}% · ขาด BV ซ้าย ${formatNumber(gap.leftGap)} / ขวา ${formatNumber(gap.rightGap)} · ขาด Active FA ซ้าย ${gap.activeLeftGap} / ขวา ${gap.activeRightGap}`
         : 'ผ่าน Silver แล้ว'
-      return `${index + 1}. ${item.name} (${item.id}) · ${item.position} · L/R ${formatNumber(item.leftBv)}/${formatNumber(item.rightBv)} BV · New ${formatNumber(item.newBv)} BV\n   ${target}\n   จุดติดขัด: ${item.bottlenecks.join(', ')}`
+      return `${index + 1}. ${item.name} (${item.id}) · ${item.position}\n   BV สะสมซ้าย/ขวา ${formatNumber(item.leftBv)}/${formatNumber(item.rightBv)} · Active FA ซ้าย/ขวา ${item.activeLeft}/${item.activeRight}\n   ${target}\n   จุดติดขัด: ${item.bottlenecks.join(', ')}`
     }
     return [
       `AI วิเคราะห์โครงสร้าง Keyman เดือน ${latestMonth}`,
@@ -98,6 +98,7 @@ export async function buildTelegramCoachReply(
   }))
   const protect = (input: string) => {
     let output = input
+    for (const item of aliases) output = output.replace(new RegExp(escapeRegExp(`${item.name} (${item.id})`), 'gi'), item.token)
     for (const item of aliases) output = output.replace(new RegExp(`\\b${escapeRegExp(item.id)}\\b`, 'g'), item.token)
     for (const item of aliases.slice().sort((a, b) => b.name.length - a.name.length)) {
       output = output.replace(new RegExp(escapeRegExp(item.name), 'gi'), item.token)
