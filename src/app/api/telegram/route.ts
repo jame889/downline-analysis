@@ -3,6 +3,7 @@ import { getSession } from '@/lib/auth'
 import {
   DEFAULT_TELEGRAM_NOTIFICATIONS,
   TELEGRAM_NOTIFICATION_TYPES,
+  configureTelegramBot,
   getTelegramBotToken,
   loadTelegramConfigs,
   updateTelegramConfig,
@@ -80,6 +81,19 @@ export async function POST(request: NextRequest) {
     }
     const connectionError = await validateTelegramConnection(effectiveBotToken, chatId)
     if (connectionError) return NextResponse.json({ error: connectionError }, { status: 400 })
+    if (botToken) {
+      const webhookSecret = process.env.TELEGRAM_WEBHOOK_SECRET ?? ''
+      if (!webhookSecret) {
+        return NextResponse.json({ error: 'ระบบ Telegram webhook ยังไม่พร้อม' }, { status: 503 })
+      }
+      try {
+        await configureTelegramBot(botToken, webhookSecret)
+      } catch (error) {
+        return NextResponse.json({
+          error: error instanceof Error ? error.message : 'ตั้งค่า Telegram webhook ไม่สำเร็จ',
+        }, { status: 400 })
+      }
+    }
 
     const config = await updateTelegramConfig(session.memberId, {
       chatId,

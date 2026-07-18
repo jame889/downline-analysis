@@ -4,6 +4,18 @@ import { BlobPreconditionFailedError, get, put } from '@vercel/blob'
 
 const BLOB_PATH = 'member-metadata/telegram-config.json'
 const LOCAL_PATH = path.join(process.cwd(), 'data', 'telegram.json')
+const TELEGRAM_WEBHOOK_URL = 'https://downline-analyzer.vercel.app/api/telegram/webhook'
+
+const TELEGRAM_COMMANDS = [
+  { command: 'coach', description: 'คุยกับ Coach JOE' },
+  { command: 'activity', description: 'บันทึกกิจกรรมรายวัน' },
+  { command: 'today', description: 'ดูกิจกรรมวันนี้' },
+  { command: 'score', description: 'ดู Weekly Score และ Keyman' },
+  { command: 'keyman', description: 'วิเคราะห์ Placement ซ้าย-ขวา' },
+  { command: 'followup', description: 'ดูงานติดตาม' },
+  { command: 'undo', description: 'ยกเลิกรายการล่าสุด' },
+  { command: 'help', description: 'วิธีใช้งาน' },
+]
 
 export const TELEGRAM_NOTIFICATION_TYPES = ['activity', 'weekly', 'watchlist', 'leaderboard', 'wakeup'] as const
 export type TelegramNotificationType = (typeof TELEGRAM_NOTIFICATION_TYPES)[number]
@@ -33,6 +45,38 @@ export function getTelegramBotToken(configs: TelegramConfigStore, memberId?: str
   return (memberId ? configs[memberId]?.botToken : undefined)
     ?? configs[rootId]?.botToken
     ?? process.env.TELEGRAM_BOT_TOKEN
+}
+
+export async function telegramBotRequest<T = unknown>(
+  token: string,
+  method: string,
+  body?: Record<string, unknown>
+): Promise<T> {
+  const response = await fetch(`https://api.telegram.org/bot${token}/${method}`, {
+    method: body ? 'POST' : 'GET',
+    headers: body ? { 'Content-Type': 'application/json' } : undefined,
+    body: body ? JSON.stringify(body) : undefined,
+    cache: 'no-store',
+  })
+  const result = await response.json() as { ok?: boolean; result?: T; description?: string }
+  if (!response.ok || !result.ok) throw new Error(result.description ?? `Telegram ${method} failed`)
+  return result.result as T
+}
+
+export async function configureTelegramBot(
+  token: string,
+  secret: string,
+  dropPending = false
+): Promise<unknown> {
+  await telegramBotRequest(token, 'setWebhook', {
+    url: TELEGRAM_WEBHOOK_URL,
+    secret_token: secret,
+    allowed_updates: ['message'],
+    max_connections: 1,
+    drop_pending_updates: dropPending,
+  })
+  await telegramBotRequest(token, 'setMyCommands', { commands: TELEGRAM_COMMANDS })
+  return telegramBotRequest(token, 'getWebhookInfo')
 }
 
 function hasBlobStorage(): boolean {

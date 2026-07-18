@@ -16,7 +16,7 @@ import {
   setLastTelegramActivity,
 } from '@/lib/telegram-bot-state'
 import { buildTelegramCoachReply } from '@/lib/telegram-coach'
-import { loadTelegramConfigs } from '@/lib/telegram-config'
+import { getTelegramBotToken, loadTelegramConfigs } from '@/lib/telegram-config'
 
 export const dynamic = 'force-dynamic'
 export const maxDuration = 60
@@ -229,11 +229,30 @@ export async function POST(request: NextRequest) {
 
     const matched = Object.entries(configs).find(([, config]) => config.enabled && config.chatId === chatId)
     if (!matched) {
+      console.warn(JSON.stringify({
+        level: 'warn',
+        message: 'telegram_chat_not_linked',
+        updateId,
+      }))
       await sendText(ownerToken, chatId, 'Chat ID นี้ยังไม่ได้เชื่อมกับ Downline Analyzer กรุณาเข้าสู่ระบบแล้วตั้งค่าที่เมนู Telegram')
       return NextResponse.json({ ok: true, linked: false })
     }
 
-    await handleMessage(ownerToken, chatId, matched[0], text)
+    const memberId = matched[0]
+    const replyToken = getTelegramBotToken(configs, memberId) ?? ownerToken
+    console.log(JSON.stringify({
+      level: 'info',
+      message: 'telegram_message_received',
+      updateId,
+      memberId,
+    }))
+    await handleMessage(replyToken, chatId, memberId, text)
+    console.log(JSON.stringify({
+      level: 'info',
+      message: 'telegram_message_replied',
+      updateId,
+      memberId,
+    }))
     return NextResponse.json({ ok: true })
   } catch (error) {
     console.error('[telegram-webhook]', error)

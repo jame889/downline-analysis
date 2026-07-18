@@ -1,22 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getSession } from '@/lib/auth'
-import { loadTelegramConfigs } from '@/lib/telegram-config'
+import {
+  configureTelegramBot,
+  loadTelegramConfigs,
+  telegramBotRequest,
+} from '@/lib/telegram-config'
 
 export const dynamic = 'force-dynamic'
-
-const WEBHOOK_URL = 'https://downline-analyzer.vercel.app/api/telegram/webhook'
-
-async function botRequest(token: string, method: string, body?: Record<string, unknown>) {
-  const response = await fetch(`https://api.telegram.org/bot${token}/${method}`, {
-    method: body ? 'POST' : 'GET',
-    headers: body ? { 'Content-Type': 'application/json' } : undefined,
-    body: body ? JSON.stringify(body) : undefined,
-    cache: 'no-store',
-  })
-  const result = await response.json() as { ok?: boolean; result?: unknown; description?: string }
-  if (!response.ok || !result.ok) throw new Error(result.description ?? `Telegram ${method} failed`)
-  return result.result
-}
 
 async function adminBotToken(): Promise<string> {
   const rootId = process.env.NEXT_PUBLIC_ROOT_MEMBER_ID ?? '900057'
@@ -30,7 +20,7 @@ export async function GET() {
   const session = await getSession()
   if (!session?.isAdmin) return NextResponse.json({ error: 'Admin only' }, { status: 403 })
   try {
-    const info = await botRequest(await adminBotToken(), 'getWebhookInfo')
+    const info = await telegramBotRequest(await adminBotToken(), 'getWebhookInfo')
     return NextResponse.json({ ok: true, info })
   } catch (error) {
     return NextResponse.json({ error: error instanceof Error ? error.message : 'Unable to read webhook' }, { status: 500 })
@@ -46,27 +36,8 @@ export async function POST(request: NextRequest) {
   try {
     const body = await request.json().catch(() => ({})) as { dropPending?: boolean }
     const token = await adminBotToken()
-    const webhook = await botRequest(token, 'setWebhook', {
-      url: WEBHOOK_URL,
-      secret_token: secret,
-      allowed_updates: ['message'],
-      max_connections: 1,
-      drop_pending_updates: body.dropPending === true,
-    })
-    const commands = await botRequest(token, 'setMyCommands', {
-      commands: [
-        { command: 'coach', description: 'คุยกับ Coach JOE' },
-        { command: 'activity', description: 'บันทึกกิจกรรมรายวัน' },
-        { command: 'today', description: 'ดูกิจกรรมวันนี้' },
-        { command: 'score', description: 'ดู Weekly Score และ Keyman' },
-        { command: 'keyman', description: 'วิเคราะห์ Placement ซ้าย-ขวา' },
-        { command: 'followup', description: 'ดูงานติดตาม' },
-        { command: 'undo', description: 'ยกเลิกรายการล่าสุด' },
-        { command: 'help', description: 'วิธีใช้งาน' },
-      ],
-    })
-    const info = await botRequest(token, 'getWebhookInfo')
-    return NextResponse.json({ ok: true, webhook, commands, info })
+    const info = await configureTelegramBot(token, secret, body.dropPending === true)
+    return NextResponse.json({ ok: true, webhook: true, commands: true, info })
   } catch (error) {
     console.error('[telegram-webhook-setup]', error)
     return NextResponse.json({ error: error instanceof Error ? error.message : 'Webhook setup failed' }, { status: 500 })
