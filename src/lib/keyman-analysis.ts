@@ -13,6 +13,9 @@ export interface KeymanRankGap {
   rightGap: number
   activeLeftGap: number
   activeRightGap: number
+  starTargetEachSide: number
+  starLeftGap: number
+  starRightGap: number
   qualified: boolean
   progressPct: number
 }
@@ -31,6 +34,8 @@ export interface KeymanAnalysis {
   trendPct: number | null
   activeLeft: number
   activeRight: number
+  starLeft: number
+  starRight: number
   teamSize: number
   depth: number
   closestRank: KeymanRankGap | null
@@ -38,6 +43,12 @@ export interface KeymanAnalysis {
   bottlenecks: string[]
   opportunityScore: number
   recommendedAction: string
+  concentrationPct: number
+  concentrationMemberId: string | null
+  concentrationMemberName: string | null
+  focusMemberId: string | null
+  focusMemberName: string | null
+  weakSide: Exclude<TeamSide, 'ไม่ทราบ'>
 }
 
 export interface PlacementLegAnalysis {
@@ -69,9 +80,9 @@ export interface KeymanStructureAnalysis {
 }
 
 const TARGETS = [
-  { code: 'ST' as const, rank: 'STAR', label: 'Star' as const },
-  { code: 'BR' as const, rank: 'BRONZE', label: 'Bronze' as const },
-  { code: 'SV' as const, rank: 'SILVER', label: 'Silver' as const },
+  { code: 'ST' as const, rank: 'STAR', label: 'Star' as const, starTargetEachSide: 0 },
+  { code: 'BR' as const, rank: 'BRONZE', label: 'Bronze' as const, starTargetEachSide: 1 },
+  { code: 'SV' as const, rank: 'SILVER', label: 'Silver' as const, starTargetEachSide: 2 },
 ].map((target) => {
   const rank = RANKS.find((item) => item.rank === target.rank)!
   return { ...target, targetEachSide: rank.minorBVRequired, activeRequiredEachSide: rank.activeFARequired }
@@ -113,11 +124,20 @@ function rootSide(rootId: string, memberId: string, children: Record<string, str
   return 'ไม่ทราบ'
 }
 
-function rankGap(report: MonthlyReport, activeLeft: number, activeRight: number, target: typeof TARGETS[number]): KeymanRankGap {
+function rankGap(
+  report: MonthlyReport,
+  activeLeft: number,
+  activeRight: number,
+  starLeft: number,
+  starRight: number,
+  target: typeof TARGETS[number],
+): KeymanRankGap {
   const leftGap = Math.max(0, target.targetEachSide - report.total_vol_left)
   const rightGap = Math.max(0, target.targetEachSide - report.total_vol_right)
   const activeLeftGap = Math.max(0, target.activeRequiredEachSide - activeLeft)
   const activeRightGap = Math.max(0, target.activeRequiredEachSide - activeRight)
+  const starLeftGap = Math.max(0, target.starTargetEachSide - starLeft)
+  const starRightGap = Math.max(0, target.starTargetEachSide - starRight)
   const bvProgress = target.targetEachSide > 0
     ? Math.min(report.total_vol_left, report.total_vol_right) / target.targetEachSide
     : 1
@@ -133,8 +153,59 @@ function rankGap(report: MonthlyReport, activeLeft: number, activeRight: number,
     rightGap,
     activeLeftGap,
     activeRightGap,
+    starTargetEachSide: target.starTargetEachSide,
+    starLeftGap,
+    starRightGap,
     qualified: leftGap === 0 && rightGap === 0 && activeLeftGap === 0 && activeRightGap === 0,
     progressPct: Math.round(Math.min(1, bvProgress, activeProgress) * 100),
+  }
+}
+
+function memberMomentum(report: MonthlyReport): number {
+  return report.monthly_bv + report.current_month_vol_left + report.current_month_vol_right
+}
+
+function countAtLeastStar(ids: Iterable<string>, reportMap: Map<string, MonthlyReport>): number {
+  let count = 0
+  for (const id of Array.from(ids)) {
+    const report = reportMap.get(id)
+    const rank = POSITION_RANK[report?.income_position ?? 'FA'] ?? POSITION_RANK[report?.highest_position ?? 'FA'] ?? 0
+    if (rank >= POSITION_RANK.ST) count++
+  }
+  return count
+}
+
+function pickFocusMember(
+  ids: Iterable<string>,
+  members: Record<string, Member>,
+  reportMap: Map<string, MonthlyReport>,
+): { id: string; name: string } | null {
+  const candidates = Array.from(ids)
+    .map((id) => ({ id, member: members[id], report: reportMap.get(id) }))
+    .filter((item) => item.member && item.report && (POSITION_RANK[item.report.income_position] ?? 0) < POSITION_RANK.ST)
+    .sort((a, b) => {
+      const activeDiff = Number(b.report!.is_active) - Number(a.report!.is_active)
+      return activeDiff || memberMomentum(b.report!) - memberMomentum(a.report!)
+    })
+  const selected = candidates[0]
+  return selected ? { id: selected.id, name: selected.member!.name } : null
+}
+
+function concentration(
+  ids: Iterable<string>,
+  members: Record<string, Member>,
+  reportMap: Map<string, MonthlyReport>,
+): { pct: number; id: string | null; name: string | null } {
+  const contributors = Array.from(ids)
+    .map((id) => ({ id, member: members[id], bv: reportMap.get(id)?.monthly_bv ?? 0 }))
+    .filter((item) => item.member && item.bv > 0)
+    .sort((a, b) => b.bv - a.bv)
+  const total = contributors.reduce((sum, item) => sum + item.bv, 0)
+  const top = contributors[0]
+  return {
+    pct: total > 0 && top ? Math.round((top.bv / total) * 100) : 0,
+    id: top?.id ?? null,
+    name: top?.member?.name ?? null,
   }
 }
 
@@ -239,7 +310,9 @@ export function analyzeKeymanStructure(
     const rightTree = walk(rightRoot, children)
     const activeLeft = Array.from(leftTree.keys()).filter((memberId) => reportMap.get(memberId)?.is_active).length
     const activeRight = Array.from(rightTree.keys()).filter((memberId) => reportMap.get(memberId)?.is_active).length
-    const rankGaps = TARGETS.map((target) => rankGap(report, activeLeft, activeRight, target))
+    const starLeft = countAtLeastStar(leftTree.keys(), reportMap)
+    const starRight = countAtLeastStar(rightTree.keys(), reportMap)
+    const rankGaps = TARGETS.map((target) => rankGap(report, activeLeft, activeRight, starLeft, starRight, target))
     const currentRank = POSITION_RANK[report.income_position] ?? POSITION_RANK[report.highest_position] ?? 0
     const closestRank = rankGaps.find((gap) => currentRank < (POSITION_RANK[gap.code] ?? 0) && !gap.qualified) ?? null
     const side = rootSide(rootId, id, children, members)
@@ -253,6 +326,16 @@ export function analyzeKeymanStructure(
     const previousNewBv = previousReport
       ? previousReport.current_month_vol_left + previousReport.current_month_vol_right
       : null
+    const weakSide: Exclude<TeamSide, 'ไม่ทราบ'> = closestRank
+      ? closestRank.leftGap + closestRank.activeLeftGap * 500 >= closestRank.rightGap + closestRank.activeRightGap * 500 ? 'ซ้าย' : 'ขวา'
+      : report.total_vol_left <= report.total_vol_right ? 'ซ้าย' : 'ขวา'
+    const weakTree = weakSide === 'ซ้าย' ? leftTree : rightTree
+    const focusMember = pickFocusMember(weakTree.keys(), members, reportMap)
+    const concentrated = concentration(
+      [...Array.from(leftTree.keys()), ...Array.from(rightTree.keys())],
+      members,
+      reportMap,
+    )
 
     keymen.push({
       id,
@@ -268,6 +351,8 @@ export function analyzeKeymanStructure(
       trendPct: percentChange(newBv, previousNewBv),
       activeLeft,
       activeRight,
+      starLeft,
+      starRight,
       teamSize,
       depth: rootDepth + depth,
       closestRank,
@@ -275,6 +360,12 @@ export function analyzeKeymanStructure(
       bottlenecks: bottlenecks(closestRank, report, activeLeft, activeRight),
       opportunityScore,
       recommendedAction: recommendedAction(closestRank, report, activeLeft, activeRight),
+      concentrationPct: concentrated.pct,
+      concentrationMemberId: concentrated.id,
+      concentrationMemberName: concentrated.name,
+      focusMemberId: focusMember?.id ?? null,
+      focusMemberName: focusMember?.name ?? null,
+      weakSide,
     })
   }
 

@@ -240,7 +240,9 @@ type KeymanPromptEntry = {
   leftBv: number; rightBv: number; newBv: number; previousNewBv: number | null; trendPct: number | null
   activeLeft: number; activeRight: number; teamSize: number; opportunityScore: number; bottlenecks: string[]
   recommendedAction: string
-  closestRank: null | { label: string; progressPct: number; leftGap: number; rightGap: number; activeLeftGap: number; activeRightGap: number }
+  concentrationPct: number; concentrationMemberId: string | null; concentrationMemberName: string | null
+  focusMemberId: string | null; focusMemberName: string | null; weakSide: 'ซ้าย' | 'ขวา'
+  closestRank: null | { label: string; progressPct: number; leftGap: number; rightGap: number; activeLeftGap: number; activeRightGap: number; starLeftGap: number; starRightGap: number }
 }
 
 type PlacementLegPromptEntry = {
@@ -267,11 +269,24 @@ function keymanStructureReply(coachData: Record<string, unknown>, question: stri
 
   const format = (item: KeymanPromptEntry, index: number) => {
     const gap = item.closestRank
-    const target = gap
-      ? `ใกล้ ${gap.label} ${gap.progressPct}% · ขาด BV ซ้าย ${formatNumber(gap.leftGap)} / ขวา ${formatNumber(gap.rightGap)} · ขาด Active FA ซ้าย ${gap.activeLeftGap} / ขวา ${gap.activeRightGap}`
-      : 'ผ่าน Silver แล้ว'
-    const trend = item.trendPct === null ? 'ยังไม่มีเดือนก่อนให้เทียบ' : `${item.trendPct >= 0 ? '+' : ''}${item.trendPct}% จากเดือนก่อน`
-    return `${index + 1}. ${item.name} (${item.id}) · ฝั่ง${item.side} · ${item.position}\n   BV สะสมซ้าย/ขวา ${formatNumber(item.leftBv)}/${formatNumber(item.rightBv)} · New BV ${formatNumber(item.newBv)} (${trend})\n   ${target}\n   Action: ${item.recommendedAction}`
+    const sideGap = gap ? item.weakSide === 'ซ้าย' ? gap.leftGap : gap.rightGap : 0
+    const starGap = gap ? item.weakSide === 'ซ้าย' ? gap.starLeftGap : gap.starRightGap : 0
+    const gaps = gap ? [`ขาดฝั่ง${item.weakSide}อีก ${formatNumber(sideGap)} คะแนน`] : []
+    if (starGap > 0) gaps.push(`ขาด Star อีก ${starGap} คน`)
+    const concentration = item.concentrationPct >= 50 && item.concentrationMemberName
+      ? `${item.concentrationPct}% ของ New BV มาจาก ${item.concentrationMemberName} (${item.concentrationMemberId}) คนเดียว`
+      : item.bottlenecks.join(', ')
+    const action = item.focusMemberName
+      ? `เร่ง Start Up ใต้ ${item.focusMemberName} (${item.focusMemberId})${starGap > 0 ? ` และสร้าง Star ใหม่ในสาย${item.weakSide}` : ` พร้อมเติมคะแนนสาย${item.weakSide}`}`
+      : item.recommendedAction
+    return [
+      `${index + 1}. ${item.name} (${item.id}) อยู่ฝั่ง${item.side}`,
+      `คะแนนซ้าย ${formatNumber(item.leftBv)} | คะแนนขวา ${formatNumber(item.rightBv)}`,
+      gap ? `ใกล้ตำแหน่ง ${gap.label} (${gap.progressPct}%)` : 'ผ่านตำแหน่ง Silver แล้ว',
+      gaps.length ? gaps.join(' และ ') : 'รักษาสมดุลคะแนนทั้งสองฝั่ง',
+      `จุดติดขัด: ${concentration}`,
+      `คำแนะนำ: ${action}`,
+    ].join('\n')
   }
   const legLine = (leg: PlacementLegPromptEntry) => {
     const keyman = leg.keymanId && leg.keymanName ? `${leg.keymanName} (${leg.keymanId})` : 'ยังไม่มี Placement Keyman'
@@ -481,7 +496,7 @@ async function buildSystemPrompt(coachData: Record<string, unknown> | null): Pro
 
   const keymanLine = (c: KeymanPromptEntry, index: number) => {
     const gap = c.closestRank
-    return `${index + 1}. ${c.name} (${c.id}), ฝั่ง${c.side}, ${c.position}, L/R ${c.leftBv.toLocaleString()}/${c.rightBv.toLocaleString()} BV, New ${c.newBv.toLocaleString()} BV, trend ${c.trendPct ?? 'N/A'}%, Active L/R ${c.activeLeft}/${c.activeRight}, ทีม ${c.teamSize} คน, ${gap ? `ใกล้ ${gap.label} ${gap.progressPct}%, gap BV L/R ${gap.leftGap}/${gap.rightGap}, gap Active L/R ${gap.activeLeftGap}/${gap.activeRightGap}` : 'ผ่าน Silver'}, bottleneck: ${c.bottlenecks.join(', ')}, action: ${c.recommendedAction}`
+    return `${index + 1}. ${c.name} (${c.id}), ฝั่ง${c.side}, ${c.position}, L/R ${c.leftBv.toLocaleString()}/${c.rightBv.toLocaleString()} คะแนน, New ${c.newBv.toLocaleString()}, trend ${c.trendPct ?? 'N/A'}%, ${gap ? `ใกล้ ${gap.label} ${gap.progressPct}%, gap L/R ${gap.leftGap}/${gap.rightGap}, Star gap L/R ${gap.starLeftGap}/${gap.starRightGap}` : 'ผ่าน Silver'}, concentration ${c.concentrationPct}% by ${c.concentrationMemberName ?? 'N/A'}, focus ${c.focusMemberName ?? 'N/A'}, action: ${c.recommendedAction}`
   }
   const keymanStr = d.keymanStructure
     ? `Placement Leg ซ้าย: ${d.keymanStructure.legs.left.keymanName ?? 'ไม่มี'} (${d.keymanStructure.legs.left.keymanId ?? '-'}), BV สะสม ${d.keymanStructure.legs.left.accumulatedBv}, New BV ${d.keymanStructure.legs.left.newBv}, trend ${d.keymanStructure.legs.left.trendPct ?? 'N/A'}%, active ${d.keymanStructure.legs.left.activeMembers}/${d.keymanStructure.legs.left.teamSize}, contribution ${d.keymanStructure.legs.left.contributionPct}%, bottleneck ${d.keymanStructure.legs.left.bottlenecks.join(', ')}\nPlacement Leg ขวา: ${d.keymanStructure.legs.right.keymanName ?? 'ไม่มี'} (${d.keymanStructure.legs.right.keymanId ?? '-'}), BV สะสม ${d.keymanStructure.legs.right.accumulatedBv}, New BV ${d.keymanStructure.legs.right.newBv}, trend ${d.keymanStructure.legs.right.trendPct ?? 'N/A'}%, active ${d.keymanStructure.legs.right.activeMembers}/${d.keymanStructure.legs.right.teamSize}, contribution ${d.keymanStructure.legs.right.contributionPct}%, bottleneck ${d.keymanStructure.legs.right.bottlenecks.join(', ')}\nฝั่งซ้าย:\n${d.keymanStructure.left.slice(0, 12).map(keymanLine).join('\n') || 'ไม่มีข้อมูล'}\nฝั่งขวา:\n${d.keymanStructure.right.slice(0, 12).map(keymanLine).join('\n') || 'ไม่มีข้อมูล'}`
@@ -567,7 +582,7 @@ Hybrid 20/80: 20% Frontline (Speed) + 80% การขุดลึก (Stability
 ห้ามใช้ Markdown table ให้ตอบเป็นหัวข้อสั้นและรายการลำดับเลข เพื่อให้แสดงผลบนหน้าจอมือถือได้อ่านง่าย
 ห้ามตอบกว้างๆ ถ้าผู้ใช้ถามว่า "กับใคร", "คนไหน", "ต้องลงไปทำงานกับใคร", "ขึ้น Gold/Diamond ทำกับใคร" ให้ตอบเป็นรายชื่อจริงจาก Focus Candidates อย่างน้อย 3 คน พร้อม ID, ฝั่ง, score, เหตุผลเชิงตัวเลข และงาน 7 วันถัดไป
 ถ้าถามเรื่อง Diamond ให้เริ่มด้วยชื่อคนอันดับ 1 ทันที แล้วตามด้วย gap Diamond และลำดับคนที่ควรโค้ช
-ถ้าถาม Keyman, คะแนนซ้ายขวา, Star, Bronze หรือ Silver ต้องเริ่มจาก Placement Keyman ชั้นแรกของขาซ้ายและขาขวา เปรียบเทียบ BV สะสม, New BV, trend, สัดส่วนการโต, ทีมลึกและ Active แล้วจึงระบุผู้เข้าใกล้ตำแหน่งพร้อม BV/Active FA gap และ Action
+ถ้าถาม Keyman, คะแนนซ้ายขวา, Star, Bronze หรือ Silver ต้องเริ่มจาก Placement Keyman ชั้นแรกของขาซ้ายและขาขวา แล้วตอบ Keyman ละ 6 บรรทัด: อยู่ฝั่งใด, คะแนนซ้าย/ขวา, ตำแหน่งที่ใกล้, คะแนนและ Star ที่ยังขาด, จุดกระจุกตัวของ New BV, และคำแนะนำที่ระบุชื่อคนสำหรับ Start Up
 การจัดสมาชิกเข้าฝั่งซ้ายหรือขวาต้องใช้สาย Upline/Placement Tree เท่านั้น ห้ามใช้ Sponsor ตัดสินฝั่ง เพราะ Sponsor กับตำแหน่งที่วางอาจเป็นคนละคนกัน
 คำถามผู้แนะนำ/สปอนเซอร์/upline จะถูกตอบจาก Coach Data Engine ก่อนส่งมาถึงคุณ ห้ามเดาความสัมพันธ์ของสมาชิกเอง
 เมื่อให้คำแนะนำ ต้องวิเคราะห์ข้อมูลกิจกรรมร่วมกับ BV, Sponsor, Weak Leg, Momentum และ Focus Candidates เสมอ โดยใช้หลักต่อไปนี้:

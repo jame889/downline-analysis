@@ -38,10 +38,27 @@ function formatPlacementLeg(leg: PlacementLegAnalysis): string {
 
 function keymanRankLine(item: KeymanAnalysis, index: number): string {
   const gap = item.closestRank
-  const target = gap
-    ? `ใกล้ ${gap.label} ${gap.progressPct}% · ขาด BV ซ้าย ${formatNumber(gap.leftGap)} / ขวา ${formatNumber(gap.rightGap)} · ขาด Active FA ซ้าย ${gap.activeLeftGap} / ขวา ${gap.activeRightGap}`
-    : 'ผ่าน Silver แล้ว'
-  return `${index + 1}. ${item.name} (${item.id}) · ฝั่ง${item.side} · ${item.position}\n   BV สะสมซ้าย/ขวา ${formatNumber(item.leftBv)}/${formatNumber(item.rightBv)} · New BV ${formatNumber(item.newBv)} (${formatTrend(item.trendPct)})\n   ${target}\n   Action: ${item.recommendedAction}`
+  const sideGap = gap ? item.weakSide === 'ซ้าย' ? gap.leftGap : gap.rightGap : 0
+  const starGap = gap ? item.weakSide === 'ซ้าย' ? gap.starLeftGap : gap.starRightGap : 0
+  const rankLine = gap ? `ใกล้ตำแหน่ง ${gap.label} (${gap.progressPct}%)` : 'ผ่านตำแหน่ง Silver แล้ว'
+  const gapParts = gap
+    ? [`ขาดฝั่ง${item.weakSide}อีก ${formatNumber(sideGap)} คะแนน`]
+    : []
+  if (starGap > 0) gapParts.push(`ขาด Star อีก ${starGap} คน`)
+  const concentration = item.concentrationPct >= 50 && item.concentrationMemberName
+    ? `${item.concentrationPct}% ของ New BV มาจาก ${item.concentrationMemberName} (${item.concentrationMemberId}) คนเดียว`
+    : item.bottlenecks.join(', ')
+  const action = item.focusMemberName
+    ? `เร่ง Start Up ใต้ ${item.focusMemberName} (${item.focusMemberId})${starGap > 0 ? ` และสร้าง Star ใหม่ในสาย${item.weakSide}` : ` พร้อมเติมคะแนนสาย${item.weakSide}`}`
+    : item.recommendedAction
+  return [
+    `${index + 1}. ${item.name} (${item.id}) อยู่ฝั่ง${item.side}`,
+    `คะแนนซ้าย ${formatNumber(item.leftBv)} | คะแนนขวา ${formatNumber(item.rightBv)}`,
+    rankLine,
+    gapParts.length ? gapParts.join(' และ ') : `New BV ${formatNumber(item.newBv)} (${formatTrend(item.trendPct)})`,
+    `จุดติดขัด: ${concentration}`,
+    `คำแนะนำ: ${action}`,
+  ].join('\n')
 }
 
 export function formatKeymanStructureReply(
