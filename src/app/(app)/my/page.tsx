@@ -591,7 +591,7 @@ export default function MyPage() {
                       <Link href={`/members/${item.id}`} className="font-medium text-sm text-slate-100 hover:text-brand-400">
                         {item.name} <span className="font-mono text-xs text-brand-400">({item.id})</span>
                       </Link>
-                      <div className="mt-1"><PositionBadge pos={item.highestPosition} /></div>
+                      <div className="mt-1"><PositionBadge pos={item.highestPosition} abbreviateFa /></div>
                     </div>
                     <span className={`shrink-0 text-xs px-1.5 py-0.5 rounded border ${item.side === 'ซ้าย'
                       ? 'text-sky-300 border-sky-800 bg-sky-950/40'
@@ -652,7 +652,7 @@ export default function MyPage() {
                             : 'text-slate-400 border-slate-700 bg-slate-800'}`}>
                           ฝั่ง{item.side}
                         </span>
-                        <PositionBadge pos={item.highestPosition} />
+                        <PositionBadge pos={item.highestPosition} abbreviateFa />
                       </div>
                     </td>
                     <td className="px-4 py-4 whitespace-nowrap">

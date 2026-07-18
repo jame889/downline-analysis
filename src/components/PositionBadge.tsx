@@ -8,10 +8,10 @@ const colors: Record<string, string> = {
   SV: 'bg-purple-900/60 text-purple-300',
 }
 
-export default function PositionBadge({ pos }: { pos: string }) {
+export default function PositionBadge({ pos, abbreviateFa = false }: { pos: string; abbreviateFa?: boolean }) {
   return (
     <span className={clsx('text-xs px-2 py-0.5 rounded-full font-medium', colors[pos] ?? 'bg-slate-800 text-slate-400')}>
-      {POSITION_LABEL[pos as keyof typeof POSITION_LABEL] ?? pos}
+      {abbreviateFa && pos === 'FA' ? 'FA' : POSITION_LABEL[pos as keyof typeof POSITION_LABEL] ?? pos}
     </span>
   )
 }
