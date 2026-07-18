@@ -26,6 +26,7 @@ interface VisualNode {
   width: number
   x: number
   y: number
+  isDetachedRoot: boolean
 }
 
 interface SceneState {
@@ -49,6 +50,7 @@ interface Props {
   coreIds: Set<string>
   paintMode: boolean
   maxDepth: number
+  includeDisconnected: boolean
   onSelect: (id: string) => void
   onFocus: (node: PlacementTreeNode) => void
   onToggleCore: (node: PlacementTreeNode) => void
@@ -97,11 +99,12 @@ function makeLabel(text: string) {
   return sprite
 }
 
-function buildVisualTree(
+function buildVisualForest(
   nodes: PlacementTreeNode[],
   rootId: string,
   collapsedIds: Set<string>,
-  maxDepth: number
+  maxDepth: number,
+  includeDisconnected: boolean,
 ) {
   const nodeMap = new Map(nodes.map((node) => [node.id, node]))
   const childrenMap = new Map<string, PlacementTreeNode[]>()
@@ -117,7 +120,12 @@ function buildVisualTree(
     }
   })
 
-  const build = (id: string, depth: number, path: Set<string>): VisualNode | null => {
+  const build = (
+    id: string,
+    depth: number,
+    path: Set<string>,
+    isDetachedRoot = false,
+  ): VisualNode | null => {
     const data = nodeMap.get(id)
     if (!data || path.has(id)) return null
     const nextPath = new Set(path)
@@ -130,11 +138,11 @@ function buildVisualTree(
           .filter((child): child is VisualNode => Boolean(child))
       : []
 
-    return { data, children, depth, width: 1, x: 0, y: -depth * 4.2 }
+    return { data, children, depth, width: 1, x: 0, y: -depth * 4.2, isDetachedRoot }
   }
 
-  const root = build(rootId, 0, new Set())
-  if (!root) return null
+  const primaryRoot = build(rootId, 0, new Set())
+  if (!primaryRoot) return []
 
   const measure = (node: VisualNode): number => {
     node.width = node.children.length
@@ -152,9 +160,27 @@ function buildVisualTree(
     })
   }
 
-  measure(root)
-  position(root, -root.width / 2)
-  return root
+  const roots = [primaryRoot]
+  if (includeDisconnected) {
+    const connected = new Set(flattenVisualTree(primaryRoot).map((node) => node.data.id))
+    const detachedRootIds = nodes
+      .filter((node) => !connected.has(node.id) && (!node.upline_id || !nodeMap.has(node.upline_id)))
+      .map((node) => node.id)
+    for (const id of detachedRootIds) {
+      const root = build(id, 0, new Set(), true)
+      if (root) roots.push(root)
+    }
+  }
+
+  roots.forEach(measure)
+  const forestGap = 2
+  const totalWidth = roots.reduce((sum, root) => sum + root.width, 0) + forestGap * Math.max(0, roots.length - 1)
+  let cursor = -totalWidth / 2
+  for (const root of roots) {
+    position(root, cursor)
+    cursor += root.width + forestGap
+  }
+  return roots
 }
 
 function flattenVisualTree(root: VisualNode) {
@@ -175,6 +201,7 @@ export default function PlacementNetwork3D({
   coreIds,
   paintMode,
   maxDepth,
+  includeDisconnected,
   onSelect,
   onFocus,
   onToggleCore,
@@ -335,18 +362,20 @@ export default function PlacementNetwork3D({
     disposeObject(state.network)
     state.network.clear()
 
-    const root = buildVisualTree(nodes, rootId, collapsedIds, maxDepth)
-    if (!root) return
-    const visualNodes = flattenVisualTree(root)
+    const roots = buildVisualForest(nodes, rootId, collapsedIds, maxDepth, includeDisconnected)
+    if (!roots.length) return
+    const visualNodes = roots.flatMap(flattenVisualTree)
     const layoutKey = [
       rootId,
       maxDepth,
+      String(includeDisconnected),
       Array.from(collapsedIds).sort().join(','),
       nodes.map((node) => `${node.id}:${node.upline_id ?? ''}`).join(','),
     ].join('|')
     const shouldRefit = layoutKeyRef.current !== layoutKey
     layoutKeyRef.current = layoutKey
-    const spacing = Math.max(2.8, Math.min(6, 38 / Math.sqrt(Math.max(root.width, 1))))
+    const forestWidth = roots.reduce((sum, root) => sum + root.width, 0)
+    const spacing = Math.max(2.8, Math.min(6, 38 / Math.sqrt(Math.max(forestWidth, 1))))
 
     const materials = {
       active: new THREE.MeshPhongMaterial({ color: '#16a34a', emissive: '#052e16', shininess: 65 }),
@@ -371,8 +400,9 @@ export default function PlacementNetwork3D({
       if (node.id === rootId) mesh.scale.setScalar(1.6)
       state.network.add(mesh)
 
-      if (node.id === rootId || node.id === selectedId) {
-        const label = makeLabel(`${node.id} · ${node.name}`)
+      if (node.id === rootId || node.id === selectedId || visual.isDetachedRoot) {
+        const prefix = visual.isDetachedRoot ? 'External Upline · ' : ''
+        const label = makeLabel(`${prefix}${node.id} · ${node.name}`)
         if (label) {
           label.position.set(visual.x * spacing, visual.y + 1.65, 0.2)
           state.network.add(label)
@@ -418,7 +448,7 @@ export default function PlacementNetwork3D({
       sphere.dispose()
       Object.values(materials).forEach((material) => material.dispose())
     }
-  }, [collapsedIds, coreIds, maxDepth, nodes, paintMode, rootId, selectedId])
+  }, [collapsedIds, coreIds, includeDisconnected, maxDepth, nodes, paintMode, rootId, selectedId])
 
   return <div ref={containerRef} className="absolute inset-0 cursor-grab active:cursor-grabbing" />
 }

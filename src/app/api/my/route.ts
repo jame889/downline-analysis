@@ -2,10 +2,28 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getSession } from '@/lib/auth'
 import {
   getAllMembers, getAvailableMonths, getMember, getMemberHistory,
-  getMembersForMonth, getMembersForMonthSubtree, getTreeData, bvToThb
+  getMembersForMonth, getMembersForMonthSubtree, getSubtreeIds, bvToThb
 } from '@/lib/db'
+import type { Member } from '@/lib/types'
 
 export const dynamic = 'force-dynamic'
+
+function getSponsorSubtreeIds(rootId: string, members: Record<string, Member>): Set<string> {
+  const children: Record<string, string[]> = {}
+  for (const member of Object.values(members)) {
+    if (!member.sponsor_id) continue
+    ;(children[member.sponsor_id] ??= []).push(member.id)
+  }
+  const result = new Set<string>()
+  const queue = [rootId]
+  while (queue.length) {
+    const id = queue.shift()!
+    if (result.has(id)) continue
+    result.add(id)
+    for (const child of children[id] ?? []) queue.push(child)
+  }
+  return result
+}
 
 export async function GET(req: NextRequest) {
   const session = await getSession()
@@ -52,8 +70,32 @@ export async function GET(req: NextRequest) {
     })
     .sort((a, b) => a.id.localeCompare(b.id, undefined, { numeric: true }))
 
-  // Tree data for subtree
-  const treeNodes = await getTreeData(month, session.memberId)
+  // Placement may pass through an external Upline that is absent from this
+  // sponsor-scoped report. Keep both the real Placement subtree and the user's
+  // sponsor organization so disconnected Placement branches remain inspectable.
+  const placementIds = getSubtreeIds(session.memberId, allMembers)
+  const sponsorOrganizationIds = getSponsorSubtreeIds(session.memberId, allMembers)
+  const visibleIds = new Set([...Array.from(placementIds), ...Array.from(sponsorOrganizationIds)])
+  const treeNodes = monthMembers
+    .filter((item) => visibleIds.has(item.id))
+    .map((item) => ({
+      id: item.id,
+      name: item.name,
+      join_date: item.join_date,
+      country: item.country,
+      // Preserve the real missing Upline id. The 3D renderer presents that
+      // branch separately instead of inventing a Sponsor-based connection.
+      upline_id: item.upline_id,
+      sponsor_id: item.sponsor_id,
+      sponsor_name: item.sponsor_id ? (allMembers[item.sponsor_id]?.name ?? '') : '',
+      level: item.report.level,
+      highest_position: item.report.highest_position,
+      is_active: item.report.is_active ? 1 : 0,
+      is_qualified: item.report.is_qualified ? 1 : 0,
+      monthly_bv: item.report.monthly_bv,
+      total_vol_left: item.report.total_vol_left,
+      total_vol_right: item.report.total_vol_right,
+    }))
   const visibleSponsorIds = new Set(treeNodes.map((item) => item.id))
   const sponsorDirectory = Object.values(allMembers)
     .filter((item) => item.sponsor_id && visibleSponsorIds.has(item.sponsor_id))
@@ -81,11 +123,12 @@ export async function GET(req: NextRequest) {
   }))
 
   // Subtree stats
+  const visibleMembers = monthMembers.filter((item) => visibleIds.has(item.id))
   const orgStats = {
-    total: subtreeMembers.length,
-    active: subtreeMembers.filter((m) => m.report.is_active).length,
-    qualified: subtreeMembers.filter((m) => m.report.is_qualified).length,
-    total_bv: subtreeMembers.reduce((s, m) => s + m.report.monthly_bv, 0),
+    total: visibleMembers.length,
+    active: visibleMembers.filter((m) => m.report.is_active).length,
+    qualified: visibleMembers.filter((m) => m.report.is_qualified).length,
+    total_bv: visibleMembers.reduce((s, m) => s + m.report.monthly_bv, 0),
   }
 
   return NextResponse.json({

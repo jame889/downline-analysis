@@ -50,7 +50,7 @@ export default function SimulatorPage() {
   const [collapsedIds, setCollapsedIds] = useState<Set<string>>(new Set())
   const [coreIds, setCoreIds] = useState<Set<string>>(new Set())
   const [paintMode, setPaintMode] = useState(false)
-  const [maxDepth, setMaxDepth] = useState(3)
+  const [maxDepth, setMaxDepth] = useState(10)
   const [search, setSearch] = useState('')
   const [searchError, setSearchError] = useState('')
   const [loading, setLoading] = useState(true)
@@ -222,6 +222,7 @@ export default function SimulatorPage() {
             coreIds={coreIds}
             paintMode={paintMode}
             maxDepth={maxDepth}
+            includeDisconnected={rootId === originalRootId}
             onSelect={setSelectedId}
             onFocus={focusNode}
             onToggleCore={toggleCore}
