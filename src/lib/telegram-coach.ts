@@ -2,7 +2,12 @@ import { generateCoachReply, type AiMessage } from './coach-ai'
 import { getAllMembers, getAvailableMonths, getReportsForMonths, getSubtreeIds } from './db'
 import { getDailyActivityAnalysis } from './daily-activities'
 import { getGrowthDashboardData } from './growth'
-import { analyzeKeymanStructure, type KeymanAnalysis } from './keyman-analysis'
+import {
+  analyzeKeymanStructure,
+  type KeymanAnalysis,
+  type KeymanStructureAnalysis,
+  type PlacementLegAnalysis,
+} from './keyman-analysis'
 
 type ConversationMessage = { role: 'user' | 'assistant'; content: string }
 
@@ -14,6 +19,54 @@ function formatNumber(value: number): string {
   return value.toLocaleString('en-US', { maximumFractionDigits: 0 })
 }
 
+function formatTrend(value: number | null): string {
+  if (value === null) return 'ยังไม่มีเดือนก่อนให้เทียบ'
+  return `${value >= 0 ? '+' : ''}${value}% จากเดือนก่อน`
+}
+
+function formatPlacementLeg(leg: PlacementLegAnalysis): string {
+  const keyman = leg.keymanId && leg.keymanName
+    ? `${leg.keymanName} (${leg.keymanId})`
+    : 'ยังไม่มี Placement Keyman'
+  return [
+    `ฝั่ง${leg.side}: ${keyman}`,
+    `BV สะสม ${formatNumber(leg.accumulatedBv)} · New BV ${formatNumber(leg.newBv)} (${formatTrend(leg.trendPct)}) · สัดส่วนการโต ${leg.contributionPct}%`,
+    `ทีมลึก ${leg.teamSize} คน · Active ${leg.activeMembers} คน (${leg.activeRatePct}%)`,
+    `คอขวด: ${leg.bottlenecks.join(', ')}`,
+  ].join('\n')
+}
+
+function keymanRankLine(item: KeymanAnalysis, index: number): string {
+  const gap = item.closestRank
+  const target = gap
+    ? `ใกล้ ${gap.label} ${gap.progressPct}% · ขาด BV ซ้าย ${formatNumber(gap.leftGap)} / ขวา ${formatNumber(gap.rightGap)} · ขาด Active FA ซ้าย ${gap.activeLeftGap} / ขวา ${gap.activeRightGap}`
+    : 'ผ่าน Silver แล้ว'
+  return `${index + 1}. ${item.name} (${item.id}) · ฝั่ง${item.side} · ${item.position}\n   BV สะสมซ้าย/ขวา ${formatNumber(item.leftBv)}/${formatNumber(item.rightBv)} · New BV ${formatNumber(item.newBv)} (${formatTrend(item.trendPct)})\n   ${target}\n   Action: ${item.recommendedAction}`
+}
+
+export function formatKeymanStructureReply(
+  latestMonth: string,
+  analysis: KeymanStructureAnalysis,
+  limitPerSide = 5,
+): string {
+  return [
+    `AI วิเคราะห์โครงสร้างซ้าย-ขวา เดือน ${latestMonth}`,
+    'คำนวณจาก Placement Tree (Upline) ไม่ได้จัดฝั่งจาก Sponsor',
+    '',
+    formatPlacementLeg(analysis.legs.left),
+    '',
+    formatPlacementLeg(analysis.legs.right),
+    '',
+    'Keyman ที่ควรเร่งฝั่งซ้าย',
+    ...(analysis.left.length ? analysis.left.slice(0, limitPerSide).map(keymanRankLine) : ['ยังไม่มี Keyman ที่มีข้อมูลผลงาน']),
+    '',
+    'Keyman ที่ควรเร่งฝั่งขวา',
+    ...(analysis.right.length ? analysis.right.slice(0, limitPerSide).map(keymanRankLine) : ['ยังไม่มี Keyman ที่มีข้อมูลผลงาน']),
+    '',
+    'Action: เริ่มจากฝั่งที่ New BV ลดลงหรือ Active Rate ต่ำ แล้วโค้ชคนที่ใกล้ตำแหน่งที่สุดทุก 48 ชั่วโมง',
+  ].join('\n')
+}
+
 export async function buildTelegramCoachReply(
   memberId: string,
   question: string,
@@ -23,9 +76,11 @@ export async function buildTelegramCoachReply(
   const latestMonth = months[0]
   if (!latestMonth) return 'ยังไม่มีข้อมูล Business Report สำหรับวิเคราะห์ครับ'
 
+  const previousMonth = months[1]
+  const reportMonths = [latestMonth, previousMonth].filter(Boolean) as string[]
   const [members, reportsByMonth, growth, activity] = await Promise.all([
     getAllMembers(),
-    getReportsForMonths([latestMonth]),
+    getReportsForMonths(reportMonths),
     getGrowthDashboardData(memberId, 9),
     getDailyActivityAnalysis(memberId),
   ])
@@ -57,26 +112,14 @@ export async function buildTelegramCoachReply(
   }
 
   const candidates = growth?.focusCandidates.slice(0, 8) ?? []
-  const keymanStructure = analyzeKeymanStructure(memberId, members, reports)
-  if (/key\s*man|คีย์\s*แมน|คะแนน(?:สะสม)?ซ้ายขวา|(?:ใกล้|ขาด|ขึ้น|ตำแหน่ง).*?(?:star|bronze|silver|สตาร์|บรอนซ์|ซิลเวอร์)|(?:star|bronze|silver|สตาร์|บรอนซ์|ซิลเวอร์).*?(?:ใคร|ขาด|อีกเท่าไร)/i.test(question)) {
-    const format = (item: KeymanAnalysis, index: number) => {
-      const gap = item.closestRank
-      const target = gap
-        ? `ใกล้ ${gap.label} ${gap.progressPct}% · ขาด BV ซ้าย ${formatNumber(gap.leftGap)} / ขวา ${formatNumber(gap.rightGap)} · ขาด Active FA ซ้าย ${gap.activeLeftGap} / ขวา ${gap.activeRightGap}`
-        : 'ผ่าน Silver แล้ว'
-      return `${index + 1}. ${item.name} (${item.id}) · ${item.position}\n   BV สะสมซ้าย/ขวา ${formatNumber(item.leftBv)}/${formatNumber(item.rightBv)} · Active FA ซ้าย/ขวา ${item.activeLeft}/${item.activeRight}\n   ${target}\n   จุดติดขัด: ${item.bottlenecks.join(', ')}`
-    }
-    return [
-      `AI วิเคราะห์โครงสร้าง Keyman เดือน ${latestMonth}`,
-      '',
-      'ฝั่งซ้าย',
-      ...(keymanStructure.left.length ? keymanStructure.left.map(format) : ['ยังไม่มี Keyman ที่มีข้อมูลผลงาน']),
-      '',
-      'ฝั่งขวา',
-      ...(keymanStructure.right.length ? keymanStructure.right.map(format) : ['ยังไม่มี Keyman ที่มีข้อมูลผลงาน']),
-      '',
-      'ลำดับทำงาน: โค้ชคนที่ใกล้ตำแหน่งที่สุดและขาดฝั่งอ่อนน้อยที่สุดก่อน แล้วติดตามทุก 48 ชั่วโมง',
-    ].join('\n')
+  const keymanStructure = analyzeKeymanStructure(
+    memberId,
+    members,
+    reports,
+    previousMonth ? reportsByMonth[previousMonth] ?? [] : [],
+  )
+  if (/key\s*man|คีย์\s*แมน|โครงสร้าง.*(?:ซ้าย|ขวา)|องค์กรโตจากใคร|คะแนน(?:สะสม)?ซ้ายขวา|(?:ใกล้|ขาด|ขึ้น|ตำแหน่ง).*?(?:star|bronze|silver|สตาร์|บรอนซ์|ซิลเวอร์)|(?:star|bronze|silver|สตาร์|บรอนซ์|ซิลเวอร์).*?(?:ใคร|ขาด|อีกเท่าไร)/i.test(question)) {
+    return formatKeymanStructureReply(latestMonth, keymanStructure)
   }
   if (/diamond|ไดมอนด์/i.test(question) && /ใคร|คนไหน|ทำงาน|ลงไป/i.test(question) && candidates.length) {
     const diamond = growth!.diamond
@@ -134,6 +177,10 @@ ${[...keymanStructure.left.slice(0, 8), ...keymanStructure.right.slice(0, 8)].ma
   return `${item.name} (${item.id}) ฝั่ง${item.side}, ${item.position}, L/R ${formatNumber(item.leftBv)}/${formatNumber(item.rightBv)} BV, ${gap ? `ใกล้ ${gap.label} ${gap.progressPct}%, gap BV L/R ${formatNumber(gap.leftGap)}/${formatNumber(gap.rightGap)}, gap Active L/R ${gap.activeLeftGap}/${gap.activeRightGap}` : 'ผ่าน Silver'}, bottleneck ${item.bottlenecks.join(', ')}`
 }).join('\n') || 'ยังไม่มีข้อมูล'}
 
+ภาพรวม Placement Leg:
+${formatPlacementLeg(keymanStructure.legs.left)}
+${formatPlacementLeg(keymanStructure.legs.right)}
+
 กิจกรรม 30 วัน: ${activity.recent30.totalActivities} ครั้ง ใน ${activity.recent30.activeDays} วัน · ซ้าย ${activity.recent30.leftParticipants} · ขวา ${activity.recent30.rightParticipants}
 Funnel: Outreach ${activity.funnel.outreach} → นัด ${activity.funnel.appointments} → Meeting ${activity.funnel.meetings} → Sponsor ${activity.funnel.sponsors} → Start Up ${activity.funnel.startups}
 Weekly Score: ${activity.weeklyScorecard.score}/100 (${activity.weeklyScorecard.grade})
@@ -141,7 +188,8 @@ Priority: ${activity.weeklyScorecard.summary}
 กิจกรรมล่าสุด:
 ${recentActivities || 'ยังไม่มีบันทึก'}
 
-ถ้าถามว่าควรทำงานกับใคร ให้ระบุชื่ออย่างน้อย 3 คนจาก Focus Candidates พร้อม score ตัวเลข เหตุผล และงาน 7 วัน
+ถ้าถามว่าควรทำงานกับใคร ให้ระบุชื่ออย่างน้อย 3 คนจาก Keyman หรือ Focus Candidates พร้อมฝั่ง Placement, Gap ตำแหน่ง, เหตุผล และงาน 7 วัน
+การจัดฝั่งต้องอ้างอิง Placement/Upline เท่านั้น ห้ามใช้ Sponsor ตัดสินฝั่ง
 ห้ามตอบกว้าง ห้ามสร้างชื่อหรือข้อมูลที่ไม่มี และห้ามใช้ Markdown table`
 
   const aiMessages: AiMessage[] = [

@@ -27,6 +27,8 @@ export interface KeymanAnalysis {
   leftBv: number
   rightBv: number
   newBv: number
+  previousNewBv: number | null
+  trendPct: number | null
   activeLeft: number
   activeRight: number
   teamSize: number
@@ -35,9 +37,29 @@ export interface KeymanAnalysis {
   rankGaps: KeymanRankGap[]
   bottlenecks: string[]
   opportunityScore: number
+  recommendedAction: string
+}
+
+export interface PlacementLegAnalysis {
+  side: Exclude<TeamSide, 'ไม่ทราบ'>
+  keymanId: string | null
+  keymanName: string | null
+  accumulatedBv: number
+  newBv: number
+  previousNewBv: number | null
+  trendPct: number | null
+  teamSize: number
+  activeMembers: number
+  activeRatePct: number
+  contributionPct: number
+  bottlenecks: string[]
 }
 
 export interface KeymanStructureAnalysis {
+  legs: {
+    left: PlacementLegAnalysis
+    right: PlacementLegAnalysis
+  }
   left: KeymanAnalysis[]
   right: KeymanAnalysis[]
   unknown: KeymanAnalysis[]
@@ -134,13 +156,75 @@ function bottlenecks(gap: KeymanRankGap | null, report: MonthlyReport, activeLef
   return result.length ? result : [`พร้อมผ่าน ${gap.label} เมื่อระบบยืนยันรอบตำแหน่ง`]
 }
 
+function percentChange(current: number, previous: number | null): number | null {
+  if (previous === null) return null
+  if (previous === 0) return current > 0 ? 100 : 0
+  return Math.round(((current - previous) / previous) * 100)
+}
+
+function recommendedAction(gap: KeymanRankGap | null, report: MonthlyReport, activeLeft: number, activeRight: number): string {
+  if (!report.is_active) return 'นัดปลุก Keyman และทำแผน Active ภายใน 48 ชั่วโมง'
+  if (!gap) return 'รักษา Silver และวางเป้าหมาย Gold ด้วยการสร้างผู้นำสองฝั่ง'
+  const leftTotalGap = gap.leftGap + gap.activeLeftGap * 500
+  const rightTotalGap = gap.rightGap + gap.activeRightGap * 500
+  const side = leftTotalGap >= rightTotalGap ? 'ซ้าย' : 'ขวา'
+  const activeGap = side === 'ซ้าย' ? gap.activeLeftGap : gap.activeRightGap
+  const bvGap = side === 'ซ้าย' ? gap.leftGap : gap.rightGap
+  return `เร่งฝั่ง${side}: เติม ${bvGap.toLocaleString()} BV${activeGap > 0 ? ` และ Active FA ${activeGap} คน` : ''} เพื่อเข้าใกล้ ${gap.label}`
+}
+
+function buildLegAnalysis(
+  side: Exclude<TeamSide, 'ไม่ทราบ'>,
+  legRootId: string | undefined,
+  children: Record<string, string[]>,
+  members: Record<string, Member>,
+  reportMap: Map<string, MonthlyReport>,
+  previousMap: Map<string, MonthlyReport>,
+  rootReport: MonthlyReport | undefined,
+): PlacementLegAnalysis {
+  const tree = walk(legRootId, children)
+  const activeMembers = Array.from(tree.keys()).filter((id) => reportMap.get(id)?.is_active).length
+  const accumulatedBv = side === 'ซ้าย' ? rootReport?.total_vol_left ?? 0 : rootReport?.total_vol_right ?? 0
+  const newBv = side === 'ซ้าย' ? rootReport?.current_month_vol_left ?? 0 : rootReport?.current_month_vol_right ?? 0
+  const previousRoot = rootReport ? previousMap.get(rootReport.member_id) : undefined
+  const previousNewBv = previousRoot
+    ? side === 'ซ้าย' ? previousRoot.current_month_vol_left : previousRoot.current_month_vol_right
+    : null
+  const totalNew = (rootReport?.current_month_vol_left ?? 0) + (rootReport?.current_month_vol_right ?? 0)
+  const legRootReport = legRootId ? reportMap.get(legRootId) : undefined
+  const issues: string[] = []
+  const trendPct = percentChange(newBv, previousNewBv)
+  if (!legRootId) issues.push(`ยังไม่มี Placement Keyman ฝั่ง${side}`)
+  if (legRootReport && !legRootReport.is_active) issues.push(`Keyman ชั้นแรกฝั่ง${side}ยัง Inactive`)
+  if (tree.size > 0 && activeMembers / tree.size < 0.35) issues.push(`Active Rate ฝั่ง${side}ต่ำกว่า 35%`)
+  if (trendPct !== null && trendPct < 0) issues.push(`New BV ฝั่ง${side}ลดลง ${Math.abs(trendPct)}%`)
+  if (!issues.length) issues.push(`ฝั่ง${side}ยังเดินหน้า ให้ติดตาม Keyman ทุก 48 ชั่วโมง`)
+
+  return {
+    side,
+    keymanId: legRootId ?? null,
+    keymanName: legRootId ? members[legRootId]?.name ?? legRootId : null,
+    accumulatedBv,
+    newBv,
+    previousNewBv,
+    trendPct,
+    teamSize: tree.size,
+    activeMembers,
+    activeRatePct: tree.size ? Math.round((activeMembers / tree.size) * 100) : 0,
+    contributionPct: totalNew > 0 ? Math.round((newBv / totalNew) * 100) : 0,
+    bottlenecks: issues,
+  }
+}
+
 export function analyzeKeymanStructure(
   rootId: string,
   members: Record<string, Member>,
   reports: MonthlyReport[],
+  previousReports: MonthlyReport[] = [],
 ): KeymanStructureAnalysis {
   const children = buildChildren(members)
   const reportMap = new Map(reports.map((report) => [report.member_id, report]))
+  const previousMap = new Map(previousReports.map((report) => [report.member_id, report]))
   const rootTree = walk(rootId, children)
   const keymen: KeymanAnalysis[] = []
 
@@ -164,6 +248,11 @@ export function analyzeKeymanStructure(
     const opportunityScore = closestRank
       ? Math.round(closestRank.progressPct * 0.7 + Math.min(20, report.current_month_vol_left + report.current_month_vol_right > 0 ? 20 : 0) + (side !== 'ไม่ทราบ' ? 10 : 0))
       : 100
+    const newBv = report.current_month_vol_left + report.current_month_vol_right
+    const previousReport = previousMap.get(id)
+    const previousNewBv = previousReport
+      ? previousReport.current_month_vol_left + previousReport.current_month_vol_right
+      : null
 
     keymen.push({
       id,
@@ -174,7 +263,9 @@ export function analyzeKeymanStructure(
       monthlyBv: report.monthly_bv,
       leftBv: report.total_vol_left,
       rightBv: report.total_vol_right,
-      newBv: report.current_month_vol_left + report.current_month_vol_right,
+      newBv,
+      previousNewBv,
+      trendPct: percentChange(newBv, previousNewBv),
       activeLeft,
       activeRight,
       teamSize,
@@ -183,6 +274,7 @@ export function analyzeKeymanStructure(
       rankGaps,
       bottlenecks: bottlenecks(closestRank, report, activeLeft, activeRight),
       opportunityScore,
+      recommendedAction: recommendedAction(closestRank, report, activeLeft, activeRight),
     })
   }
 
@@ -205,7 +297,14 @@ export function analyzeKeymanStructure(
     .sort((a, b) => (b.closestRank?.progressPct ?? 0) - (a.closestRank?.progressPct ?? 0))
     .slice(0, 20)
 
+  const [leftRoot, rightRoot] = children[rootId] ?? []
+  const rootReport = reportMap.get(rootId)
+
   return {
+    legs: {
+      left: buildLegAnalysis('ซ้าย', leftRoot, children, members, reportMap, previousMap, rootReport),
+      right: buildLegAnalysis('ขวา', rightRoot, children, members, reportMap, previousMap, rootReport),
+    },
     left: ranked.filter((item) => item.side === 'ซ้าย').slice(0, 40),
     right: ranked.filter((item) => item.side === 'ขวา').slice(0, 40),
     unknown: ranked.filter((item) => item.side === 'ไม่ทราบ').slice(0, 20),

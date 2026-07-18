@@ -237,18 +237,32 @@ function buildMemberPrivacyFilter(coachData: Record<string, unknown> | null) {
 
 type KeymanPromptEntry = {
   id: string; name: string; side: string; position: string; isActive: boolean
-  leftBv: number; rightBv: number; newBv: number; activeLeft: number; activeRight: number
-  teamSize: number; opportunityScore: number; bottlenecks: string[]
+  leftBv: number; rightBv: number; newBv: number; previousNewBv: number | null; trendPct: number | null
+  activeLeft: number; activeRight: number; teamSize: number; opportunityScore: number; bottlenecks: string[]
+  recommendedAction: string
   closestRank: null | { label: string; progressPct: number; leftGap: number; rightGap: number; activeLeftGap: number; activeRightGap: number }
 }
 
+type PlacementLegPromptEntry = {
+  side: string; keymanId: string | null; keymanName: string | null
+  accumulatedBv: number; newBv: number; trendPct: number | null
+  teamSize: number; activeMembers: number; activeRatePct: number; contributionPct: number
+  bottlenecks: string[]
+}
+
 function isKeymanStructureQuestion(question: string) {
-  return /key\s*man|คีย์\s*แมน|คะแนน(?:สะสม)?ซ้ายขวา|(?:ใกล้|ขาด|ขึ้น|ตำแหน่ง).*?(?:star|bronze|silver|สตาร์|บรอนซ์|ซิลเวอร์)|(?:star|bronze|silver|สตาร์|บรอนซ์|ซิลเวอร์).*?(?:ใคร|ขาด|อีกเท่าไร)/i.test(question)
+  return /key\s*man|คีย์\s*แมน|โครงสร้าง.*(?:ซ้าย|ขวา)|องค์กรโตจากใคร|คะแนน(?:สะสม)?ซ้ายขวา|(?:ใกล้|ขาด|ขึ้น|ตำแหน่ง).*?(?:star|bronze|silver|สตาร์|บรอนซ์|ซิลเวอร์)|(?:star|bronze|silver|สตาร์|บรอนซ์|ซิลเวอร์).*?(?:ใคร|ขาด|อีกเท่าไร)/i.test(question)
 }
 
 function keymanStructureReply(coachData: Record<string, unknown>, question: string): string | null {
   if (!isKeymanStructureQuestion(question)) return null
-  const d = coachData as { keymanStructure?: { left: KeymanPromptEntry[]; right: KeymanPromptEntry[] } }
+  const d = coachData as {
+    keymanStructure?: {
+      legs: { left: PlacementLegPromptEntry; right: PlacementLegPromptEntry }
+      left: KeymanPromptEntry[]
+      right: KeymanPromptEntry[]
+    }
+  }
   if (!d.keymanStructure) return null
 
   const format = (item: KeymanPromptEntry, index: number) => {
@@ -256,13 +270,22 @@ function keymanStructureReply(coachData: Record<string, unknown>, question: stri
     const target = gap
       ? `ใกล้ ${gap.label} ${gap.progressPct}% · ขาด BV ซ้าย ${formatNumber(gap.leftGap)} / ขวา ${formatNumber(gap.rightGap)} · ขาด Active FA ซ้าย ${gap.activeLeftGap} / ขวา ${gap.activeRightGap}`
       : 'ผ่าน Silver แล้ว'
-    return `${index + 1}. ${item.name} (${item.id}) · ${item.position}\n   BV สะสมซ้าย/ขวา ${formatNumber(item.leftBv)}/${formatNumber(item.rightBv)} · Active FA ซ้าย/ขวา ${item.activeLeft}/${item.activeRight}\n   ${target}\n   จุดติดขัด: ${item.bottlenecks.join(', ')}`
+    const trend = item.trendPct === null ? 'ยังไม่มีเดือนก่อนให้เทียบ' : `${item.trendPct >= 0 ? '+' : ''}${item.trendPct}% จากเดือนก่อน`
+    return `${index + 1}. ${item.name} (${item.id}) · ฝั่ง${item.side} · ${item.position}\n   BV สะสมซ้าย/ขวา ${formatNumber(item.leftBv)}/${formatNumber(item.rightBv)} · New BV ${formatNumber(item.newBv)} (${trend})\n   ${target}\n   Action: ${item.recommendedAction}`
+  }
+  const legLine = (leg: PlacementLegPromptEntry) => {
+    const keyman = leg.keymanId && leg.keymanName ? `${leg.keymanName} (${leg.keymanId})` : 'ยังไม่มี Placement Keyman'
+    const trend = leg.trendPct === null ? 'ยังไม่มีเดือนก่อนให้เทียบ' : `${leg.trendPct >= 0 ? '+' : ''}${leg.trendPct}% จากเดือนก่อน`
+    return `ฝั่ง${leg.side}: ${keyman}\nBV สะสม ${formatNumber(leg.accumulatedBv)} · New BV ${formatNumber(leg.newBv)} (${trend}) · สัดส่วนการโต ${leg.contributionPct}%\nทีมลึก ${leg.teamSize} คน · Active ${leg.activeMembers} คน (${leg.activeRatePct}%)\nคอขวด: ${leg.bottlenecks.join(', ')}`
   }
   const includeLeft = !/เฉพาะ.*ขวา|ฝั่งขวาเท่านั้น/i.test(question)
   const includeRight = !/เฉพาะ.*ซ้าย|ฝั่งซ้ายเท่านั้น/i.test(question)
-  const lines = ['AI วิเคราะห์โครงสร้าง Keyman จาก Placement Tree เดือนล่าสุด']
-  if (includeLeft) lines.push('', 'ฝั่งซ้าย', ...(d.keymanStructure.left.length ? d.keymanStructure.left.map(format) : ['ยังไม่มี Keyman ที่มีข้อมูลผลงาน']))
-  if (includeRight) lines.push('', 'ฝั่งขวา', ...(d.keymanStructure.right.length ? d.keymanStructure.right.map(format) : ['ยังไม่มี Keyman ที่มีข้อมูลผลงาน']))
+  const lines = [
+    'AI วิเคราะห์โครงสร้างซ้าย-ขวาจาก Placement Tree เดือนล่าสุด',
+    'การจัดฝั่งใช้ Upline ไม่ได้ใช้ Sponsor',
+  ]
+  if (includeLeft) lines.push('', legLine(d.keymanStructure.legs.left), '', 'Keyman ที่ควรเร่งฝั่งซ้าย', ...(d.keymanStructure.left.length ? d.keymanStructure.left.slice(0, 5).map(format) : ['ยังไม่มี Keyman ที่มีข้อมูลผลงาน']))
+  if (includeRight) lines.push('', legLine(d.keymanStructure.legs.right), '', 'Keyman ที่ควรเร่งฝั่งขวา', ...(d.keymanStructure.right.length ? d.keymanStructure.right.slice(0, 5).map(format) : ['ยังไม่มี Keyman ที่มีข้อมูลผลงาน']))
   lines.push('', 'ลำดับทำงาน: เริ่มจากคนที่เปอร์เซ็นต์ใกล้ตำแหน่งสูง แต่ยังขาดฝั่งอ่อนหรือ Active FA น้อยที่สุด แล้วติดตามทุก 48 ชั่วโมง [CHART:balance]')
   return lines.join('\n')
 }
@@ -425,6 +448,7 @@ async function buildSystemPrompt(coachData: Record<string, unknown> | null): Pro
     growthInsights?: string[]
     activityAnalysis?: DailyActivityAnalysis
     keymanStructure?: {
+      legs: { left: PlacementLegPromptEntry; right: PlacementLegPromptEntry }
       left: KeymanPromptEntry[]
       right: KeymanPromptEntry[]
       closestToStar: KeymanPromptEntry[]
@@ -457,10 +481,10 @@ async function buildSystemPrompt(coachData: Record<string, unknown> | null): Pro
 
   const keymanLine = (c: KeymanPromptEntry, index: number) => {
     const gap = c.closestRank
-    return `${index + 1}. ${c.name} (${c.id}), ${c.position}, L/R ${c.leftBv.toLocaleString()}/${c.rightBv.toLocaleString()} BV, New ${c.newBv.toLocaleString()} BV, Active L/R ${c.activeLeft}/${c.activeRight}, ทีม ${c.teamSize} คน, ${gap ? `ใกล้ ${gap.label} ${gap.progressPct}%, gap BV L/R ${gap.leftGap}/${gap.rightGap}, gap Active L/R ${gap.activeLeftGap}/${gap.activeRightGap}` : 'ผ่าน Silver'}, bottleneck: ${c.bottlenecks.join(', ')}`
+    return `${index + 1}. ${c.name} (${c.id}), ฝั่ง${c.side}, ${c.position}, L/R ${c.leftBv.toLocaleString()}/${c.rightBv.toLocaleString()} BV, New ${c.newBv.toLocaleString()} BV, trend ${c.trendPct ?? 'N/A'}%, Active L/R ${c.activeLeft}/${c.activeRight}, ทีม ${c.teamSize} คน, ${gap ? `ใกล้ ${gap.label} ${gap.progressPct}%, gap BV L/R ${gap.leftGap}/${gap.rightGap}, gap Active L/R ${gap.activeLeftGap}/${gap.activeRightGap}` : 'ผ่าน Silver'}, bottleneck: ${c.bottlenecks.join(', ')}, action: ${c.recommendedAction}`
   }
   const keymanStr = d.keymanStructure
-    ? `ฝั่งซ้าย:\n${d.keymanStructure.left.slice(0, 12).map(keymanLine).join('\n') || 'ไม่มีข้อมูล'}\nฝั่งขวา:\n${d.keymanStructure.right.slice(0, 12).map(keymanLine).join('\n') || 'ไม่มีข้อมูล'}`
+    ? `Placement Leg ซ้าย: ${d.keymanStructure.legs.left.keymanName ?? 'ไม่มี'} (${d.keymanStructure.legs.left.keymanId ?? '-'}), BV สะสม ${d.keymanStructure.legs.left.accumulatedBv}, New BV ${d.keymanStructure.legs.left.newBv}, trend ${d.keymanStructure.legs.left.trendPct ?? 'N/A'}%, active ${d.keymanStructure.legs.left.activeMembers}/${d.keymanStructure.legs.left.teamSize}, contribution ${d.keymanStructure.legs.left.contributionPct}%, bottleneck ${d.keymanStructure.legs.left.bottlenecks.join(', ')}\nPlacement Leg ขวา: ${d.keymanStructure.legs.right.keymanName ?? 'ไม่มี'} (${d.keymanStructure.legs.right.keymanId ?? '-'}), BV สะสม ${d.keymanStructure.legs.right.accumulatedBv}, New BV ${d.keymanStructure.legs.right.newBv}, trend ${d.keymanStructure.legs.right.trendPct ?? 'N/A'}%, active ${d.keymanStructure.legs.right.activeMembers}/${d.keymanStructure.legs.right.teamSize}, contribution ${d.keymanStructure.legs.right.contributionPct}%, bottleneck ${d.keymanStructure.legs.right.bottlenecks.join(', ')}\nฝั่งซ้าย:\n${d.keymanStructure.left.slice(0, 12).map(keymanLine).join('\n') || 'ไม่มีข้อมูล'}\nฝั่งขวา:\n${d.keymanStructure.right.slice(0, 12).map(keymanLine).join('\n') || 'ไม่มีข้อมูล'}`
     : 'ยังไม่มีข้อมูล Keyman'
 
   const activity = d.activityAnalysis
@@ -543,7 +567,8 @@ Hybrid 20/80: 20% Frontline (Speed) + 80% การขุดลึก (Stability
 ห้ามใช้ Markdown table ให้ตอบเป็นหัวข้อสั้นและรายการลำดับเลข เพื่อให้แสดงผลบนหน้าจอมือถือได้อ่านง่าย
 ห้ามตอบกว้างๆ ถ้าผู้ใช้ถามว่า "กับใคร", "คนไหน", "ต้องลงไปทำงานกับใคร", "ขึ้น Gold/Diamond ทำกับใคร" ให้ตอบเป็นรายชื่อจริงจาก Focus Candidates อย่างน้อย 3 คน พร้อม ID, ฝั่ง, score, เหตุผลเชิงตัวเลข และงาน 7 วันถัดไป
 ถ้าถามเรื่อง Diamond ให้เริ่มด้วยชื่อคนอันดับ 1 ทันที แล้วตามด้วย gap Diamond และลำดับคนที่ควรโค้ช
-ถ้าถาม Keyman, คะแนนซ้ายขวา, Star, Bronze หรือ Silver ต้องแยกฝั่งซ้ายและขวา ระบุ L/R BV, ตำแหน่งที่ใกล้, BV ที่ขาดแต่ละข้าง, Active FA ที่ขาดแต่ละข้าง และจุดติดขัด ห้ามใช้แค่คะแนนรวมของเจ้าของบัญชี
+ถ้าถาม Keyman, คะแนนซ้ายขวา, Star, Bronze หรือ Silver ต้องเริ่มจาก Placement Keyman ชั้นแรกของขาซ้ายและขาขวา เปรียบเทียบ BV สะสม, New BV, trend, สัดส่วนการโต, ทีมลึกและ Active แล้วจึงระบุผู้เข้าใกล้ตำแหน่งพร้อม BV/Active FA gap และ Action
+การจัดสมาชิกเข้าฝั่งซ้ายหรือขวาต้องใช้สาย Upline/Placement Tree เท่านั้น ห้ามใช้ Sponsor ตัดสินฝั่ง เพราะ Sponsor กับตำแหน่งที่วางอาจเป็นคนละคนกัน
 คำถามผู้แนะนำ/สปอนเซอร์/upline จะถูกตอบจาก Coach Data Engine ก่อนส่งมาถึงคุณ ห้ามเดาความสัมพันธ์ของสมาชิกเอง
 เมื่อให้คำแนะนำ ต้องวิเคราะห์ข้อมูลกิจกรรมร่วมกับ BV, Sponsor, Weak Leg, Momentum และ Focus Candidates เสมอ โดยใช้หลักต่อไปนี้:
 - กิจกรรมน้อยและผลไม่โต = คอขวดด้านปริมาณหรือความสม่ำเสมอ

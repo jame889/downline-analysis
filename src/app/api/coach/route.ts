@@ -203,7 +203,12 @@ export async function GET(req: NextRequest) {
     getGrowthDashboardData(rootId, 9),
     getDailyActivityAnalysis(rootId, new Date(), weakSide),
   ])
-  const keymanStructure = analyzeKeymanStructure(rootId, members, reportsByMonth[latestMonth] ?? [])
+  const keymanStructure = analyzeKeymanStructure(
+    rootId,
+    members,
+    reportsByMonth[latestMonth] ?? [],
+    prevMonth ? reportsByMonth[prevMonth] ?? [] : [],
+  )
 
   const activity30 = activityAnalysis.recent30
   if (activity30.totalActivities === 0) {

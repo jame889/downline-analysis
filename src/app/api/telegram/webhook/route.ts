@@ -91,7 +91,8 @@ function helpMessage(): string {
     'คำสั่ง:',
     '/activity บันทึกกิจกรรม',
     '/today กิจกรรมวันนี้',
-    '/score Weekly Score',
+    '/score Weekly Score + โครงสร้าง Keyman',
+    '/keyman วิเคราะห์ Placement ซ้าย-ขวา',
     '/followup งานติดตาม',
     '/undo ยกเลิกรายการล่าสุด',
     '/help วิธีใช้งาน',
@@ -124,7 +125,10 @@ async function todayMessage(memberId: string): Promise<string> {
 }
 
 async function scoreMessage(memberId: string): Promise<string> {
-  const analysis = await getDailyActivityAnalysis(memberId)
+  const [analysis, keyman] = await Promise.all([
+    getDailyActivityAnalysis(memberId),
+    buildTelegramCoachReply(memberId, '/keyman'),
+  ])
   return [
     `Weekly Score ${analysis.weeklyScorecard.score}/100 (${analysis.weeklyScorecard.grade})`,
     `Consistency ${analysis.weeklyScorecard.consistencyScore}/25`,
@@ -135,6 +139,8 @@ async function scoreMessage(memberId: string): Promise<string> {
     '',
     `Funnel: Outreach ${analysis.funnel.outreach} → นัด ${analysis.funnel.appointments} → Meeting ${analysis.funnel.meetings} → Sponsor ${analysis.funnel.sponsors} → Start Up ${analysis.funnel.startups}`,
     `Priority: ${analysis.weeklyScorecard.summary}`,
+    '',
+    keyman,
   ].join('\n')
 }
 
@@ -162,6 +168,10 @@ async function handleMessage(token: string, chatId: string, memberId: string, ra
   }
   if (command === '/score') {
     await sendText(token, chatId, await scoreMessage(memberId))
+    return
+  }
+  if (command === '/keyman') {
+    await sendText(token, chatId, await buildTelegramCoachReply(memberId, '/keyman'))
     return
   }
   if (command === '/followup') {
