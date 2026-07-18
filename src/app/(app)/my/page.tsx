@@ -80,6 +80,70 @@ interface TreeNode {
   monthly_bv: number
 }
 
+interface KeymanRankGap {
+  label: 'Star' | 'Bronze' | 'Silver'
+  progressPct: number
+  leftGap: number
+  rightGap: number
+  activeLeftGap: number
+  activeRightGap: number
+  starLeftGap: number
+  starRightGap: number
+}
+
+interface KeymanRow {
+  id: string
+  name: string
+  side: 'ซ้าย' | 'ขวา' | 'ไม่ทราบ'
+  leftBv: number
+  rightBv: number
+  closestRank: KeymanRankGap | null
+  bottlenecks: string[]
+  recommendedAction: string
+  concentrationPct: number
+  concentrationMemberId: string | null
+  concentrationMemberName: string | null
+  focusMemberId: string | null
+  focusMemberName: string | null
+  weakSide: 'ซ้าย' | 'ขวา'
+  opportunityScore: number
+  newBv: number
+}
+
+interface KeymanStructure {
+  left: KeymanRow[]
+  right: KeymanRow[]
+  unknown: KeymanRow[]
+}
+
+function keymanGapText(item: KeymanRow): string[] {
+  const gap = item.closestRank
+  if (!gap) return ['ผ่านระดับ Silver แล้ว']
+  const parts: string[] = []
+  if (gap.leftGap > 0) parts.push(`ขาดฝั่งซ้ายอีก ${gap.leftGap.toLocaleString()} คะแนน`)
+  if (gap.rightGap > 0) parts.push(`ขาดฝั่งขวาอีก ${gap.rightGap.toLocaleString()} คะแนน`)
+  if (gap.activeLeftGap > 0) parts.push(`ขาด Active FA ฝั่งซ้าย ${gap.activeLeftGap} คน`)
+  if (gap.activeRightGap > 0) parts.push(`ขาด Active FA ฝั่งขวา ${gap.activeRightGap} คน`)
+  if (gap.starLeftGap > 0) parts.push(`ขาด Star ฝั่งซ้าย ${gap.starLeftGap} คน`)
+  if (gap.starRightGap > 0) parts.push(`ขาด Star ฝั่งขวา ${gap.starRightGap} คน`)
+  return parts.length ? parts : [`รอยืนยันตำแหน่ง ${gap.label}`]
+}
+
+function keymanBottleneck(item: KeymanRow): string {
+  if (item.concentrationPct >= 50 && item.concentrationMemberName && item.concentrationMemberId) {
+    return `${item.concentrationPct}% ของ New BV มาจาก ${item.concentrationMemberName} (${item.concentrationMemberId}) คนเดียว`
+  }
+  return item.bottlenecks[0] ?? 'ยังไม่พบคอขวดเด่น'
+}
+
+function keymanAction(item: KeymanRow): string {
+  if (!item.focusMemberName || !item.focusMemberId) return item.recommendedAction
+  const starGap = (item.closestRank?.starLeftGap ?? 0) + (item.closestRank?.starRightGap ?? 0)
+  return `เร่ง Start Up ใต้ ${item.focusMemberName} (${item.focusMemberId})${starGap > 0
+    ? ` และสร้าง Star ใหม่ในสาย${item.weakSide}`
+    : ` พร้อมเติมคะแนนสาย${item.weakSide}`}`
+}
+
 const RANK_ORDER = [
   'CR. Ambassador', 'Crown Royal', 'Crown',
   'Red Diamond', 'Blue Diamond', 'Diamond',
@@ -228,6 +292,8 @@ export default function MyPage() {
   const [directSponsored, setDirectSponsored] = useState<SponsoredRow[]>([])
   const [orgStats, setOrgStats] = useState<OrgStats | null>(null)
   const [treeNodes, setTreeNodes] = useState<TreeNode[]>([])
+  const [keymanStructure, setKeymanStructure] = useState<KeymanStructure | null>(null)
+  const [showAllKeymen, setShowAllKeymen] = useState(false)
   const [loading, setLoading] = useState(true)
 
   // Sub-view: "ดูผังทีมงานนี้"
@@ -246,8 +312,10 @@ export default function MyPage() {
         setDirectSponsored(d.directSponsored ?? [])
         setOrgStats(d.orgStats)
         setTreeNodes(d.treeNodes ?? [])
+        setKeymanStructure(d.keymanStructure ?? null)
         if (!selectedMonth) setMonths(d.months ?? [])
         setLoading(false)
+        setShowAllKeymen(false)
         // Close sub-view when month changes
         setFocusMemberId(null)
         setTeamFocus(null)
@@ -278,6 +346,7 @@ export default function MyPage() {
         setDirectSponsored(d.directSponsored ?? [])
         setOrgStats(d.orgStats)
         setTreeNodes(d.treeNodes ?? [])
+        setKeymanStructure(d.keymanStructure ?? null)
         setMonths(d.months ?? [])
         setSelectedMonth(d.month ?? '')
         setLoading(false)
@@ -306,6 +375,12 @@ export default function MyPage() {
         .sort((a, b) => rankIndex(a.highest_position) - rankIndex(b.highest_position))
     return { left: filter(left), right: filter(right) }
   }, [member, treeNodes])
+
+  const keymen = useMemo(() => keymanStructure
+    ? [...keymanStructure.left, ...keymanStructure.right, ...keymanStructure.unknown]
+      .sort((a, b) => b.opportunityScore - a.opportunityScore || b.newBv - a.newBv)
+    : [], [keymanStructure])
+  const visibleKeymen = showAllKeymen ? keymen : keymen.slice(0, 20)
 
   if (loading) return <div className="text-slate-400 py-16 text-center">กำลังโหลด...</div>
 
@@ -451,6 +526,125 @@ export default function MyPage() {
           </div>
         </div>
       )}
+
+      {/* Keyman placement report */}
+      <section className="bg-slate-900 border border-slate-800 rounded-lg overflow-hidden">
+        <div className="px-5 py-4 border-b border-slate-800 flex items-center justify-between gap-3">
+          <h2 className="text-sm font-semibold text-slate-200">Keyman ใน Placement</h2>
+          <span className="text-xs text-slate-500">{keymen.length} คน · {selectedMonth}</span>
+        </div>
+        {keymen.length === 0 ? (
+          <p className="px-5 py-8 text-sm text-slate-500 text-center">ยังไม่มี Keyman ที่มีผลงานในเดือนนี้</p>
+        ) : (
+          <>
+            <div className="divide-y divide-slate-800 md:hidden">
+              {visibleKeymen.map((item) => (
+                <article key={item.id} className="px-4 py-4 space-y-2">
+                  <div className="flex items-start justify-between gap-3">
+                    <Link href={`/members/${item.id}`} className="font-medium text-sm text-slate-100 hover:text-brand-400">
+                      {item.name} <span className="font-mono text-xs text-brand-400">({item.id})</span>
+                    </Link>
+                    <span className={`shrink-0 text-xs px-1.5 py-0.5 rounded border ${item.side === 'ซ้าย'
+                      ? 'text-sky-300 border-sky-800 bg-sky-950/40'
+                      : item.side === 'ขวา'
+                        ? 'text-fuchsia-300 border-fuchsia-800 bg-fuchsia-950/30'
+                        : 'text-slate-400 border-slate-700 bg-slate-800'}`}>
+                      ฝั่ง{item.side}
+                    </span>
+                  </div>
+                  <p className="text-sm">
+                    <span className="text-slate-400">คะแนนซ้าย </span>
+                    <span className="text-sky-400 font-semibold">{item.leftBv.toLocaleString()}</span>
+                    <span className="text-slate-600 mx-2">|</span>
+                    <span className="text-slate-400">คะแนนขวา </span>
+                    <span className="text-fuchsia-400 font-semibold">{item.rightBv.toLocaleString()}</span>
+                  </p>
+                  <p className="text-sm font-medium text-slate-200">
+                    {item.closestRank
+                      ? `ใกล้ตำแหน่ง ${item.closestRank.label} (${item.closestRank.progressPct}%)`
+                      : 'ผ่านตำแหน่ง Silver แล้ว'}
+                  </p>
+                  <div className="space-y-1 text-xs text-amber-300">
+                    {keymanGapText(item).map((text) => <p key={text}>{text}</p>)}
+                  </div>
+                  <p className="text-xs leading-5 text-slate-300">
+                    <span className="text-slate-500">จุดติดขัด: </span>{keymanBottleneck(item)}
+                  </p>
+                  <p className="text-xs leading-5 text-emerald-300">
+                    <span className="text-slate-500">คำแนะนำ: </span>{keymanAction(item)}
+                  </p>
+                </article>
+              ))}
+            </div>
+            <div className="hidden md:block overflow-x-auto">
+              <table className="w-full min-w-[1040px] text-sm">
+              <thead>
+                <tr className="text-xs text-slate-400 border-b border-slate-800">
+                  <th className="text-left px-4 py-3 w-64">Keyman</th>
+                  <th className="text-left px-4 py-3 w-48">คะแนนซ้าย / ขวา</th>
+                  <th className="text-left px-4 py-3 w-64">เป้าหมายและ Gap</th>
+                  <th className="text-left px-4 py-3 min-w-[18rem]">จุดติดขัด</th>
+                  <th className="text-left px-4 py-3 min-w-[20rem]">คำแนะนำ</th>
+                </tr>
+              </thead>
+              <tbody>
+                {visibleKeymen.map((item) => (
+                  <tr key={item.id} className="border-b border-slate-800/60 align-top hover:bg-slate-800/25 transition-colors">
+                    <td className="px-4 py-4">
+                      <Link href={`/members/${item.id}`} className="font-medium text-slate-100 hover:text-brand-400">
+                        {item.name}
+                      </Link>
+                      <div className="mt-1 flex items-center gap-2">
+                        <span className="font-mono text-xs text-brand-400">{item.id}</span>
+                        <span className={`text-xs px-1.5 py-0.5 rounded border ${item.side === 'ซ้าย'
+                          ? 'text-sky-300 border-sky-800 bg-sky-950/40'
+                          : item.side === 'ขวา'
+                            ? 'text-fuchsia-300 border-fuchsia-800 bg-fuchsia-950/30'
+                            : 'text-slate-400 border-slate-700 bg-slate-800'}`}>
+                          ฝั่ง{item.side}
+                        </span>
+                      </div>
+                    </td>
+                    <td className="px-4 py-4 whitespace-nowrap">
+                      <span className="text-sky-400 font-semibold">{item.leftBv.toLocaleString()}</span>
+                      <span className="text-slate-600 mx-2">|</span>
+                      <span className="text-fuchsia-400 font-semibold">{item.rightBv.toLocaleString()}</span>
+                    </td>
+                    <td className="px-4 py-4">
+                      <p className="text-slate-200 font-medium">
+                        {item.closestRank
+                          ? `ใกล้ตำแหน่ง ${item.closestRank.label} (${item.closestRank.progressPct}%)`
+                          : 'ผ่านตำแหน่ง Silver แล้ว'}
+                      </p>
+                      <div className="mt-1.5 space-y-1 text-xs text-amber-300">
+                        {keymanGapText(item).map((text) => <p key={text}>{text}</p>)}
+                      </div>
+                    </td>
+                    <td className="px-4 py-4 text-xs leading-5 text-slate-300">
+                      {keymanBottleneck(item)}
+                    </td>
+                    <td className="px-4 py-4 text-xs leading-5 text-emerald-300">
+                      {keymanAction(item)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+              </table>
+            </div>
+            {keymen.length > 20 && (
+              <div className="px-4 py-3 border-t border-slate-800 flex justify-center">
+                <button
+                  type="button"
+                  onClick={() => setShowAllKeymen((value) => !value)}
+                  className="px-3 py-2 rounded-lg border border-slate-700 bg-slate-800 text-xs text-slate-300 hover:border-slate-500 hover:text-white transition-colors"
+                >
+                  {showAllKeymen ? 'แสดง 20 คนแรก' : `แสดงทั้งหมด ${keymen.length} คน`}
+                </button>
+              </div>
+            )}
+          </>
+        )}
+      </section>
 
       {/* Leg Leaders */}
       {(legLeaders.left.length > 0 || legLeaders.right.length > 0) && (

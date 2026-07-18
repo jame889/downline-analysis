@@ -25,6 +25,7 @@ export default function Navbar() {
 
   const adminLinks = [
     { href: '/', label: 'Dashboard' },
+    { href: '/my', label: 'องค์กรของฉัน' },
     { href: '/growth', label: '📈 Command' },
     { href: '/members', label: 'สมาชิก' },
     { href: '/tree', label: 'โครงสร้าง' },

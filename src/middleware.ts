@@ -59,11 +59,6 @@ export async function middleware(request: NextRequest) {
       return NextResponse.redirect(new URL('/my', request.url))
     }
 
-    // Admin on /my → /
-    if (pathname === '/my' && session.isAdmin && session.memberId === ROOT_MEMBER_ID) {
-      return NextResponse.redirect(new URL('/', request.url))
-    }
-
     return NextResponse.next()
   } catch {
     const res = NextResponse.redirect(new URL('/login', request.url))

@@ -2,9 +2,10 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getSession } from '@/lib/auth'
 import {
   getAllMembers, getAvailableMonths, getMember, getMemberHistory,
-  getMembersForMonth, getMembersForMonthSubtree, getSubtreeIds, bvToThb
+  getMembersForMonth, getMembersForMonthSubtree, getReportsForMonths, getSubtreeIds, bvToThb
 } from '@/lib/db'
-import type { Member } from '@/lib/types'
+import { analyzeKeymanStructure } from '@/lib/keyman-analysis'
+import type { Member, MonthlyReport } from '@/lib/types'
 
 export const dynamic = 'force-dynamic'
 
@@ -32,6 +33,8 @@ export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url)
   const months = await getAvailableMonths()
   const month = searchParams.get('month') ?? months[0]
+  const selectedMonthIndex = months.indexOf(month)
+  const previousMonth = selectedMonthIndex >= 0 ? months[selectedMonthIndex + 1] : undefined
 
   const [member, allMembers] = await Promise.all([
     getMember(session.memberId),
@@ -40,11 +43,20 @@ export async function GET(req: NextRequest) {
   const history = await getMemberHistory(session.memberId)
 
   // Organization and report data for the selected month
-  const [subtreeMembers, monthMembers] = await Promise.all([
+  const [subtreeMembers, monthMembers, previousReportsByMonth] = await Promise.all([
     getMembersForMonthSubtree(month, session.memberId),
     getMembersForMonth(month),
+    previousMonth
+      ? getReportsForMonths([previousMonth])
+      : Promise.resolve<Record<string, MonthlyReport[]>>({}),
   ])
   const myReport = subtreeMembers.find((m) => m.id === session.memberId)?.report ?? null
+  const keymanStructure = analyzeKeymanStructure(
+    session.memberId,
+    allMembers,
+    monthMembers.map((item) => item.report),
+    previousMonth ? previousReportsByMonth[previousMonth] ?? [] : [],
+  )
 
   const reportByMemberId = new Map(monthMembers.map((item) => [item.id, item.report]))
 
@@ -167,6 +179,7 @@ export async function GET(req: NextRequest) {
     directSponsored,
     treeNodes,
     sponsorDirectory,
+    keymanStructure,
     orgStats,
     month,
     months,
