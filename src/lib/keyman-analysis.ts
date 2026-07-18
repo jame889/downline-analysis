@@ -25,6 +25,7 @@ export interface KeymanAnalysis {
   name: string
   side: TeamSide
   position: string
+  highestPosition: string
   isActive: boolean
   monthlyBv: number
   leftBv: number
@@ -342,6 +343,7 @@ export function analyzeKeymanStructure(
       name: member.name,
       side,
       position: report.income_position || report.highest_position || 'FA',
+      highestPosition: report.highest_position || 'FA',
       isActive: report.is_active,
       monthlyBv: report.monthly_bv,
       leftBv: report.total_vol_left,
