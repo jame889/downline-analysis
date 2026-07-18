@@ -243,7 +243,7 @@ type KeymanPromptEntry = {
 }
 
 function isKeymanStructureQuestion(question: string) {
-  return /keyman|คีย์แมน|คะแนนซ้ายขวา|ใกล้.*(?:star|bronze|silver|สตาร์|บรอนซ์|ซิลเวอร์)|ขาด.*(?:star|bronze|silver|สตาร์|บรอนซ์|ซิลเวอร์)/i.test(question)
+  return /key\s*man|คีย์\s*แมน|คะแนน(?:สะสม)?ซ้ายขวา|(?:ใกล้|ขาด|ขึ้น|ตำแหน่ง).*?(?:star|bronze|silver|สตาร์|บรอนซ์|ซิลเวอร์)|(?:star|bronze|silver|สตาร์|บรอนซ์|ซิลเวอร์).*?(?:ใคร|ขาด|อีกเท่าไร)/i.test(question)
 }
 
 function keymanStructureReply(coachData: Record<string, unknown>, question: string): string | null {
@@ -256,7 +256,7 @@ function keymanStructureReply(coachData: Record<string, unknown>, question: stri
     const target = gap
       ? `ใกล้ ${gap.label} ${gap.progressPct}% · ขาด BV ซ้าย ${formatNumber(gap.leftGap)} / ขวา ${formatNumber(gap.rightGap)} · ขาด Active FA ซ้าย ${gap.activeLeftGap} / ขวา ${gap.activeRightGap}`
       : 'ผ่าน Silver แล้ว'
-    return `${index + 1}. ${item.name} (${item.id}) · ${item.position} · L/R ${formatNumber(item.leftBv)}/${formatNumber(item.rightBv)} BV · New ${formatNumber(item.newBv)} BV\n   ${target}\n   จุดติดขัด: ${item.bottlenecks.join(', ')}`
+    return `${index + 1}. ${item.name} (${item.id}) · ${item.position}\n   BV สะสมซ้าย/ขวา ${formatNumber(item.leftBv)}/${formatNumber(item.rightBv)} · Active FA ซ้าย/ขวา ${item.activeLeft}/${item.activeRight}\n   ${target}\n   จุดติดขัด: ${item.bottlenecks.join(', ')}`
   }
   const includeLeft = !/เฉพาะ.*ขวา|ฝั่งขวาเท่านั้น/i.test(question)
   const includeRight = !/เฉพาะ.*ซ้าย|ฝั่งซ้ายเท่านั้น/i.test(question)
@@ -460,7 +460,7 @@ async function buildSystemPrompt(coachData: Record<string, unknown> | null): Pro
     return `${index + 1}. ${c.name} (${c.id}), ${c.position}, L/R ${c.leftBv.toLocaleString()}/${c.rightBv.toLocaleString()} BV, New ${c.newBv.toLocaleString()} BV, Active L/R ${c.activeLeft}/${c.activeRight}, ทีม ${c.teamSize} คน, ${gap ? `ใกล้ ${gap.label} ${gap.progressPct}%, gap BV L/R ${gap.leftGap}/${gap.rightGap}, gap Active L/R ${gap.activeLeftGap}/${gap.activeRightGap}` : 'ผ่าน Silver'}, bottleneck: ${c.bottlenecks.join(', ')}`
   }
   const keymanStr = d.keymanStructure
-    ? `ฝั่งซ้าย:\n${d.keymanStructure.left.map(keymanLine).join('\n') || 'ไม่มีข้อมูล'}\nฝั่งขวา:\n${d.keymanStructure.right.map(keymanLine).join('\n') || 'ไม่มีข้อมูล'}`
+    ? `ฝั่งซ้าย:\n${d.keymanStructure.left.slice(0, 12).map(keymanLine).join('\n') || 'ไม่มีข้อมูล'}\nฝั่งขวา:\n${d.keymanStructure.right.slice(0, 12).map(keymanLine).join('\n') || 'ไม่มีข้อมูล'}`
     : 'ยังไม่มีข้อมูล Keyman'
 
   const activity = d.activityAnalysis
