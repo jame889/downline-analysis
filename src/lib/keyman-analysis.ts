@@ -186,18 +186,29 @@ export function analyzeKeymanStructure(
     })
   }
 
+  // A Keyman is not limited to people who generated New BV this month. Include
+  // anyone who already owns a placement structure, accumulated leg volume,
+  // current activity, or a rank above FA. Rank readiness must use accumulated
+  // left/right volume, never New BV.
   const ranked = keymen
-    .filter((item) => item.isActive || item.newBv > 0 || item.position !== 'FA')
+    .filter((item) =>
+      item.teamSize > 0 ||
+      item.leftBv > 0 ||
+      item.rightBv > 0 ||
+      item.monthlyBv > 0 ||
+      item.isActive ||
+      item.position !== 'FA'
+    )
     .sort((a, b) => b.opportunityScore - a.opportunityScore || b.newBv - a.newBv)
   const near = (code: KeymanRankGap['code']) => ranked
     .filter((item) => item.closestRank?.code === code)
     .sort((a, b) => (b.closestRank?.progressPct ?? 0) - (a.closestRank?.progressPct ?? 0))
-    .slice(0, 10)
+    .slice(0, 20)
 
   return {
-    left: ranked.filter((item) => item.side === 'ซ้าย').slice(0, 15),
-    right: ranked.filter((item) => item.side === 'ขวา').slice(0, 15),
-    unknown: ranked.filter((item) => item.side === 'ไม่ทราบ').slice(0, 10),
+    left: ranked.filter((item) => item.side === 'ซ้าย').slice(0, 40),
+    right: ranked.filter((item) => item.side === 'ขวา').slice(0, 40),
+    unknown: ranked.filter((item) => item.side === 'ไม่ทราบ').slice(0, 20),
     closestToStar: near('ST'),
     closestToBronze: near('BR'),
     closestToSilver: near('SV'),
