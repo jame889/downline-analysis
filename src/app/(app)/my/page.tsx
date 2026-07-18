@@ -527,6 +527,51 @@ export default function MyPage() {
         </div>
       )}
 
+      {/* History table */}
+      {history.length > 0 && (
+        <div className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden">
+          <div className="px-5 py-4 border-b border-slate-800">
+            <h2 className="text-sm font-semibold text-slate-300">ประวัติรายเดือน</h2>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="text-slate-400 border-b border-slate-800">
+                  <th className="text-left px-4 py-3">เดือน</th>
+                  <th className="text-left px-4 py-3">ตำแหน่ง</th>
+                  <th className="text-center px-4 py-3">Active</th>
+                  <th className="text-right px-4 py-3">BV</th>
+                  <th className="text-right px-4 py-3">มูลค่า (฿)</th>
+                  <th className="text-right px-4 py-3">Vol ซ้าย</th>
+                  <th className="text-right px-4 py-3">฿ ซ้าย</th>
+                  <th className="text-right px-4 py-3">Vol ขวา</th>
+                  <th className="text-right px-4 py-3">฿ ขวา</th>
+                  <th className="text-right px-4 py-3">Weak Leg</th>
+                </tr>
+              </thead>
+              <tbody>
+                {[...history].reverse().map((r) => (
+                  <tr key={r.month} className="border-b border-slate-800/50 hover:bg-slate-800/20">
+                    <td className="px-4 py-2 text-slate-300">{r.month}</td>
+                    <td className="px-4 py-2"><PositionBadge pos={r.highest_position} /></td>
+                    <td className="px-4 py-2 text-center">
+                      <span className={r.is_active ? 'text-green-400' : 'text-slate-600'}>{r.is_active ? '●' : '○'}</span>
+                    </td>
+                    <td className="px-4 py-2 text-right text-white">{r.monthly_bv}</td>
+                    <td className="px-4 py-2 text-right text-amber-400">฿{r.monthly_thb.toLocaleString()}</td>
+                    <td className="px-4 py-2 text-right text-sky-400">{r.total_vol_left.toLocaleString()}</td>
+                    <td className="px-4 py-2 text-right text-sky-700">฿{r.vol_left_thb.toLocaleString()}</td>
+                    <td className="px-4 py-2 text-right text-purple-400">{r.total_vol_right.toLocaleString()}</td>
+                    <td className="px-4 py-2 text-right text-purple-700">฿{r.vol_right_thb.toLocaleString()}</td>
+                    <td className="px-4 py-2 text-right text-amber-500">{r.weak_leg_bv.toLocaleString()}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
       {/* Keyman placement report */}
       <section className="bg-slate-900 border border-slate-800 rounded-lg overflow-hidden">
         <div className="px-5 py-4 border-b border-slate-800 flex items-center justify-between gap-3">
@@ -842,51 +887,6 @@ export default function MyPage() {
               </div>
             </div>
           ) : null}
-        </div>
-      )}
-
-      {/* History table */}
-      {history.length > 0 && (
-        <div className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden">
-          <div className="px-5 py-4 border-b border-slate-800">
-            <h2 className="text-sm font-semibold text-slate-300">ประวัติรายเดือน</h2>
-          </div>
-          <div className="overflow-x-auto">
-            <table className="w-full text-xs">
-              <thead>
-                <tr className="text-slate-400 border-b border-slate-800">
-                  <th className="text-left px-4 py-3">เดือน</th>
-                  <th className="text-left px-4 py-3">ตำแหน่ง</th>
-                  <th className="text-center px-4 py-3">Active</th>
-                  <th className="text-right px-4 py-3">BV</th>
-                  <th className="text-right px-4 py-3">มูลค่า (฿)</th>
-                  <th className="text-right px-4 py-3">Vol ซ้าย</th>
-                  <th className="text-right px-4 py-3">฿ ซ้าย</th>
-                  <th className="text-right px-4 py-3">Vol ขวา</th>
-                  <th className="text-right px-4 py-3">฿ ขวา</th>
-                  <th className="text-right px-4 py-3">Weak Leg</th>
-                </tr>
-              </thead>
-              <tbody>
-                {[...history].reverse().map((r) => (
-                  <tr key={r.month} className="border-b border-slate-800/50 hover:bg-slate-800/20">
-                    <td className="px-4 py-2 text-slate-300">{r.month}</td>
-                    <td className="px-4 py-2"><PositionBadge pos={r.highest_position} /></td>
-                    <td className="px-4 py-2 text-center">
-                      <span className={r.is_active ? 'text-green-400' : 'text-slate-600'}>{r.is_active ? '●' : '○'}</span>
-                    </td>
-                    <td className="px-4 py-2 text-right text-white">{r.monthly_bv}</td>
-                    <td className="px-4 py-2 text-right text-amber-400">฿{r.monthly_thb.toLocaleString()}</td>
-                    <td className="px-4 py-2 text-right text-sky-400">{r.total_vol_left.toLocaleString()}</td>
-                    <td className="px-4 py-2 text-right text-sky-700">฿{r.vol_left_thb.toLocaleString()}</td>
-                    <td className="px-4 py-2 text-right text-purple-400">{r.total_vol_right.toLocaleString()}</td>
-                    <td className="px-4 py-2 text-right text-purple-700">฿{r.vol_right_thb.toLocaleString()}</td>
-                    <td className="px-4 py-2 text-right text-amber-500">{r.weak_leg_bv.toLocaleString()}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
         </div>
       )}
 
