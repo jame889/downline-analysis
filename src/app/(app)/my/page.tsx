@@ -7,6 +7,7 @@ import {
 import PositionBadge from '@/components/PositionBadge'
 import VolLRChart from '@/components/VolLRChart'
 import Link from 'next/link'
+import { POSITION_RANK } from '@/lib/types'
 
 interface AnalyzeNode {
   id: string
@@ -381,7 +382,10 @@ export default function MyPage() {
 
   const keymen = useMemo(() => keymanStructure
     ? [...keymanStructure.left, ...keymanStructure.right, ...keymanStructure.unknown]
-      .sort((a, b) => b.opportunityScore - a.opportunityScore || b.newBv - a.newBv)
+      .sort((a, b) =>
+        (POSITION_RANK[b.highestPosition] ?? -1) - (POSITION_RANK[a.highestPosition] ?? -1)
+        || b.opportunityScore - a.opportunityScore
+        || b.newBv - a.newBv)
     : [], [keymanStructure])
   const visibleKeymen = showAllKeymen ? keymen : keymen.slice(0, 20)
 
@@ -690,7 +694,7 @@ export default function MyPage() {
                   onClick={() => setShowAllKeymen((value) => !value)}
                   className="px-3 py-2 rounded-lg border border-slate-700 bg-slate-800 text-xs text-slate-300 hover:border-slate-500 hover:text-white transition-colors"
                 >
-                  {showAllKeymen ? 'แสดง 20 คนแรก' : `แสดงทั้งหมด ${keymen.length} คน`}
+                  {showAllKeymen ? 'แสดง 20 คน High Ranking' : `แสดง Keyman ทั้งหมด ${keymen.length} คน`}
                 </button>
               </div>
             )}
