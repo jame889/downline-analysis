@@ -30,8 +30,8 @@ interface HistoryRow {
   monthly_thb: number
   total_vol_left: number
   total_vol_right: number
-  left_highest_pos: string
-  right_highest_pos: string
+  left_keyman_count: number
+  right_keyman_count: number
   vol_left_thb: number
   vol_right_thb: number
   weak_leg_bv: number
@@ -544,11 +544,11 @@ export default function MyPage() {
                   <th className="text-left px-4 py-3">ตำแหน่ง</th>
                   <th className="text-center px-4 py-3">Active</th>
                   <th className="text-right px-4 py-3">BV</th>
-                  <th className="text-right px-4 py-3">Vol ซ้าย</th>
                   <th className="text-center px-4 py-3">Keyman ซ้าย</th>
+                  <th className="text-right px-4 py-3">Vol ซ้าย</th>
                   <th className="text-right px-4 py-3">฿ ซ้าย</th>
-                  <th className="text-right px-4 py-3">Vol ขวา</th>
                   <th className="text-center px-4 py-3">Keyman ขวา</th>
+                  <th className="text-right px-4 py-3">Vol ขวา</th>
                   <th className="text-right px-4 py-3">฿ ขวา</th>
                 </tr>
               </thead>
@@ -561,11 +561,11 @@ export default function MyPage() {
                       <span className={r.is_active ? 'text-green-400' : 'text-slate-600'}>{r.is_active ? '●' : '○'}</span>
                     </td>
                     <td className="px-4 py-2 text-right text-white">{r.monthly_bv}</td>
+                    <td className="px-4 py-2 text-center text-sky-300">{r.left_keyman_count.toLocaleString()} คน</td>
                     <td className="px-4 py-2 text-right text-sky-400">{r.total_vol_left.toLocaleString()}</td>
-                    <td className="px-4 py-2 text-center"><PositionBadge pos={r.left_highest_pos} abbreviateFa /></td>
                     <td className="px-4 py-2 text-right text-sky-700">฿{r.vol_left_thb.toLocaleString()}</td>
+                    <td className="px-4 py-2 text-center text-purple-300">{r.right_keyman_count.toLocaleString()} คน</td>
                     <td className="px-4 py-2 text-right text-purple-400">{r.total_vol_right.toLocaleString()}</td>
-                    <td className="px-4 py-2 text-center"><PositionBadge pos={r.right_highest_pos} abbreviateFa /></td>
                     <td className="px-4 py-2 text-right text-purple-700">฿{r.vol_right_thb.toLocaleString()}</td>
                   </tr>
                 ))}

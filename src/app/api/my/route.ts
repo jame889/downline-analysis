@@ -26,6 +26,30 @@ function getSponsorSubtreeIds(rootId: string, members: Record<string, Member>): 
   return result
 }
 
+function getPlacementLegIds(rootId: string, members: Record<string, Member>) {
+  const children: Record<string, string[]> = {}
+  for (const member of Object.values(members)) {
+    if (!member.upline_id) continue
+    ;(children[member.upline_id] ??= []).push(member.id)
+  }
+  for (const ids of Object.values(children)) ids.sort((a, b) => Number(a) - Number(b))
+
+  const collect = (startId: string | undefined) => {
+    const result = new Set<string>()
+    const queue = startId ? [startId] : []
+    while (queue.length) {
+      const id = queue.shift()!
+      if (result.has(id)) continue
+      result.add(id)
+      queue.push(...(children[id] ?? []))
+    }
+    return result
+  }
+
+  const [leftRoot, rightRoot] = children[rootId] ?? []
+  return { left: collect(leftRoot), right: collect(rightRoot) }
+}
+
 export async function GET(req: NextRequest) {
   const session = await getSession()
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -43,19 +67,17 @@ export async function GET(req: NextRequest) {
   const history = await getMemberHistory(session.memberId)
 
   // Organization and report data for the selected month
-  const [subtreeMembers, monthMembers, previousReportsByMonth] = await Promise.all([
+  const [subtreeMembers, monthMembers, historyReportsByMonth] = await Promise.all([
     getMembersForMonthSubtree(month, session.memberId),
     getMembersForMonth(month),
-    previousMonth
-      ? getReportsForMonths([previousMonth])
-      : Promise.resolve<Record<string, MonthlyReport[]>>({}),
+    getReportsForMonths(history.map((report) => report.month)),
   ])
   const myReport = subtreeMembers.find((m) => m.id === session.memberId)?.report ?? null
   const keymanStructure = analyzeKeymanStructure(
     session.memberId,
     allMembers,
     monthMembers.map((item) => item.report),
-    previousMonth ? previousReportsByMonth[previousMonth] ?? [] : [],
+    previousMonth ? historyReportsByMonth[previousMonth] ?? [] : [],
   )
 
   const reportByMemberId = new Map(monthMembers.map((item) => [item.id, item.report]))
@@ -145,14 +167,21 @@ export async function GET(req: NextRequest) {
     })
 
   // Enrich history with THB
-  const historyWithThb = history.map((r) => ({
-    ...r,
-    monthly_thb: bvToThb(r.monthly_bv),
-    vol_left_thb: bvToThb(r.total_vol_left),
-    vol_right_thb: bvToThb(r.total_vol_right),
-    weak_leg_bv: Math.min(r.total_vol_left, r.total_vol_right),
-    weak_leg_thb: bvToThb(Math.min(r.total_vol_left, r.total_vol_right)),
-  }))
+  const placementLegIds = getPlacementLegIds(session.memberId, allMembers)
+  const historyWithThb = history.map((r) => {
+    const reports = historyReportsByMonth[r.month] ?? []
+    const isKeyman = (report: MonthlyReport) => report.total_vol_left > 0 || report.total_vol_right > 0
+    return {
+      ...r,
+      monthly_thb: bvToThb(r.monthly_bv),
+      vol_left_thb: bvToThb(r.total_vol_left),
+      vol_right_thb: bvToThb(r.total_vol_right),
+      weak_leg_bv: Math.min(r.total_vol_left, r.total_vol_right),
+      weak_leg_thb: bvToThb(Math.min(r.total_vol_left, r.total_vol_right)),
+      left_keyman_count: reports.filter((report) => placementLegIds.left.has(report.member_id) && isKeyman(report)).length,
+      right_keyman_count: reports.filter((report) => placementLegIds.right.has(report.member_id) && isKeyman(report)).length,
+    }
+  })
 
   // Subtree stats
   const visibleMembers = monthMembers.filter((item) => visibleIds.has(item.id))
