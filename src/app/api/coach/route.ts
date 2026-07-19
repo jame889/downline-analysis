@@ -95,16 +95,15 @@ function buildKeymanRiskAlerts(
     const reasons: string[] = []
 
     if (becameInactive) reasons.push('Active หลุดในเดือนล่าสุด')
-    else if (!current.is_active) reasons.push('ยัง Inactive ในเดือนล่าสุด')
     if (lostQualification) reasons.push('สูญเสีย Qualification')
     if (decliningTwoMonths) reasons.push('New BV ลดลงต่อเนื่อง 2 เดือน')
     else if (sharpDecline) reasons.push(`New BV ลดลง ${Math.abs(changePct)}%`)
     if (!reasons.length) return []
 
-    const risk: KeymanRiskAlert['risk'] = becameInactive || lostQualification || !current.is_active || (changePct !== null && changePct <= -50)
+    const risk: KeymanRiskAlert['risk'] = becameInactive || lostQualification || (changePct !== null && changePct <= -50)
       ? 'critical'
       : 'warning'
-    const action = !current.is_active
+    const action = becameInactive
       ? 'นัดปลุกและทำแผน Active ภายใน 48 ชั่วโมง'
       : lostQualification
         ? `เร่งคืน Qualification และตรวจคะแนนฝั่ง${keyman.weakSide}`
