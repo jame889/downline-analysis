@@ -114,8 +114,9 @@ function buildKeymanRiskAlerts(
       action,
     }]
   }).sort((a, b) => {
+    const qualificationDiff = Number(b.reasons.includes('สูญเสีย Qualification')) - Number(a.reasons.includes('สูญเสีย Qualification'))
     const riskDiff = Number(b.risk === 'critical') - Number(a.risk === 'critical')
-    return riskDiff || (a.changePct ?? 0) - (b.changePct ?? 0) || b.previousNewBv - a.previousNewBv
+    return qualificationDiff || riskDiff || (a.changePct ?? 0) - (b.changePct ?? 0) || b.previousNewBv - a.previousNewBv
   })
 }
 
