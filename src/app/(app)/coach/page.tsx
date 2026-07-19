@@ -114,25 +114,74 @@ function RiskBadge({ risk }: { risk: KeymanRiskAlert['risk'] }) {
 
 function KeymanRiskTable({ alerts }: { alerts: KeymanRiskAlert[] }) {
   const [showAll, setShowAll] = useState(false)
-  const visibleAlerts = showAll ? alerts : alerts.slice(0, 20)
+  const [activeOnly, setActiveOnly] = useState(false)
+  const [side, setSide] = useState<'ทั้งหมด' | 'ซ้าย' | 'ขวา'>('ทั้งหมด')
+  const filteredAlerts = alerts.filter((item) =>
+    (!activeOnly || item.isActive) && (side === 'ทั้งหมด' || item.side === side),
+  )
+  const visibleAlerts = showAll ? filteredAlerts : filteredAlerts.slice(0, 20)
 
   return (
     <section className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden">
-      <div className="px-5 py-4 border-b border-slate-800 flex items-center justify-between gap-3">
-        <div className="flex items-center gap-2 min-w-0">
-          <AlertTriangle className="w-4 h-4 text-red-400 shrink-0" aria-hidden="true" />
-          <div className="min-w-0">
-            <h2 className="text-sm font-semibold text-slate-200">แจ้งเตือน Keyman ที่เสี่ยงหลุด</h2>
-            <p className="text-xs text-slate-500 mt-0.5">Placement Keyman · Strong Leg ≥ 100 BV · วิเคราะห์ 3 เดือนล่าสุด</p>
+      <div className="px-5 py-4 border-b border-slate-800">
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2 min-w-0">
+            <AlertTriangle className="w-4 h-4 text-red-400 shrink-0" aria-hidden="true" />
+            <div className="min-w-0">
+              <h2 className="text-sm font-semibold text-slate-200">แจ้งเตือน Keyman ที่เสี่ยงหลุด</h2>
+              <p className="text-xs text-slate-500 mt-0.5">Placement Keyman · Strong Leg ≥ 100 BV · วิเคราะห์ 3 เดือนล่าสุด</p>
+            </div>
+          </div>
+          <span className={`text-sm font-bold shrink-0 ${filteredAlerts.length ? 'text-red-400' : 'text-green-400'}`}>
+            {filteredAlerts.length === alerts.length ? `${alerts.length} คน` : `${filteredAlerts.length}/${alerts.length} คน`}
+          </span>
+        </div>
+
+        <div className="flex items-center gap-2 flex-wrap mt-3">
+          <button
+            type="button"
+            aria-pressed={activeOnly}
+            onClick={() => {
+              setActiveOnly((current) => !current)
+              setShowAll(false)
+            }}
+            className={`px-2.5 py-1.5 text-xs border rounded-md transition-colors ${activeOnly
+              ? 'border-green-600 bg-green-950 text-green-300'
+              : 'border-slate-700 bg-slate-800 text-slate-400 hover:text-slate-200'
+            }`}
+          >
+            Active
+          </button>
+          <div className="inline-flex rounded-md border border-slate-700 overflow-hidden" aria-label="กรองฝั่ง Keyman เสี่ยงหลุด">
+            {(['ทั้งหมด', 'ซ้าย', 'ขวา'] as const).map((option) => (
+              <button
+                key={option}
+                type="button"
+                aria-pressed={side === option}
+                onClick={() => {
+                  setSide(option)
+                  setShowAll(false)
+                }}
+                className={`px-2.5 py-1.5 text-xs border-r border-slate-700 last:border-r-0 transition-colors ${side === option
+                  ? option === 'ซ้าย'
+                    ? 'bg-sky-950 text-sky-300'
+                    : option === 'ขวา'
+                      ? 'bg-purple-950 text-purple-300'
+                      : 'bg-slate-700 text-white'
+                  : 'bg-slate-800 text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                {option === 'ทั้งหมด' ? 'ทุกฝั่ง' : `ฝั่ง${option}`}
+              </button>
+            ))}
           </div>
         </div>
-        <span className={`text-sm font-bold shrink-0 ${alerts.length ? 'text-red-400' : 'text-green-400'}`}>
-          {alerts.length} คน
-        </span>
       </div>
 
       {alerts.length === 0 ? (
         <p className="px-5 py-8 text-sm text-slate-500 text-center">ยังไม่พบ Keyman ที่มีสัญญาณเสี่ยงหลุด</p>
+      ) : filteredAlerts.length === 0 ? (
+        <p className="px-5 py-8 text-sm text-slate-500 text-center">ไม่พบ Keyman ตามตัวกรองที่เลือก</p>
       ) : (
         <>
           <div className="md:hidden divide-y divide-slate-800">
@@ -219,14 +268,14 @@ function KeymanRiskTable({ alerts }: { alerts: KeymanRiskAlert[] }) {
               </tbody>
             </table>
           </div>
-          {alerts.length > 20 && (
+          {filteredAlerts.length > 20 && (
             <div className="px-4 py-3 border-t border-slate-800 flex justify-center">
               <button
                 type="button"
                 onClick={() => setShowAll((current) => !current)}
                 className="text-xs px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 rounded-md transition-colors"
               >
-                {showAll ? 'แสดง 20 คนเสี่ยงสูงสุด' : `แสดงทั้งหมด ${alerts.length} คน`}
+                {showAll ? 'แสดง 20 คนเสี่ยงสูงสุด' : `แสดงทั้งหมด ${filteredAlerts.length} คน`}
               </button>
             </div>
           )}
