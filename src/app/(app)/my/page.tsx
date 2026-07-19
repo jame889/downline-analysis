@@ -8,6 +8,7 @@ import PositionBadge from '@/components/PositionBadge'
 import VolLRChart from '@/components/VolLRChart'
 import Link from 'next/link'
 import { POSITION_RANK } from '@/lib/types'
+import { Filter } from 'lucide-react'
 
 interface AnalyzeNode {
   id: string
@@ -99,6 +100,7 @@ interface KeymanRow {
   name: string
   side: 'ซ้าย' | 'ขวา' | 'ไม่ทราบ'
   highestPosition: string
+  isActive: boolean
   leftBv: number
   rightBv: number
   closestRank: KeymanRankGap | null
@@ -298,6 +300,7 @@ export default function MyPage() {
   const [treeNodes, setTreeNodes] = useState<TreeNode[]>([])
   const [keymanStructure, setKeymanStructure] = useState<KeymanStructure | null>(null)
   const [showAllKeymen, setShowAllKeymen] = useState(false)
+  const [activeKeymenOnly, setActiveKeymenOnly] = useState(false)
   const [loading, setLoading] = useState(true)
 
   // Sub-view: "ดูผังทีมงานนี้"
@@ -387,7 +390,8 @@ export default function MyPage() {
         || b.opportunityScore - a.opportunityScore
         || b.newBv - a.newBv)
     : [], [keymanStructure])
-  const visibleKeymen = showAllKeymen ? keymen : keymen.slice(0, 20)
+  const filteredKeymen = activeKeymenOnly ? keymen.filter((item) => item.isActive) : keymen
+  const visibleKeymen = showAllKeymen ? filteredKeymen : filteredKeymen.slice(0, 20)
 
   if (loading) return <div className="text-slate-400 py-16 text-center">กำลังโหลด...</div>
 
@@ -583,7 +587,25 @@ export default function MyPage() {
       <section className="bg-slate-900 border border-slate-800 rounded-lg overflow-hidden">
         <div className="px-5 py-4 border-b border-slate-800 flex items-center justify-between gap-3">
           <h2 className="text-sm font-semibold text-slate-200">Keyman ใน Placement</h2>
-          <span className="text-xs text-slate-500">{keymen.length} คน · {selectedMonth}</span>
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-slate-500">
+              {activeKeymenOnly ? `${filteredKeymen.length}/${keymen.length}` : keymen.length} คน · {selectedMonth}
+            </span>
+            <button
+              type="button"
+              aria-pressed={activeKeymenOnly}
+              onClick={() => {
+                setActiveKeymenOnly((value) => !value)
+                setShowAllKeymen(false)
+              }}
+              className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-md border text-xs transition-colors ${activeKeymenOnly
+                ? 'border-emerald-600 bg-emerald-950/50 text-emerald-300'
+                : 'border-slate-700 bg-slate-800 text-slate-400 hover:border-slate-500 hover:text-slate-200'}`}
+            >
+              <Filter size={13} aria-hidden="true" />
+              เฉพาะ Active
+            </button>
+          </div>
         </div>
         {keymen.length === 0 ? (
           <p className="px-5 py-8 text-sm text-slate-500 text-center">ยังไม่มี Keyman ที่มีผลงานในเดือนนี้</p>
@@ -597,7 +619,12 @@ export default function MyPage() {
                       <Link href={`/members/${item.id}`} className="font-medium text-sm text-slate-100 hover:text-brand-400">
                         {item.name} <span className="font-mono text-xs text-brand-400">({item.id})</span>
                       </Link>
-                      <div className="mt-1"><PositionBadge pos={item.highestPosition} abbreviateFa /></div>
+                      <div className="mt-1 flex items-center gap-2">
+                        <PositionBadge pos={item.highestPosition} abbreviateFa />
+                        <span className={`text-xs ${item.isActive ? 'text-emerald-400' : 'text-slate-500'}`}>
+                          {item.isActive ? '● Active' : '○ Inactive'}
+                        </span>
+                      </div>
                     </div>
                     <span className={`shrink-0 text-xs px-1.5 py-0.5 rounded border ${item.side === 'ซ้าย'
                       ? 'text-sky-300 border-sky-800 bg-sky-950/40'
@@ -659,6 +686,9 @@ export default function MyPage() {
                           ฝั่ง{item.side}
                         </span>
                         <PositionBadge pos={item.highestPosition} abbreviateFa />
+                        <span className={`text-xs ${item.isActive ? 'text-emerald-400' : 'text-slate-500'}`}>
+                          {item.isActive ? '● Active' : '○ Inactive'}
+                        </span>
                       </div>
                     </td>
                     <td className="px-4 py-4 whitespace-nowrap">
@@ -687,14 +717,14 @@ export default function MyPage() {
               </tbody>
               </table>
             </div>
-            {keymen.length > 20 && (
+            {filteredKeymen.length > 20 && (
               <div className="px-4 py-3 border-t border-slate-800 flex justify-center">
                 <button
                   type="button"
                   onClick={() => setShowAllKeymen((value) => !value)}
                   className="px-3 py-2 rounded-lg border border-slate-700 bg-slate-800 text-xs text-slate-300 hover:border-slate-500 hover:text-white transition-colors"
                 >
-                  {showAllKeymen ? 'แสดง 20 คน High Ranking' : `แสดง Keyman ทั้งหมด ${keymen.length} คน`}
+                  {showAllKeymen ? 'แสดง 20 คน High Ranking' : `แสดง Keyman ทั้งหมด ${filteredKeymen.length} คน`}
                 </button>
               </div>
             )}
