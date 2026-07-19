@@ -129,7 +129,7 @@ function KeymanRiskTable({ alerts }: { alerts: KeymanRiskAlert[] }) {
             <AlertTriangle className="w-4 h-4 text-red-400 shrink-0" aria-hidden="true" />
             <div className="min-w-0">
               <h2 className="text-sm font-semibold text-slate-200">แจ้งเตือน Keyman ที่เสี่ยงหลุด</h2>
-              <p className="text-xs text-slate-500 mt-0.5">Placement Keyman · Strong Leg ≥ 100 BV · วิเคราะห์ 3 เดือนล่าสุด</p>
+              <p className="text-xs text-slate-500 mt-0.5">Placement Keyman · Strong Leg ≥ 100 BV · เทียบเดือนล่าสุดกับเดือนก่อน</p>
             </div>
           </div>
           <span className={`text-sm font-bold shrink-0 ${filteredAlerts.length ? 'text-red-400' : 'text-green-400'}`}>

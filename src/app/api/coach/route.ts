@@ -70,41 +70,29 @@ function buildKeymanRiskAlerts(
   keymen: KeymanAnalysis[],
   currentMap: Map<string, MonthlyReport>,
   previousMap: Map<string, MonthlyReport>,
-  olderMap: Map<string, MonthlyReport>,
 ): KeymanRiskAlert[] {
   return keymen.flatMap((keyman) => {
     if (Math.max(keyman.leftBv, keyman.rightBv) < 100) return []
 
     const current = currentMap.get(keyman.id)
     const previous = previousMap.get(keyman.id)
-    const older = olderMap.get(keyman.id)
     if (!current) return []
 
     const currentNewBv = teamNewBv(current)
     const previousNewBv = teamNewBv(previous)
-    const olderNewBv = teamNewBv(older)
     const changePct = previous && previousNewBv > 0
       ? Math.round(((currentNewBv - previousNewBv) / previousNewBv) * 100)
       : null
     const becameInactive = Boolean(previous?.is_active && !current.is_active)
     const lostQualification = Boolean(previous?.is_qualified && !current.is_qualified)
-    if (!current.is_active && !becameInactive && !lostQualification) return []
-    const decliningTwoMonths = Boolean(
-      older && previous && olderNewBv > previousNewBv && previousNewBv > currentNewBv && olderNewBv - currentNewBv >= 100,
-    )
-    const sharpDecline = changePct !== null && changePct <= -30 && previousNewBv - currentNewBv >= 100
+    const lostAllNewBv = Boolean(previous && previousNewBv > 0 && currentNewBv === 0)
+    if (!lostAllNewBv && !lostQualification) return []
     const reasons: string[] = []
 
-    if (becameInactive) reasons.push('Active หลุดในเดือนล่าสุด')
     if (lostQualification) reasons.push('สูญเสีย Qualification')
-    if (decliningTwoMonths) reasons.push('New BV ลดลงต่อเนื่อง 2 เดือน')
-    else if (sharpDecline) reasons.push(`New BV ลดลง ${Math.abs(changePct)}%`)
-    if (!reasons.length) return []
+    if (lostAllNewBv) reasons.push('New BV ลดลง 100%')
 
-    const risk: KeymanRiskAlert['risk'] = becameInactive || lostQualification || (changePct !== null && changePct <= -50)
-      ? 'critical'
-      : 'warning'
-    if (risk === 'warning') return []
+    const risk: KeymanRiskAlert['risk'] = 'critical'
     const action = becameInactive
       ? 'นัดปลุกและทำแผน Active ภายใน 48 ชั่วโมง'
       : lostQualification
@@ -138,16 +126,14 @@ export async function GET(req: NextRequest) {
   const months = await getAvailableMonths()
   const latestMonth = months[0]
   const prevMonth = months[1]
-  const olderMonth = months[2]
   if (!latestMonth) return NextResponse.json({ error: 'ไม่พบข้อมูล' }, { status: 404 })
 
   const [members, reportsByMonth] = await Promise.all([
     getAllMembers(),
-    getReportsForMonths([latestMonth, prevMonth, olderMonth].filter(Boolean) as string[]),
+    getReportsForMonths([latestMonth, prevMonth].filter(Boolean) as string[]),
   ])
   const repMap = new Map((reportsByMonth[latestMonth] ?? []).map((r) => [r.member_id, r]))
   const prevRepMap = new Map((prevMonth ? reportsByMonth[prevMonth] : []).map((r) => [r.member_id, r]))
-  const olderRepMap = new Map((olderMonth ? reportsByMonth[olderMonth] : []).map((r) => [r.member_id, r]))
   const children = buildChildrenMap(members)
 
   const rootId = session.memberId
@@ -299,7 +285,6 @@ export async function GET(req: NextRequest) {
     [...keymanStructure.left, ...keymanStructure.right, ...keymanStructure.unknown],
     repMap,
     prevRepMap,
-    olderRepMap,
   )
   if (keymanAtRisk.length > 0) {
     const criticalCount = keymanAtRisk.filter((item) => item.risk === 'critical').length
