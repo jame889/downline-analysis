@@ -252,6 +252,37 @@ type PlacementLegPromptEntry = {
   bottlenecks: string[]
 }
 
+type KeymanRiskPromptEntry = {
+  id: string; name: string; side: string; position: string; isActive: boolean
+  risk: 'critical' | 'warning'; currentNewBv: number; previousNewBv: number
+  changePct: number | null; weakSide: 'ซ้าย' | 'ขวา'; reasons: string[]; action: string
+}
+
+function isKeymanRiskQuestion(question: string) {
+  return /(?:key\s*man|คีย์\s*แมน).*?(?:เสี่ยง|หลุด|ตก|ชะลอ)|(?:เสี่ยง|หลุด|ตก).*?(?:key\s*man|คีย์\s*แมน)/i.test(question)
+}
+
+function keymanRiskReply(coachData: Record<string, unknown>, question: string): string | null {
+  if (!isKeymanRiskQuestion(question)) return null
+  const alerts = (coachData as { keymanAtRisk?: KeymanRiskPromptEntry[] }).keymanAtRisk ?? []
+  if (!alerts.length) return 'เดือนล่าสุดยังไม่พบ Keyman ใน Placement ที่มีสัญญาณเสี่ยงหลุดตามเกณฑ์ 3 เดือน'
+
+  const rows = alerts.slice(0, 10).map((item, index) => {
+    const trend = item.changePct === null ? 'ยังเทียบไม่ได้' : `${item.changePct > 0 ? '+' : ''}${item.changePct}%`
+    return [
+      `${index + 1}. ${item.name} (${item.id}) · ฝั่ง${item.side} · ${item.position} · ${item.risk === 'critical' ? 'เสี่ยงสูง' : 'เฝ้าระวัง'}`,
+      `New BV ${formatNumber(item.currentNewBv)} จาก ${formatNumber(item.previousNewBv)} (${trend})`,
+      `สัญญาณ: ${item.reasons.join(', ')}`,
+      `Action: ${item.action}`,
+    ].join('\n')
+  })
+  return [
+    `Keyman ที่เสี่ยงหลุด ${alerts.length} คน เรียงจากเร่งด่วนที่สุด`,
+    ...rows,
+    alerts.length > 10 ? `และอีก ${alerts.length - 10} คน ดูทั้งหมดในตารางหน้า Coach JOE` : '',
+  ].filter(Boolean).join('\n\n')
+}
+
 function isKeymanStructureQuestion(question: string) {
   return /key\s*man|คีย์\s*แมน|โครงสร้าง.*(?:ซ้าย|ขวา)|องค์กรโตจากใคร|คะแนน(?:สะสม)?ซ้ายขวา|(?:ใกล้|ขาด|ขึ้น|ตำแหน่ง).*?(?:star|bronze|silver|สตาร์|บรอนซ์|ซิลเวอร์)|(?:star|bronze|silver|สตาร์|บรอนซ์|ซิลเวอร์).*?(?:ใคร|ขาด|อีกเท่าไร)/i.test(question)
 }
@@ -470,6 +501,7 @@ async function buildSystemPrompt(coachData: Record<string, unknown> | null): Pro
       closestToBronze: KeymanPromptEntry[]
       closestToSilver: KeymanPromptEntry[]
     }
+    keymanAtRisk?: KeymanRiskPromptEntry[]
   }
 
   const balanceStr = d.balance
@@ -501,6 +533,9 @@ async function buildSystemPrompt(coachData: Record<string, unknown> | null): Pro
   const keymanStr = d.keymanStructure
     ? `Placement Leg ซ้าย: ${d.keymanStructure.legs.left.keymanName ?? 'ไม่มี'} (${d.keymanStructure.legs.left.keymanId ?? '-'}), BV สะสม ${d.keymanStructure.legs.left.accumulatedBv}, New BV ${d.keymanStructure.legs.left.newBv}, trend ${d.keymanStructure.legs.left.trendPct ?? 'N/A'}%, active ${d.keymanStructure.legs.left.activeMembers}/${d.keymanStructure.legs.left.teamSize}, contribution ${d.keymanStructure.legs.left.contributionPct}%, bottleneck ${d.keymanStructure.legs.left.bottlenecks.join(', ')}\nPlacement Leg ขวา: ${d.keymanStructure.legs.right.keymanName ?? 'ไม่มี'} (${d.keymanStructure.legs.right.keymanId ?? '-'}), BV สะสม ${d.keymanStructure.legs.right.accumulatedBv}, New BV ${d.keymanStructure.legs.right.newBv}, trend ${d.keymanStructure.legs.right.trendPct ?? 'N/A'}%, active ${d.keymanStructure.legs.right.activeMembers}/${d.keymanStructure.legs.right.teamSize}, contribution ${d.keymanStructure.legs.right.contributionPct}%, bottleneck ${d.keymanStructure.legs.right.bottlenecks.join(', ')}\nฝั่งซ้าย:\n${d.keymanStructure.left.slice(0, 12).map(keymanLine).join('\n') || 'ไม่มีข้อมูล'}\nฝั่งขวา:\n${d.keymanStructure.right.slice(0, 12).map(keymanLine).join('\n') || 'ไม่มีข้อมูล'}`
     : 'ยังไม่มีข้อมูล Keyman'
+  const keymanRiskStr = d.keymanAtRisk?.slice(0, 12).map((item, index) =>
+    `${index + 1}. ${item.name} (${item.id}), ฝั่ง${item.side}, ${item.position}, ${item.risk}, New BV ${item.currentNewBv} จาก ${item.previousNewBv}, trend ${item.changePct ?? 'N/A'}%, สัญญาณ ${item.reasons.join(', ')}, action: ${item.action}`
+  ).join('\n') || 'ยังไม่พบ Keyman ที่มีสัญญาณเสี่ยงหลุด'
 
   const activity = d.activityAnalysis
   const activityTypeStr = activity?.typeBreakdown.map((item) =>
@@ -569,6 +604,9 @@ ${focusCandidateStr || 'ยังไม่มี candidate เพียงพอ
 === AI วิเคราะห์โครงสร้าง Keyman ซ้าย–ขวา ===
 ${keymanStr}
 
+=== Keyman ที่เสี่ยงหลุด ===
+${keymanRiskStr}
+
 === ผลการลงมือทำจากบันทึกกิจกรรมรายวัน ===
 ${activityStr}
 
@@ -634,6 +672,9 @@ export async function POST(req: NextRequest) {
 
       const deterministicReply = diamondWorkReply(coachData, latestQuestion)
       if (deterministicReply) return ndjsonResponse(deterministicReply)
+
+      const riskReply = keymanRiskReply(coachData, latestQuestion)
+      if (riskReply) return ndjsonResponse(riskReply)
 
       const keymanReply = keymanStructureReply(coachData, latestQuestion)
       if (keymanReply) return ndjsonResponse(keymanReply)

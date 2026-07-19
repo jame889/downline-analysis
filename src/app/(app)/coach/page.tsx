@@ -6,6 +6,7 @@ import {
 } from 'recharts'
 import PositionBadge from '@/components/PositionBadge'
 import Link from 'next/link'
+import { AlertTriangle, TrendingDown } from 'lucide-react'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -27,6 +28,21 @@ interface Action {
   category: string; title: string; detail: string
 }
 
+interface KeymanRiskAlert {
+  id: string
+  name: string
+  side: 'ซ้าย' | 'ขวา' | 'ไม่ทราบ'
+  position: string
+  isActive: boolean
+  risk: 'critical' | 'warning'
+  currentNewBv: number
+  previousNewBv: number
+  changePct: number | null
+  weakSide: 'ซ้าย' | 'ขวา'
+  reasons: string[]
+  action: string
+}
+
 interface CoachData {
   month: string
   member: { id: string; name: string }
@@ -41,6 +57,7 @@ interface CoachData {
   newMembers: NewMember[]; untappedNew: NewMember[]
   byLevel: Record<string, { total: number; active: number }>
   actions: Action[]
+  keymanAtRisk?: KeymanRiskAlert[]
   myPersonalSponsors: number
   activityAnalysis?: {
     recent30: {
@@ -80,6 +97,128 @@ function ActionCard({ action }: { action: Action }) {
         </div>
       </div>
     </div>
+  )
+}
+
+function RiskBadge({ risk }: { risk: KeymanRiskAlert['risk'] }) {
+  return (
+    <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
+      risk === 'critical'
+        ? 'bg-red-950 text-red-300 border border-red-800'
+        : 'bg-amber-950 text-amber-300 border border-amber-800'
+    }`}>
+      {risk === 'critical' ? 'เสี่ยงสูง' : 'เฝ้าระวัง'}
+    </span>
+  )
+}
+
+function KeymanRiskTable({ alerts }: { alerts: KeymanRiskAlert[] }) {
+  return (
+    <section className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden">
+      <div className="px-5 py-4 border-b border-slate-800 flex items-center justify-between gap-3">
+        <div className="flex items-center gap-2 min-w-0">
+          <AlertTriangle className="w-4 h-4 text-red-400 shrink-0" aria-hidden="true" />
+          <div className="min-w-0">
+            <h2 className="text-sm font-semibold text-slate-200">แจ้งเตือน Keyman ที่เสี่ยงหลุด</h2>
+            <p className="text-xs text-slate-500 mt-0.5">Placement Keyman · Strong Leg ≥ 100 BV · วิเคราะห์ 3 เดือนล่าสุด</p>
+          </div>
+        </div>
+        <span className={`text-sm font-bold shrink-0 ${alerts.length ? 'text-red-400' : 'text-green-400'}`}>
+          {alerts.length} คน
+        </span>
+      </div>
+
+      {alerts.length === 0 ? (
+        <p className="px-5 py-8 text-sm text-slate-500 text-center">ยังไม่พบ Keyman ที่มีสัญญาณเสี่ยงหลุด</p>
+      ) : (
+        <>
+          <div className="md:hidden divide-y divide-slate-800">
+            {alerts.map((item) => (
+              <div key={item.id} className="p-4 space-y-3">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <Link href={`/members/${item.id}`} className="text-sm font-semibold text-slate-100 hover:text-brand-400 break-words">
+                      {item.name}
+                    </Link>
+                    <div className="flex items-center gap-2 mt-1 flex-wrap">
+                      <span className="font-mono text-xs text-brand-400">{item.id}</span>
+                      <span className={item.side === 'ซ้าย' ? 'text-sky-400 text-xs' : item.side === 'ขวา' ? 'text-purple-400 text-xs' : 'text-slate-500 text-xs'}>
+                        ฝั่ง{item.side}
+                      </span>
+                      <PositionBadge pos={item.position} abbreviateFa />
+                    </div>
+                  </div>
+                  <RiskBadge risk={item.risk} />
+                </div>
+                <div className="grid grid-cols-2 gap-3 text-xs">
+                  <div>
+                    <p className="text-slate-500">New BV ล่าสุด</p>
+                    <p className="text-white font-semibold mt-0.5">{item.currentNewBv.toLocaleString()}</p>
+                  </div>
+                  <div>
+                    <p className="text-slate-500">เทียบเดือนก่อน</p>
+                    <p className={item.changePct !== null && item.changePct < 0 ? 'text-red-400 font-semibold mt-0.5' : 'text-slate-300 font-semibold mt-0.5'}>
+                      {item.changePct === null ? 'ยังเทียบไม่ได้' : `${item.changePct > 0 ? '+' : ''}${item.changePct}%`}
+                    </p>
+                  </div>
+                </div>
+                <div className="text-xs space-y-1.5">
+                  <p className="text-red-300">{item.reasons.join(' · ')}</p>
+                  <p className="text-slate-400"><span className="text-slate-500">Action:</span> {item.action}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <div className="hidden md:block overflow-x-auto">
+            <table className="w-full text-sm min-w-[900px]">
+              <thead className="bg-slate-950/50 text-xs text-slate-500">
+                <tr>
+                  <th className="text-left px-4 py-3">Keyman</th>
+                  <th className="text-left px-4 py-3">ฝั่ง / ตำแหน่ง</th>
+                  <th className="text-left px-4 py-3">ความเสี่ยง</th>
+                  <th className="text-right px-4 py-3">New BV</th>
+                  <th className="text-right px-4 py-3">แนวโน้ม</th>
+                  <th className="text-left px-4 py-3">เหตุผลและ Action</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-800">
+                {alerts.map((item) => (
+                  <tr key={item.id} className="hover:bg-slate-800/40 align-top">
+                    <td className="px-4 py-3">
+                      <Link href={`/members/${item.id}`} className="font-medium text-slate-100 hover:text-brand-400">{item.name}</Link>
+                      <p className="font-mono text-xs text-brand-400 mt-1">{item.id}</p>
+                    </td>
+                    <td className="px-4 py-3">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className={item.side === 'ซ้าย' ? 'text-sky-400' : item.side === 'ขวา' ? 'text-purple-400' : 'text-slate-500'}>ฝั่ง{item.side}</span>
+                        <PositionBadge pos={item.position} abbreviateFa />
+                      </div>
+                      <p className={`text-xs mt-1.5 ${item.isActive ? 'text-green-400' : 'text-red-400'}`}>{item.isActive ? 'Active' : 'Inactive'}</p>
+                    </td>
+                    <td className="px-4 py-3"><RiskBadge risk={item.risk} /></td>
+                    <td className="px-4 py-3 text-right">
+                      <p className="text-white font-semibold">{item.currentNewBv.toLocaleString()}</p>
+                      <p className="text-xs text-slate-500 mt-1">ก่อนหน้า {item.previousNewBv.toLocaleString()}</p>
+                    </td>
+                    <td className="px-4 py-3 text-right">
+                      <span className={`inline-flex items-center gap-1 font-semibold ${item.changePct !== null && item.changePct < 0 ? 'text-red-400' : 'text-slate-400'}`}>
+                        {item.changePct !== null && item.changePct < 0 && <TrendingDown className="w-3.5 h-3.5" aria-hidden="true" />}
+                        {item.changePct === null ? '-' : `${item.changePct > 0 ? '+' : ''}${item.changePct}%`}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 max-w-md">
+                      <p className="text-xs text-red-300 leading-relaxed">{item.reasons.join(' · ')}</p>
+                      <p className="text-xs text-slate-400 mt-1.5 leading-relaxed"><span className="text-slate-500">Action:</span> {item.action}</p>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </>
+      )}
+    </section>
   )
 }
 
@@ -583,6 +722,8 @@ export default function CoachPage() {
           {actions.map((a, i) => <ActionCard key={i} action={a} />)}
         </div>
       )}
+
+      <KeymanRiskTable alerts={data.keymanAtRisk ?? []} />
 
       {/* ── L/R Balance ── */}
       <div className={`border ${urgencyBg} rounded-xl p-5`}>

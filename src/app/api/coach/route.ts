@@ -3,8 +3,8 @@ import { getSession } from '@/lib/auth'
 import { getAllMembers, getAvailableMonths, getReportsForMonths } from '@/lib/db'
 import { getGrowthDashboardData } from '@/lib/growth'
 import { getDailyActivityAnalysis } from '@/lib/daily-activities'
-import { analyzeKeymanStructure } from '@/lib/keyman-analysis'
-import type { Member } from '@/lib/types'
+import { analyzeKeymanStructure, type KeymanAnalysis } from '@/lib/keyman-analysis'
+import type { Member, MonthlyReport } from '@/lib/types'
 
 export const dynamic = 'force-dynamic'
 
@@ -47,6 +47,89 @@ function getUrgency(weakPct: number): 'critical' | 'warning' | 'good' {
   return 'good'
 }
 
+type KeymanRiskAlert = {
+  id: string
+  name: string
+  side: KeymanAnalysis['side']
+  position: string
+  isActive: boolean
+  risk: 'critical' | 'warning'
+  currentNewBv: number
+  previousNewBv: number
+  changePct: number | null
+  weakSide: KeymanAnalysis['weakSide']
+  reasons: string[]
+  action: string
+}
+
+function teamNewBv(report: MonthlyReport | undefined): number {
+  return report ? report.current_month_vol_left + report.current_month_vol_right : 0
+}
+
+function buildKeymanRiskAlerts(
+  keymen: KeymanAnalysis[],
+  currentMap: Map<string, MonthlyReport>,
+  previousMap: Map<string, MonthlyReport>,
+  olderMap: Map<string, MonthlyReport>,
+): KeymanRiskAlert[] {
+  return keymen.flatMap((keyman) => {
+    if (Math.max(keyman.leftBv, keyman.rightBv) < 100) return []
+
+    const current = currentMap.get(keyman.id)
+    const previous = previousMap.get(keyman.id)
+    const older = olderMap.get(keyman.id)
+    if (!current) return []
+
+    const currentNewBv = teamNewBv(current)
+    const previousNewBv = teamNewBv(previous)
+    const olderNewBv = teamNewBv(older)
+    const changePct = previous && previousNewBv > 0
+      ? Math.round(((currentNewBv - previousNewBv) / previousNewBv) * 100)
+      : null
+    const becameInactive = Boolean(previous?.is_active && !current.is_active)
+    const lostQualification = Boolean(previous?.is_qualified && !current.is_qualified)
+    const decliningTwoMonths = Boolean(
+      older && previous && olderNewBv > previousNewBv && previousNewBv > currentNewBv,
+    )
+    const sharpDecline = changePct !== null && changePct <= -30
+    const reasons: string[] = []
+
+    if (becameInactive) reasons.push('Active หลุดในเดือนล่าสุด')
+    else if (!current.is_active) reasons.push('ยัง Inactive ในเดือนล่าสุด')
+    if (lostQualification) reasons.push('สูญเสีย Qualification')
+    if (decliningTwoMonths) reasons.push('New BV ลดลงต่อเนื่อง 2 เดือน')
+    else if (sharpDecline) reasons.push(`New BV ลดลง ${Math.abs(changePct)}%`)
+    if (!reasons.length) return []
+
+    const risk: KeymanRiskAlert['risk'] = becameInactive || lostQualification || !current.is_active || (changePct !== null && changePct <= -50)
+      ? 'critical'
+      : 'warning'
+    const action = !current.is_active
+      ? 'นัดปลุกและทำแผน Active ภายใน 48 ชั่วโมง'
+      : lostQualification
+        ? `เร่งคืน Qualification และตรวจคะแนนฝั่ง${keyman.weakSide}`
+        : `ลงไปโค้ชฝั่ง${keyman.weakSide} ตรวจ Follow-up และ Start Up ภายใน 7 วัน`
+
+    return [{
+      id: keyman.id,
+      name: keyman.name,
+      side: keyman.side,
+      position: keyman.position,
+      isActive: keyman.isActive,
+      risk,
+      currentNewBv,
+      previousNewBv,
+      changePct,
+      weakSide: keyman.weakSide,
+      reasons,
+      action,
+    }]
+  }).sort((a, b) => {
+    const riskDiff = Number(b.risk === 'critical') - Number(a.risk === 'critical')
+    return riskDiff || (a.changePct ?? 0) - (b.changePct ?? 0) || b.previousNewBv - a.previousNewBv
+  })
+}
+
 export async function GET(req: NextRequest) {
   const session = await getSession()
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -54,14 +137,16 @@ export async function GET(req: NextRequest) {
   const months = await getAvailableMonths()
   const latestMonth = months[0]
   const prevMonth = months[1]
+  const olderMonth = months[2]
   if (!latestMonth) return NextResponse.json({ error: 'ไม่พบข้อมูล' }, { status: 404 })
 
   const [members, reportsByMonth] = await Promise.all([
     getAllMembers(),
-    getReportsForMonths([latestMonth, prevMonth].filter(Boolean) as string[]),
+    getReportsForMonths([latestMonth, prevMonth, olderMonth].filter(Boolean) as string[]),
   ])
   const repMap = new Map((reportsByMonth[latestMonth] ?? []).map((r) => [r.member_id, r]))
   const prevRepMap = new Map((prevMonth ? reportsByMonth[prevMonth] : []).map((r) => [r.member_id, r]))
+  const olderRepMap = new Map((olderMonth ? reportsByMonth[olderMonth] : []).map((r) => [r.member_id, r]))
   const children = buildChildrenMap(members)
 
   const rootId = session.memberId
@@ -209,6 +294,21 @@ export async function GET(req: NextRequest) {
     reportsByMonth[latestMonth] ?? [],
     prevMonth ? reportsByMonth[prevMonth] ?? [] : [],
   )
+  const keymanAtRisk = buildKeymanRiskAlerts(
+    [...keymanStructure.left, ...keymanStructure.right, ...keymanStructure.unknown],
+    repMap,
+    prevRepMap,
+    olderRepMap,
+  )
+  if (keymanAtRisk.length > 0) {
+    const criticalCount = keymanAtRisk.filter((item) => item.risk === 'critical').length
+    actions.unshift({
+      priority: criticalCount > 0 ? 'high' : 'medium',
+      category: 'Keyman Risk',
+      title: `พบ Keyman เสี่ยงหลุด ${keymanAtRisk.length} คน`,
+      detail: `เร่งด่วน ${criticalCount} คน เริ่มโค้ช ${keymanAtRisk.slice(0, 3).map((item) => item.name).join(', ')} และติดตามผลภายใน 48 ชั่วโมง`,
+    })
+  }
 
   const activity30 = activityAnalysis.recent30
   if (activity30.totalActivities === 0) {
@@ -339,6 +439,7 @@ export async function GET(req: NextRequest) {
     focusCandidates: growth?.focusCandidates ?? [],
     growthInsights: growth?.insights ?? [],
     keymanStructure,
+    keymanAtRisk,
     memberDirectory,
     activityAnalysis,
   })
