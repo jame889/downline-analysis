@@ -115,7 +115,7 @@ interface KeymanRow {
   starLeft: number
   starRight: number
   g1Count: number
-  teamDepth: number
+  g1BuilderCount: number
   opportunityScore: number
   newBv: number
 }
@@ -142,7 +142,9 @@ function keymanGapText(item: KeymanRow): string[] {
 function keymanBottleneck(item: KeymanRow): string {
   const structureIssues: string[] = []
   if (item.g1Count < 2) structureIssues.push(`ขาดการเปิด G1 (${item.g1Count}/2 คน)`)
-  if (item.teamDepth < 3) structureIssues.push(`ขาดการขุดลึก (ลึก ${item.teamDepth} ชั้น)`)
+  if (item.g1Count > 0 && item.g1BuilderCount === 0) {
+    structureIssues.push('ขาดการขุดลึก (G1 ยังไม่มีใคร Sponsor ต่อ)')
+  }
   const missingStarSides = [
     item.starLeft === 0 ? 'ซ้าย' : null,
     item.starRight === 0 ? 'ขวา' : null,

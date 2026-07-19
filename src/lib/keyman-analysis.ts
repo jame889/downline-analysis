@@ -38,9 +38,9 @@ export interface KeymanAnalysis {
   starLeft: number
   starRight: number
   g1Count: number
+  g1BuilderCount: number
   teamSize: number
   depth: number
-  teamDepth: number
   closestRank: KeymanRankGap | null
   rankGaps: KeymanRankGap[]
   bottlenecks: string[]
@@ -98,6 +98,15 @@ function buildChildren(members: Record<string, Member>): Record<string, string[]
     ;(children[member.upline_id] ??= []).push(member.id)
   }
   for (const ids of Object.values(children)) ids.sort((a, b) => Number(a) - Number(b))
+  return children
+}
+
+function buildSponsorChildren(members: Record<string, Member>): Record<string, string[]> {
+  const children: Record<string, string[]> = {}
+  for (const member of Object.values(members)) {
+    if (!member.sponsor_id) continue
+    ;(children[member.sponsor_id] ??= []).push(member.id)
+  }
   return children
 }
 
@@ -297,6 +306,7 @@ export function analyzeKeymanStructure(
   previousReports: MonthlyReport[] = [],
 ): KeymanStructureAnalysis {
   const children = buildChildren(members)
+  const sponsorChildren = buildSponsorChildren(members)
   const reportMap = new Map(reports.map((report) => [report.member_id, report]))
   const previousMap = new Map(previousReports.map((report) => [report.member_id, report]))
   const rootTree = walk(rootId, children)
@@ -309,7 +319,9 @@ export function analyzeKeymanStructure(
     if (!member || !report) continue
 
     const [leftRoot, rightRoot] = children[id] ?? []
-    const g1Count = children[id]?.length ?? 0
+    const g1Ids = sponsorChildren[id] ?? []
+    const g1Count = g1Ids.length
+    const g1BuilderCount = g1Ids.filter((g1Id) => (sponsorChildren[g1Id]?.length ?? 0) > 0).length
     const leftTree = walk(leftRoot, children)
     const rightTree = walk(rightRoot, children)
     const activeLeft = Array.from(leftTree.keys()).filter((memberId) => reportMap.get(memberId)?.is_active).length
@@ -359,9 +371,9 @@ export function analyzeKeymanStructure(
       starLeft,
       starRight,
       g1Count,
+      g1BuilderCount,
       teamSize,
       depth: rootDepth + depth,
-      teamDepth: depth,
       closestRank,
       rankGaps,
       bottlenecks: bottlenecks(closestRank, report, activeLeft, activeRight),
