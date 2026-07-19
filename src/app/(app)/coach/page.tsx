@@ -113,6 +113,9 @@ function RiskBadge({ risk }: { risk: KeymanRiskAlert['risk'] }) {
 }
 
 function KeymanRiskTable({ alerts }: { alerts: KeymanRiskAlert[] }) {
+  const [showAll, setShowAll] = useState(false)
+  const visibleAlerts = showAll ? alerts : alerts.slice(0, 20)
+
   return (
     <section className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden">
       <div className="px-5 py-4 border-b border-slate-800 flex items-center justify-between gap-3">
@@ -133,7 +136,7 @@ function KeymanRiskTable({ alerts }: { alerts: KeymanRiskAlert[] }) {
       ) : (
         <>
           <div className="md:hidden divide-y divide-slate-800">
-            {alerts.map((item) => (
+            {visibleAlerts.map((item) => (
               <div key={item.id} className="p-4 space-y-3">
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
@@ -183,7 +186,7 @@ function KeymanRiskTable({ alerts }: { alerts: KeymanRiskAlert[] }) {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-800">
-                {alerts.map((item) => (
+                {visibleAlerts.map((item) => (
                   <tr key={item.id} className="hover:bg-slate-800/40 align-top">
                     <td className="px-4 py-3">
                       <Link href={`/members/${item.id}`} className="font-medium text-slate-100 hover:text-brand-400">{item.name}</Link>
@@ -216,6 +219,17 @@ function KeymanRiskTable({ alerts }: { alerts: KeymanRiskAlert[] }) {
               </tbody>
             </table>
           </div>
+          {alerts.length > 20 && (
+            <div className="px-4 py-3 border-t border-slate-800 flex justify-center">
+              <button
+                type="button"
+                onClick={() => setShowAll((current) => !current)}
+                className="text-xs px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 rounded-md transition-colors"
+              >
+                {showAll ? 'แสดง 20 คนเสี่ยงสูงสุด' : `แสดงทั้งหมด ${alerts.length} คน`}
+              </button>
+            </div>
+          )}
         </>
       )}
     </section>
