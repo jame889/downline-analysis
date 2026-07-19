@@ -301,6 +301,7 @@ export default function MyPage() {
   const [keymanStructure, setKeymanStructure] = useState<KeymanStructure | null>(null)
   const [showAllKeymen, setShowAllKeymen] = useState(false)
   const [activeKeymenOnly, setActiveKeymenOnly] = useState(false)
+  const [keymanSide, setKeymanSide] = useState<'ทั้งหมด' | 'ซ้าย' | 'ขวา'>('ทั้งหมด')
   const [loading, setLoading] = useState(true)
 
   // Sub-view: "ดูผังทีมงานนี้"
@@ -385,12 +386,15 @@ export default function MyPage() {
 
   const keymen = useMemo(() => keymanStructure
     ? [...keymanStructure.left, ...keymanStructure.right, ...keymanStructure.unknown]
+      .filter((item) => Math.min(item.leftBv, item.rightBv) >= 100)
       .sort((a, b) =>
         (POSITION_RANK[b.highestPosition] ?? -1) - (POSITION_RANK[a.highestPosition] ?? -1)
         || b.opportunityScore - a.opportunityScore
         || b.newBv - a.newBv)
     : [], [keymanStructure])
-  const filteredKeymen = activeKeymenOnly ? keymen.filter((item) => item.isActive) : keymen
+  const filteredKeymen = keymen.filter((item) =>
+    (!activeKeymenOnly || item.isActive)
+    && (keymanSide === 'ทั้งหมด' || item.side === keymanSide))
   const visibleKeymen = showAllKeymen ? filteredKeymen : filteredKeymen.slice(0, 20)
 
   if (loading) return <div className="text-slate-400 py-16 text-center">กำลังโหลด...</div>
@@ -585,12 +589,36 @@ export default function MyPage() {
 
       {/* Keyman placement report */}
       <section className="bg-slate-900 border border-slate-800 rounded-lg overflow-hidden">
-        <div className="px-5 py-4 border-b border-slate-800 flex items-center justify-between gap-3">
+        <div className="px-5 py-4 border-b border-slate-800 flex items-center justify-between gap-3 flex-wrap">
           <h2 className="text-sm font-semibold text-slate-200">Keyman ใน Placement</h2>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap justify-end">
             <span className="text-xs text-slate-500">
-              {activeKeymenOnly ? `${filteredKeymen.length}/${keymen.length}` : keymen.length} คน · {selectedMonth}
+              {(activeKeymenOnly || keymanSide !== 'ทั้งหมด')
+                ? `${filteredKeymen.length}/${keymen.length}`
+                : keymen.length} คน · {selectedMonth}
             </span>
+            <div className="inline-flex rounded-md border border-slate-700 overflow-hidden" aria-label="กรองฝั่ง Keyman">
+              {(['ทั้งหมด', 'ซ้าย', 'ขวา'] as const).map((side) => (
+                <button
+                  key={side}
+                  type="button"
+                  aria-pressed={keymanSide === side}
+                  onClick={() => {
+                    setKeymanSide(side)
+                    setShowAllKeymen(false)
+                  }}
+                  className={`px-2.5 py-1.5 text-xs border-r border-slate-700 last:border-r-0 transition-colors ${keymanSide === side
+                    ? side === 'ซ้าย'
+                      ? 'bg-sky-950/70 text-sky-300'
+                      : side === 'ขวา'
+                        ? 'bg-fuchsia-950/60 text-fuchsia-300'
+                        : 'bg-slate-700 text-white'
+                    : 'bg-slate-800 text-slate-400 hover:text-slate-200'}`}
+                >
+                  {side === 'ทั้งหมด' ? side : `ฝั่ง${side}`}
+                </button>
+              ))}
+            </div>
             <button
               type="button"
               aria-pressed={activeKeymenOnly}
@@ -608,7 +636,9 @@ export default function MyPage() {
           </div>
         </div>
         {keymen.length === 0 ? (
-          <p className="px-5 py-8 text-sm text-slate-500 text-center">ยังไม่มี Keyman ที่มีผลงานในเดือนนี้</p>
+          <p className="px-5 py-8 text-sm text-slate-500 text-center">ยังไม่มี Keyman ที่มี Weak Leg ตั้งแต่ 100 คะแนนขึ้นไป</p>
+        ) : filteredKeymen.length === 0 ? (
+          <p className="px-5 py-8 text-sm text-slate-500 text-center">ไม่พบ Keyman ตามตัวกรองที่เลือก</p>
         ) : (
           <>
             <div className="divide-y divide-slate-800 md:hidden">
