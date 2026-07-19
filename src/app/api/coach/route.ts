@@ -88,6 +88,7 @@ function buildKeymanRiskAlerts(
       : null
     const becameInactive = Boolean(previous?.is_active && !current.is_active)
     const lostQualification = Boolean(previous?.is_qualified && !current.is_qualified)
+    if (!current.is_active && !becameInactive && !lostQualification) return []
     const decliningTwoMonths = Boolean(
       older && previous && olderNewBv > previousNewBv && previousNewBv > currentNewBv,
     )
