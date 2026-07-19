@@ -17,11 +17,12 @@ const TELEGRAM_COMMANDS = [
   { command: 'help', description: 'วิธีใช้งาน' },
 ]
 
-export const TELEGRAM_NOTIFICATION_TYPES = ['activity', 'weekly', 'watchlist', 'leaderboard', 'wakeup'] as const
+export const TELEGRAM_NOTIFICATION_TYPES = ['activity', 'keyman', 'weekly', 'watchlist', 'leaderboard', 'wakeup'] as const
 export type TelegramNotificationType = (typeof TELEGRAM_NOTIFICATION_TYPES)[number]
 
 export const DEFAULT_TELEGRAM_NOTIFICATIONS: Record<TelegramNotificationType, boolean> = {
   activity: true,
+  keyman: true,
   weekly: true,
   watchlist: true,
   leaderboard: true,

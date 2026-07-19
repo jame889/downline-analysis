@@ -9,7 +9,7 @@ interface TelegramConfig {
   hasBotToken?: boolean
 }
 
-type NotificationKey = 'activity' | 'weekly' | 'watchlist' | 'leaderboard' | 'wakeup'
+type NotificationKey = 'activity' | 'keyman' | 'weekly' | 'watchlist' | 'leaderboard' | 'wakeup'
 
 interface NotifType {
   key: NotificationKey
@@ -20,6 +20,7 @@ interface NotifType {
 
 const NOTIF_TYPES: NotifType[] = [
   { key: 'activity', icon: '🔔', label: 'Daily Action และ Follow-up', schedule: 'ทุกวัน 08:00' },
+  { key: 'keyman', icon: '🎯', label: 'Keyman ใกล้เป้าหมาย', schedule: 'ทุกวัน 08:00' },
   { key: 'weekly', icon: '📊', label: 'สรุปรายสัปดาห์', schedule: 'วันจันทร์ 08:00' },
   { key: 'watchlist', icon: '⚠️', label: 'แจ้งเตือนสมาชิกเสี่ยงหลุด', schedule: 'วันอาทิตย์ 10:00' },
   { key: 'leaderboard', icon: '🏆', label: 'Leaderboard รายเดือน', schedule: 'ส่งทดสอบได้ตามต้องการ' },
@@ -72,6 +73,7 @@ export default function TelegramPage() {
   const [saveMsg, setSaveMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
   const [notifToggles, setNotifToggles] = useState<Record<NotificationKey, boolean>>({
     activity: true,
+    keyman: true,
     weekly: true,
     watchlist: true,
     leaderboard: true,

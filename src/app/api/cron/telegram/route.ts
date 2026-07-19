@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getAvailableMonths, getMembersForMonth, getSubtreeIds } from '@/lib/db'
 import { getDailyActivityAnalysis } from '@/lib/daily-activities'
 import { getTelegramBotToken, loadTelegramConfigs, notificationEnabled, sendTelegramMessage } from '@/lib/telegram-config'
+import { buildKeymanGoalAlertMessage } from '@/lib/telegram-keyman-alert'
 
 export const dynamic = 'force-dynamic'
 
@@ -98,11 +99,12 @@ async function buildActivityMessage(memberId: string): Promise<string> {
 }
 
 // Map cron type to notification type and day description
-const CRON_SCHEDULES: Record<string, { type: 'weekly' | 'wakeup' | 'watchlist' | 'activity'; label: string }> = {
+const CRON_SCHEDULES: Record<string, { type: 'weekly' | 'wakeup' | 'watchlist' | 'activity' | 'keyman'; label: string }> = {
   weekly: { type: 'weekly', label: 'Weekly Report (จันทร์ 8:00)' },
   wakeup: { type: 'wakeup', label: 'Wakeup Alert (อังคาร-ศุกร์ 9:00)' },
   watchlist: { type: 'watchlist', label: 'Watchlist (อาทิตย์ 10:00)' },
   activity: { type: 'activity', label: 'Daily Activity (ทุกวัน 8:00)' },
+  keyman: { type: 'keyman', label: 'Keyman Goal Alert (ทุกวัน 8:00)' },
 }
 
 export async function GET(request: NextRequest) {
@@ -120,7 +122,7 @@ export async function GET(request: NextRequest) {
 
   const schedule = CRON_SCHEDULES[cronType]
   if (!schedule) {
-    return NextResponse.json({ error: 'Invalid cron type. Use: activity, weekly, wakeup, watchlist' }, { status: 400 })
+    return NextResponse.json({ error: 'Invalid cron type. Use: activity, keyman, weekly, wakeup, watchlist' }, { status: 400 })
   }
 
   const allConfigs = await loadTelegramConfigs()
@@ -149,6 +151,9 @@ export async function GET(request: NextRequest) {
         break
       case 'activity':
         message = await buildActivityMessage(memberId)
+        break
+      case 'keyman':
+        message = await buildKeymanGoalAlertMessage(memberId)
         break
     }
 

@@ -3,6 +3,7 @@ import { getSession } from '@/lib/auth'
 import { getAvailableMonths, getMembersForMonth, getSubtreeIds } from '@/lib/db'
 import { getDailyActivityAnalysis } from '@/lib/daily-activities'
 import { getTelegramBotToken, loadTelegramConfigs, sendTelegramMessage, type TelegramNotificationType } from '@/lib/telegram-config'
+import { buildKeymanGoalAlertMessage } from '@/lib/telegram-keyman-alert'
 
 export const dynamic = 'force-dynamic'
 
@@ -114,7 +115,7 @@ export async function POST(request: NextRequest) {
     const body = await request.json()
     const { type } = body as { type: TelegramNotificationType }
 
-    if (!type || !['activity', 'watchlist', 'leaderboard', 'weekly', 'wakeup'].includes(type)) {
+    if (!type || !['activity', 'keyman', 'watchlist', 'leaderboard', 'weekly', 'wakeup'].includes(type)) {
       return NextResponse.json({ error: 'Invalid notification type' }, { status: 400 })
     }
 
@@ -134,6 +135,9 @@ export async function POST(request: NextRequest) {
     switch (type) {
       case 'activity':
         message = await buildActivityMessage(session.memberId)
+        break
+      case 'keyman':
+        message = await buildKeymanGoalAlertMessage(session.memberId)
         break
       case 'watchlist':
         message = await buildWatchlistMessage(session.memberId)
