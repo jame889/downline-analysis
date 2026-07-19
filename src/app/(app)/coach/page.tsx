@@ -737,8 +737,6 @@ export default function CoachPage() {
         </div>
       )}
 
-      <KeymanRiskTable alerts={data.keymanAtRisk ?? []} />
-
       {/* ── L/R Balance ── */}
       <div className={`border ${urgencyBg} rounded-xl p-5`}>
         <div className="flex items-center justify-between mb-4">
@@ -968,6 +966,8 @@ export default function CoachPage() {
           ))}
         </div>
       </div>
+
+      <KeymanRiskTable alerts={data.keymanAtRisk ?? []} />
 
     </div>
   )
