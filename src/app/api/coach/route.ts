@@ -104,6 +104,7 @@ function buildKeymanRiskAlerts(
     const risk: KeymanRiskAlert['risk'] = becameInactive || lostQualification || (changePct !== null && changePct <= -50)
       ? 'critical'
       : 'warning'
+    if (risk === 'warning') return []
     const action = becameInactive
       ? 'นัดปลุกและทำแผน Active ภายใน 48 ชั่วโมง'
       : lostQualification
