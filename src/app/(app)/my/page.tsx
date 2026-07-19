@@ -386,7 +386,7 @@ export default function MyPage() {
 
   const keymen = useMemo(() => keymanStructure
     ? [...keymanStructure.left, ...keymanStructure.right, ...keymanStructure.unknown]
-      .filter((item) => Math.min(item.leftBv, item.rightBv) >= 100)
+      .filter((item) => Math.max(item.leftBv, item.rightBv) >= 100)
       .sort((a, b) =>
         (POSITION_RANK[b.highestPosition] ?? -1) - (POSITION_RANK[a.highestPosition] ?? -1)
         || b.opportunityScore - a.opportunityScore
@@ -636,7 +636,7 @@ export default function MyPage() {
           </div>
         </div>
         {keymen.length === 0 ? (
-          <p className="px-5 py-8 text-sm text-slate-500 text-center">ยังไม่มี Keyman ที่มี Weak Leg ตั้งแต่ 100 คะแนนขึ้นไป</p>
+          <p className="px-5 py-8 text-sm text-slate-500 text-center">ยังไม่มี Keyman ที่มี Strong Leg ตั้งแต่ 100 คะแนนขึ้นไป</p>
         ) : filteredKeymen.length === 0 ? (
           <p className="px-5 py-8 text-sm text-slate-500 text-center">ไม่พบ Keyman ตามตัวกรองที่เลือก</p>
         ) : (
