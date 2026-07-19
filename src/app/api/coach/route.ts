@@ -90,9 +90,9 @@ function buildKeymanRiskAlerts(
     const lostQualification = Boolean(previous?.is_qualified && !current.is_qualified)
     if (!current.is_active && !becameInactive && !lostQualification) return []
     const decliningTwoMonths = Boolean(
-      older && previous && olderNewBv > previousNewBv && previousNewBv > currentNewBv,
+      older && previous && olderNewBv > previousNewBv && previousNewBv > currentNewBv && olderNewBv - currentNewBv >= 100,
     )
-    const sharpDecline = changePct !== null && changePct <= -30
+    const sharpDecline = changePct !== null && changePct <= -30 && previousNewBv - currentNewBv >= 100
     const reasons: string[] = []
 
     if (becameInactive) reasons.push('Active หลุดในเดือนล่าสุด')
