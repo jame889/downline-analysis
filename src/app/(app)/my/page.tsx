@@ -112,6 +112,10 @@ interface KeymanRow {
   focusMemberId: string | null
   focusMemberName: string | null
   weakSide: 'ซ้าย' | 'ขวา'
+  starLeft: number
+  starRight: number
+  g1Count: number
+  teamDepth: number
   opportunityScore: number
   newBv: number
 }
@@ -136,10 +140,24 @@ function keymanGapText(item: KeymanRow): string[] {
 }
 
 function keymanBottleneck(item: KeymanRow): string {
-  if (item.concentrationPct >= 50 && item.concentrationMemberName && item.concentrationMemberId) {
-    return `${item.concentrationPct}% ของ New BV มาจาก ${item.concentrationMemberName} (${item.concentrationMemberId}) คนเดียว`
+  const structureIssues: string[] = []
+  if (item.g1Count < 2) structureIssues.push(`ขาดการเปิด G1 (${item.g1Count}/2 คน)`)
+  if (item.teamDepth < 3) structureIssues.push(`ขาดการขุดลึก (ลึก ${item.teamDepth} ชั้น)`)
+  const missingStarSides = [
+    item.starLeft === 0 ? 'ซ้าย' : null,
+    item.starRight === 0 ? 'ขวา' : null,
+  ].filter(Boolean)
+  if (missingStarSides.length) {
+    structureIssues.push(`ขาดการพัฒนาผู้นำ (ยังไม่มี Star ฝั่ง${missingStarSides.join('และ')})`)
   }
-  return item.bottlenecks[0] ?? 'ยังไม่พบคอขวดเด่น'
+
+  let performanceIssue = item.bottlenecks[0] ?? 'ยังไม่พบคอขวดด้านคะแนน'
+  if (item.concentrationPct >= 50 && item.concentrationMemberName && item.concentrationMemberId) {
+    performanceIssue = `${item.concentrationPct}% ของ New BV มาจาก ${item.concentrationMemberName} (${item.concentrationMemberId}) คนเดียว`
+  }
+  return structureIssues.length
+    ? `${performanceIssue} · ${structureIssues.join(' · ')}`
+    : performanceIssue
 }
 
 function keymanAction(item: KeymanRow): string {

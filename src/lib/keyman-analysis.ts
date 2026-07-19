@@ -37,8 +37,10 @@ export interface KeymanAnalysis {
   activeRight: number
   starLeft: number
   starRight: number
+  g1Count: number
   teamSize: number
   depth: number
+  teamDepth: number
   closestRank: KeymanRankGap | null
   rankGaps: KeymanRankGap[]
   bottlenecks: string[]
@@ -307,6 +309,7 @@ export function analyzeKeymanStructure(
     if (!member || !report) continue
 
     const [leftRoot, rightRoot] = children[id] ?? []
+    const g1Count = children[id]?.length ?? 0
     const leftTree = walk(leftRoot, children)
     const rightTree = walk(rightRoot, children)
     const activeLeft = Array.from(leftTree.keys()).filter((memberId) => reportMap.get(memberId)?.is_active).length
@@ -355,8 +358,10 @@ export function analyzeKeymanStructure(
       activeRight,
       starLeft,
       starRight,
+      g1Count,
       teamSize,
       depth: rootDepth + depth,
+      teamDepth: depth,
       closestRank,
       rankGaps,
       bottlenecks: bottlenecks(closestRank, report, activeLeft, activeRight),
