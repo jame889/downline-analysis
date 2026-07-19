@@ -590,7 +590,7 @@ export default function MyPage() {
       {/* Keyman placement report */}
       <section className="bg-slate-900 border border-slate-800 rounded-lg overflow-hidden">
         <div className="px-5 py-4 border-b border-slate-800 flex items-center justify-between gap-3 flex-wrap">
-          <h2 className="text-sm font-semibold text-slate-200">Keyman ใน Placement</h2>
+          <h2 className="text-sm font-semibold text-slate-200">Keyman ใน Placement Strong Leg ≥ 100</h2>
           <div className="flex items-center gap-2 flex-wrap justify-end">
             <span className="text-xs text-slate-500">
               {(activeKeymenOnly || keymanSide !== 'ทั้งหมด')
