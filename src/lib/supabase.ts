@@ -5,6 +5,10 @@
 const SUPABASE_URL = process.env.SUPABASE_URL ?? ''
 const SUPABASE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY ?? ''
 
+export function hasSupabase(): boolean {
+  return Boolean(SUPABASE_URL && SUPABASE_KEY)
+}
+
 function headers(extra?: Record<string, string>) {
   return {
     apikey: SUPABASE_KEY,
@@ -50,4 +54,14 @@ export async function sbDelete(table: string, params: string): Promise<void> {
     headers: headers(),
   })
   if (!res.ok) throw new Error(`sbDelete ${table}: ${await res.text()}`)
+}
+
+/** DELETE rows and return the removed records. */
+export async function sbDeleteReturning<T>(table: string, params: string): Promise<T[]> {
+  const res = await fetch(`${SUPABASE_URL}/rest/v1/${table}?${params}`, {
+    method: 'DELETE',
+    headers: headers({ Prefer: 'return=representation' }),
+  })
+  if (!res.ok) throw new Error(`sbDelete ${table}: ${await res.text()}`)
+  return res.json() as Promise<T[]>
 }

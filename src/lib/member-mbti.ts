@@ -1,17 +1,11 @@
 import fs from 'fs'
 import path from 'path'
-import { BlobPreconditionFailedError, get, put } from '@vercel/blob'
 import type { MbtiType } from './mbti'
+import { hasSupabase, sbDelete, sbSelect, sbUpsert } from './supabase'
 
-const BLOB_PATH = 'member-metadata/mbti.json'
 const LOCAL_PATH = path.join(process.cwd(), 'data', 'member-mbti.json')
 
 type MbtiOverrides = Record<string, MbtiType>
-type BlobMbtiStore = { values: MbtiOverrides; etag?: string }
-
-function hasBlobStorage(): boolean {
-  return Boolean(process.env.BLOB_READ_WRITE_TOKEN || process.env.BLOB_STORE_ID)
-}
 
 function readLocal(): MbtiOverrides {
   try {
@@ -22,25 +16,14 @@ function readLocal(): MbtiOverrides {
   }
 }
 
-async function readBlob(): Promise<BlobMbtiStore> {
-  const result = await get(BLOB_PATH, { access: 'private', useCache: false })
-  if (!result || result.statusCode !== 200) return { values: {} }
-  const text = await new Response(result.stream).text()
-  return { values: JSON.parse(text) as MbtiOverrides, etag: result.blob.etag }
-}
-
 export async function loadMemberMbtiOverrides(): Promise<MbtiOverrides> {
-  if (!hasBlobStorage()) return readLocal()
-  try {
-    return (await readBlob()).values
-  } catch (error) {
-    console.error('[member-mbti] Failed to read Blob storage', error)
-    return {}
-  }
+  if (!hasSupabase()) return readLocal()
+  const rows = await sbSelect<{ member_id: string; mbti: MbtiType }>('member_mbti', 'select=member_id,mbti')
+  return Object.fromEntries(rows.map((row) => [row.member_id, row.mbti]))
 }
 
 export async function saveMemberMbti(memberId: string, mbti: MbtiType | null): Promise<void> {
-  if (!hasBlobStorage()) {
+  if (!hasSupabase()) {
     const values = readLocal()
     if (mbti) values[memberId] = mbti
     else delete values[memberId]
@@ -49,23 +32,13 @@ export async function saveMemberMbti(memberId: string, mbti: MbtiType | null): P
     return
   }
 
-  for (let attempt = 0; attempt < 3; attempt++) {
-    const { values, etag } = await readBlob()
-    if (mbti) values[memberId] = mbti
-    else delete values[memberId]
-
-    try {
-      await put(BLOB_PATH, JSON.stringify(values), {
-        access: 'private',
-        addRandomSuffix: false,
-        allowOverwrite: Boolean(etag),
-        cacheControlMaxAge: 60,
-        contentType: 'application/json',
-        ...(etag ? { ifMatch: etag } : {}),
-      })
-      return
-    } catch (error) {
-      if (!(error instanceof BlobPreconditionFailedError) || attempt === 2) throw error
-    }
+  if (mbti) {
+    await sbUpsert('member_mbti', {
+      member_id: memberId,
+      mbti,
+      updated_at: new Date().toISOString(),
+    })
+  } else {
+    await sbDelete('member_mbti', `member_id=eq.${encodeURIComponent(memberId)}`)
   }
 }

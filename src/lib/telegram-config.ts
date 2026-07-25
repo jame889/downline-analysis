@@ -1,8 +1,7 @@
 import fs from 'fs'
 import path from 'path'
-import { BlobPreconditionFailedError, get, put } from '@vercel/blob'
+import { hasSupabase, sbSelect, sbUpsert } from './supabase'
 
-const BLOB_PATH = 'member-metadata/telegram-config.json'
 const LOCAL_PATH = path.join(process.cwd(), 'data', 'telegram.json')
 const TELEGRAM_WEBHOOK_URL = 'https://downline-analyzer.vercel.app/api/telegram/webhook'
 
@@ -39,7 +38,16 @@ export interface TelegramConfig {
 }
 
 export type TelegramConfigStore = Record<string, TelegramConfig>
-type BlobStore = { values: TelegramConfigStore; etag?: string }
+
+interface TelegramConfigRow {
+  member_id: string
+  chat_id: string
+  bot_token?: string | null
+  enabled: boolean
+  notifications?: Partial<Record<TelegramNotificationType, boolean>> | null
+  created_at: string
+  updated_at?: string | null
+}
 
 export function getTelegramBotToken(configs: TelegramConfigStore, memberId?: string): string | undefined {
   const rootId = process.env.NEXT_PUBLIC_ROOT_MEMBER_ID ?? '900057'
@@ -80,10 +88,6 @@ export async function configureTelegramBot(
   return telegramBotRequest(token, 'getWebhookInfo')
 }
 
-function hasBlobStorage(): boolean {
-  return Boolean(process.env.BLOB_READ_WRITE_TOKEN || process.env.BLOB_STORE_ID)
-}
-
 function readLocal(): TelegramConfigStore {
   try {
     if (!fs.existsSync(LOCAL_PATH)) return {}
@@ -98,47 +102,21 @@ function writeLocal(values: TelegramConfigStore): void {
   fs.writeFileSync(LOCAL_PATH, JSON.stringify(values, null, 2), 'utf-8')
 }
 
-async function readBlob(): Promise<BlobStore> {
-  const result = await get(BLOB_PATH, { access: 'private', useCache: false })
-  if (!result || result.statusCode !== 200) return { values: {} }
-  const text = await new Response(result.stream).text()
-  return { values: JSON.parse(text) as TelegramConfigStore, etag: result.blob.etag }
-}
-
 export async function loadTelegramConfigs(): Promise<TelegramConfigStore> {
-  if (!hasBlobStorage()) return readLocal()
+  if (!hasSupabase()) return readLocal()
   try {
-    return (await readBlob()).values
+    const rows = await sbSelect<TelegramConfigRow>('telegram_configs', 'select=*')
+    return Object.fromEntries(rows.map((row) => [row.member_id, {
+      chatId: row.chat_id,
+      ...(row.bot_token ? { botToken: row.bot_token } : {}),
+      enabled: row.enabled,
+      notifications: row.notifications ?? undefined,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at ?? undefined,
+    }]))
   } catch (error) {
-    console.error('[telegram-config] Failed to read Blob storage', error)
-    return {}
-  }
-}
-
-async function mutateStore(mutator: (values: TelegramConfigStore) => void): Promise<void> {
-  if (!hasBlobStorage()) {
-    const values = readLocal()
-    mutator(values)
-    writeLocal(values)
-    return
-  }
-
-  for (let attempt = 0; attempt < 3; attempt++) {
-    const { values, etag } = await readBlob()
-    mutator(values)
-    try {
-      await put(BLOB_PATH, JSON.stringify(values), {
-        access: 'private',
-        addRandomSuffix: false,
-        allowOverwrite: Boolean(etag),
-        cacheControlMaxAge: 60,
-        contentType: 'application/json',
-        ...(etag ? { ifMatch: etag } : {}),
-      })
-      return
-    } catch (error) {
-      if (!(error instanceof BlobPreconditionFailedError) || attempt === 2) throw error
-    }
+    console.error('[telegram-config] Failed to read Supabase', error)
+    throw error
   }
 }
 
@@ -146,26 +124,38 @@ export async function updateTelegramConfig(
   memberId: string,
   update: Omit<Partial<TelegramConfig>, 'createdAt'>
 ): Promise<TelegramConfig> {
-  let saved!: TelegramConfig
-  await mutateStore((values) => {
-    const existing = values[memberId]
-    const now = new Date().toISOString()
-    saved = {
-      chatId: update.chatId ?? existing?.chatId ?? '',
-      ...(update.botToken !== undefined
-        ? update.botToken ? { botToken: update.botToken } : {}
-        : existing?.botToken ? { botToken: existing.botToken } : {}),
-      enabled: update.enabled ?? existing?.enabled ?? true,
-      createdAt: existing?.createdAt ?? now,
-      updatedAt: now,
-      notifications: {
-        ...DEFAULT_TELEGRAM_NOTIFICATIONS,
-        ...existing?.notifications,
-        ...update.notifications,
-      },
-    }
+  const values = hasSupabase() ? await loadTelegramConfigs() : readLocal()
+  const existing = values[memberId]
+  const now = new Date().toISOString()
+  const saved: TelegramConfig = {
+    chatId: update.chatId ?? existing?.chatId ?? '',
+    ...(update.botToken !== undefined
+      ? update.botToken ? { botToken: update.botToken } : {}
+      : existing?.botToken ? { botToken: existing.botToken } : {}),
+    enabled: update.enabled ?? existing?.enabled ?? true,
+    createdAt: existing?.createdAt ?? now,
+    updatedAt: now,
+    notifications: {
+      ...DEFAULT_TELEGRAM_NOTIFICATIONS,
+      ...existing?.notifications,
+      ...update.notifications,
+    },
+  }
+
+  if (hasSupabase()) {
+    await sbUpsert('telegram_configs', {
+      member_id: memberId,
+      chat_id: saved.chatId,
+      bot_token: saved.botToken ?? null,
+      enabled: saved.enabled,
+      notifications: saved.notifications ?? {},
+      created_at: saved.createdAt,
+      updated_at: saved.updatedAt,
+    })
+  } else {
     values[memberId] = saved
-  })
+    writeLocal(values)
+  }
   return saved
 }
 

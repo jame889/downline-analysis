@@ -1,8 +1,7 @@
 import fs from 'fs'
 import path from 'path'
-import { get, put } from '@vercel/blob'
+import { hasSupabase, sbInsert, sbSelect, sbUpsert } from './supabase'
 
-const BLOB_PATH = 'member-metadata/telegram-bot-state.json'
 const LOCAL_PATH = path.join(process.cwd(), 'data', 'telegram-bot-state.json')
 
 export interface TelegramConversationMessage {
@@ -16,16 +15,17 @@ interface TelegramBotState {
   lastActivityIds: Record<string, string>
 }
 
-type BlobState = { value: TelegramBotState }
+interface TelegramBotStateRow {
+  member_id: string
+  conversation: TelegramConversationMessage[]
+  last_activity_id?: string | null
+  updated_at: string
+}
 
 const EMPTY_STATE: TelegramBotState = {
   processedUpdateIds: [],
   conversations: {},
   lastActivityIds: {},
-}
-
-function hasBlobStorage(): boolean {
-  return Boolean(process.env.BLOB_READ_WRITE_TOKEN || process.env.BLOB_STORE_ID)
 }
 
 function normalize(value: Partial<TelegramBotState> | null | undefined): TelegramBotState {
@@ -45,16 +45,8 @@ function readLocal(): TelegramBotState {
   }
 }
 
-async function readBlob(): Promise<BlobState> {
-  const result = await get(BLOB_PATH, { access: 'private', useCache: false })
-  if (!result || result.statusCode !== 200) return { value: structuredClone(EMPTY_STATE) }
-  return {
-    value: normalize(JSON.parse(await new Response(result.stream).text())),
-  }
-}
-
 async function mutateState<T>(mutator: (state: TelegramBotState) => T): Promise<T> {
-  if (!hasBlobStorage()) {
+  if (!hasSupabase()) {
     const state = readLocal()
     const result = mutator(state)
     fs.mkdirSync(path.dirname(LOCAL_PATH), { recursive: true })
@@ -62,19 +54,36 @@ async function mutateState<T>(mutator: (state: TelegramBotState) => T): Promise<
     return result
   }
 
-  const { value } = await readBlob()
-  const result = mutator(value)
-  await put(BLOB_PATH, JSON.stringify(value), {
-    access: 'private',
-    addRandomSuffix: false,
-    allowOverwrite: true,
-    cacheControlMaxAge: 60,
-    contentType: 'application/json',
-  })
-  return result
+  throw new Error('Global Telegram state mutation is only available in local development')
+}
+
+async function readMemberState(memberId: string): Promise<TelegramBotStateRow | null> {
+  const rows = await sbSelect<TelegramBotStateRow>(
+    'telegram_bot_states',
+    `member_id=eq.${encodeURIComponent(memberId)}&select=*`
+  )
+  return rows[0] ?? null
+}
+
+async function saveMemberState(row: TelegramBotStateRow): Promise<void> {
+  await sbUpsert('telegram_bot_states', row)
 }
 
 export async function claimTelegramUpdate(updateId: string): Promise<boolean> {
+  if (hasSupabase()) {
+    const existing = await sbSelect<{ update_id: string }>(
+      'telegram_processed_updates',
+      `update_id=eq.${encodeURIComponent(updateId)}&select=update_id`
+    )
+    if (existing.length) return false
+    try {
+      await sbInsert('telegram_processed_updates', { update_id: updateId })
+      return true
+    } catch (error) {
+      if (String(error).includes('duplicate key')) return false
+      throw error
+    }
+  }
   return mutateState((state) => {
     if (state.processedUpdateIds.includes(updateId)) return false
     state.processedUpdateIds.push(updateId)
@@ -84,14 +93,26 @@ export async function claimTelegramUpdate(updateId: string): Promise<boolean> {
 }
 
 export async function getTelegramConversation(memberId: string): Promise<TelegramConversationMessage[]> {
-  const state = hasBlobStorage() ? (await readBlob()).value : readLocal()
-  return (state.conversations[memberId] ?? []).slice(-6)
+  if (hasSupabase()) return ((await readMemberState(memberId))?.conversation ?? []).slice(-6)
+  return (readLocal().conversations[memberId] ?? []).slice(-6)
 }
 
 export async function appendTelegramConversation(
   memberId: string,
   messages: TelegramConversationMessage[]
 ): Promise<void> {
+  if (hasSupabase()) {
+    const existing = await readMemberState(memberId)
+    await saveMemberState({
+      member_id: memberId,
+      conversation: [...(existing?.conversation ?? []), ...messages]
+        .filter((message) => message.content.trim())
+        .slice(-8),
+      last_activity_id: existing?.last_activity_id ?? null,
+      updated_at: new Date().toISOString(),
+    })
+    return
+  }
   await mutateState((state) => {
     state.conversations[memberId] = [...(state.conversations[memberId] ?? []), ...messages]
       .filter((message) => message.content.trim())
@@ -100,6 +121,16 @@ export async function appendTelegramConversation(
 }
 
 export async function setLastTelegramActivity(memberId: string, activityId: string | null): Promise<void> {
+  if (hasSupabase()) {
+    const existing = await readMemberState(memberId)
+    await saveMemberState({
+      member_id: memberId,
+      conversation: existing?.conversation ?? [],
+      last_activity_id: activityId,
+      updated_at: new Date().toISOString(),
+    })
+    return
+  }
   await mutateState((state) => {
     if (activityId) state.lastActivityIds[memberId] = activityId
     else delete state.lastActivityIds[memberId]
@@ -107,6 +138,6 @@ export async function setLastTelegramActivity(memberId: string, activityId: stri
 }
 
 export async function getLastTelegramActivity(memberId: string): Promise<string | null> {
-  const state = hasBlobStorage() ? (await readBlob()).value : readLocal()
-  return state.lastActivityIds[memberId] ?? null
+  if (hasSupabase()) return (await readMemberState(memberId))?.last_activity_id ?? null
+  return readLocal().lastActivityIds[memberId] ?? null
 }

@@ -1,8 +1,7 @@
 import fs from 'fs'
 import path from 'path'
-import { BlobPreconditionFailedError, get, put } from '@vercel/blob'
+import { hasSupabase, sbDeleteReturning, sbSelect, sbUpsert } from './supabase'
 
-const BLOB_PATH = 'member-activities/daily-activities.json'
 const LOCAL_PATH = path.join(process.cwd(), 'data', 'daily-activities.json')
 
 export const ACTIVITY_TYPES = [
@@ -170,10 +169,24 @@ export interface DailyActivityAnalysis {
 }
 
 type ActivityStore = Record<string, DailyActivity>
-type BlobStore = { values: ActivityStore; etag?: string }
 
-function hasBlobStorage(): boolean {
-  return Boolean(process.env.BLOB_READ_WRITE_TOKEN || process.env.BLOB_STORE_ID)
+interface DailyActivityRow {
+  id: string
+  member_id: string
+  activity_date: string
+  start_time: string
+  end_time: string
+  activity_type: ActivityType
+  details: string
+  left_count: number
+  right_count: number
+  status?: ActivityStatus | null
+  outcome?: ActivityOutcome | null
+  contact_name?: string | null
+  outcome_notes?: string | null
+  follow_up_date?: string | null
+  created_at: string
+  updated_at: string
 }
 
 function readLocal(): ActivityStore {
@@ -190,58 +203,79 @@ function writeLocal(values: ActivityStore): void {
   fs.writeFileSync(LOCAL_PATH, JSON.stringify(values, null, 2), 'utf-8')
 }
 
-async function readBlob(): Promise<BlobStore> {
-  const result = await get(BLOB_PATH, { access: 'private', useCache: false })
-  if (!result || result.statusCode !== 200) return { values: {} }
-  const text = await new Response(result.stream).text()
-  return { values: JSON.parse(text) as ActivityStore, etag: result.blob.etag }
-}
-
-export async function loadDailyActivities(): Promise<ActivityStore> {
-  if (!hasBlobStorage()) return readLocal()
-  try {
-    return (await readBlob()).values
-  } catch (error) {
-    console.error('[daily-activities] Failed to read Blob storage', error)
-    return {}
+function fromRow(row: DailyActivityRow): DailyActivity {
+  return {
+    id: row.id,
+    memberId: row.member_id,
+    date: row.activity_date,
+    startTime: row.start_time,
+    endTime: row.end_time,
+    type: row.activity_type,
+    details: row.details,
+    leftCount: row.left_count,
+    rightCount: row.right_count,
+    status: row.status ?? undefined,
+    outcome: row.outcome ?? undefined,
+    contactName: row.contact_name ?? undefined,
+    outcomeNotes: row.outcome_notes ?? undefined,
+    followUpDate: row.follow_up_date ?? undefined,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
   }
 }
 
+export async function loadDailyActivities(): Promise<ActivityStore> {
+  if (!hasSupabase()) return readLocal()
+  const rows = await sbSelect<DailyActivityRow>('daily_activities', 'select=*')
+  return Object.fromEntries(rows.map((row) => [row.id, fromRow(row)]))
+}
+
 async function mutateStore(mutator: (values: ActivityStore) => void): Promise<void> {
-  if (!hasBlobStorage()) {
+  if (!hasSupabase()) {
     const values = readLocal()
     mutator(values)
     writeLocal(values)
     return
   }
 
-  for (let attempt = 0; attempt < 3; attempt++) {
-    const { values, etag } = await readBlob()
-    mutator(values)
-
-    try {
-      await put(BLOB_PATH, JSON.stringify(values), {
-        access: 'private',
-        addRandomSuffix: false,
-        allowOverwrite: Boolean(etag),
-        cacheControlMaxAge: 60,
-        contentType: 'application/json',
-        ...(etag ? { ifMatch: etag } : {}),
-      })
-      return
-    } catch (error) {
-      if (!(error instanceof BlobPreconditionFailedError) || attempt === 2) throw error
-    }
-  }
+  throw new Error('Global activity mutation is only available in local development')
 }
 
 export async function saveDailyActivity(activity: DailyActivity): Promise<void> {
+  if (hasSupabase()) {
+    await sbUpsert('daily_activities', {
+      id: activity.id,
+      member_id: activity.memberId,
+      activity_date: activity.date,
+      start_time: activity.startTime,
+      end_time: activity.endTime,
+      activity_type: activity.type,
+      details: activity.details,
+      left_count: activity.leftCount,
+      right_count: activity.rightCount,
+      status: activity.status ?? null,
+      outcome: activity.outcome ?? null,
+      contact_name: activity.contactName || null,
+      outcome_notes: activity.outcomeNotes || null,
+      follow_up_date: activity.followUpDate || null,
+      created_at: activity.createdAt,
+      updated_at: activity.updatedAt,
+    })
+    return
+  }
   await mutateStore((values) => {
     values[activity.id] = activity
   })
 }
 
 export async function deleteDailyActivity(id: string, memberId: string): Promise<boolean> {
+  if (hasSupabase()) {
+    const removed = await sbDeleteReturning<{ id: string }>(
+      'daily_activities',
+      `id=eq.${encodeURIComponent(id)}&member_id=eq.${encodeURIComponent(memberId)}`
+    )
+    return removed.length > 0
+  }
   let deleted = false
   await mutateStore((values) => {
     if (values[id]?.memberId === memberId) {
