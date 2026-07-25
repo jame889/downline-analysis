@@ -385,6 +385,8 @@ export default function AdminPage() {
   const [activityData, setActivityData] = useState<ActivityData | null>(null)
   const [loading, setLoading] = useState(true)
   const [activityLoading, setActivityLoading] = useState(true)
+  const [broadcasting, setBroadcasting] = useState(false)
+  const [broadcastResult, setBroadcastResult] = useState<string | null>(null)
 
   // Search
   const [search, setSearch] = useState('')
@@ -545,6 +547,34 @@ export default function AdminPage() {
     })
   }
 
+  // ── Telegram Daily Action broadcast ──
+  const handleTelegramBroadcast = async () => {
+    setBroadcasting(true)
+    setBroadcastResult(null)
+    try {
+      const res = await fetch('/api/admin/telegram-broadcast', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ type: 'activity' }),
+      })
+      const data = await res.json() as { sent?: number; total?: number; failed?: number; error?: string }
+      if (!res.ok && res.status !== 207) throw new Error(data.error ?? 'Broadcast failed')
+
+      const sent = data.sent ?? 0
+      const total = data.total ?? 0
+      const failed = data.failed ?? 0
+      const result = `ส่งสำเร็จ ${sent}/${total} คน${failed > 0 ? `, ล้มเหลว ${failed} คน` : ''}`
+      setBroadcastResult(result)
+      setToast({ msg: result, type: failed > 0 ? 'error' : 'success' })
+    } catch {
+      const result = 'ส่ง Telegram Broadcast ไม่สำเร็จ'
+      setBroadcastResult(result)
+      setToast({ msg: result, type: 'error' })
+    } finally {
+      setBroadcasting(false)
+    }
+  }
+
   // ── Guard: auth check ──
   if (isAdmin === null) {
     return (
@@ -597,9 +627,25 @@ export default function AdminPage() {
 
       <div className="max-w-7xl mx-auto px-4 py-8">
         {/* Header */}
-        <div className="mb-8">
-          <h1 className="text-3xl font-bold text-white">Admin Panel</h1>
-          <p className="text-slate-400 mt-1 text-sm">จัดการสมาชิก กิจกรรม และความปลอดภัยของระบบ</p>
+        <div className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+          <div>
+            <h1 className="text-3xl font-bold text-white">Admin Panel</h1>
+            <p className="text-slate-400 mt-1 text-sm">จัดการสมาชิก กิจกรรม และความปลอดภัยของระบบ</p>
+          </div>
+          <div className="flex flex-col items-start gap-2 sm:items-end">
+            <button
+              type="button"
+              onClick={handleTelegramBroadcast}
+              disabled={broadcasting}
+              className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg bg-sky-600 px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-sky-500 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              <span aria-hidden="true">{broadcasting ? '…' : '↗'}</span>
+              {broadcasting ? 'กำลังส่ง Daily Action...' : 'ส่ง Daily Action ให้ทุกคน'}
+            </button>
+            {broadcastResult && (
+              <p className="text-xs text-slate-300" role="status">{broadcastResult}</p>
+            )}
+          </div>
         </div>
 
         {/* Tabs */}

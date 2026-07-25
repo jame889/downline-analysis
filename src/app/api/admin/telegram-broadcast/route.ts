@@ -1,4 +1,3 @@
-import { timingSafeEqual } from 'crypto'
 import { NextRequest, NextResponse } from 'next/server'
 import { getSession } from '@/lib/auth'
 import { buildTelegramActivityMessage } from '@/lib/telegram-activity-message'
@@ -18,18 +17,9 @@ interface BroadcastResult {
   error?: string
 }
 
-async function authorized(request: NextRequest): Promise<boolean> {
-  const session = await getSession()
-  if (session?.isAdmin) return true
-
-  const secret = process.env.BUSINESS_REPORT_SYNC_SECRET ?? ''
-  const supplied = request.headers.get('authorization')?.replace(/^Bearer\s+/i, '') ?? ''
-  if (!secret || !supplied || secret.length !== supplied.length) return false
-  return timingSafeEqual(Buffer.from(secret), Buffer.from(supplied))
-}
-
 export async function POST(request: NextRequest) {
-  if (!(await authorized(request))) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const session = await getSession()
+  if (!session?.isAdmin) return NextResponse.json({ error: 'Admin only' }, { status: 403 })
 
   const body = await request.json().catch(() => ({})) as { type?: string }
   if (body.type !== 'activity') {
