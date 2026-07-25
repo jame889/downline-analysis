@@ -83,6 +83,8 @@ function Progress({ value, tone }: { value: number; tone: 'cyan' | 'gold' }) {
 
 function ReadinessCard({ readiness }: { readiness: RankReadiness }) {
   const isGold = readiness.code === 'GD'
+  const leftLeader = readiness.leftQualifiedLeader
+  const rightLeader = readiness.rightQualifiedLeader
   return (
     <div className={`rounded-2xl border p-5 ${isGold ? 'border-amber-700/50 bg-amber-950/10' : 'border-cyan-800/50 bg-cyan-950/10'}`}>
       <div className="flex items-start justify-between gap-3">
@@ -100,16 +102,24 @@ function ReadinessCard({ readiness }: { readiness: RankReadiness }) {
           <div className="flex justify-between text-xs mb-2"><span className="text-cyan-300">ฝั่งซ้าย</span><span className="text-slate-400">{readiness.leftPct}%</span></div>
           <Progress value={readiness.leftPct} tone="cyan" />
           <p className="text-lg font-bold text-white mt-2">{readiness.currentLeft.toLocaleString()} <span className="text-xs text-slate-500">/ {readiness.targetLeft.toLocaleString()} BV</span></p>
-          <p className="text-xs text-slate-500 mt-1">ขาด {readiness.leftGap.toLocaleString()} BV · Placement {readiness.leftPlacement ? '✓' : 'ยังไม่ครบ'}</p>
+          <p className="text-xs text-slate-500 mt-1">
+            ขาด {readiness.leftGap.toLocaleString()} BV · {leftLeader ? `${leftLeader.name} · Sponsor G${leftLeader.sponsorDepth}` : `Placement ${readiness.leftPlacement ? '✓' : 'ยังไม่ครบ'}`}
+          </p>
         </div>
         <div className="rounded-xl bg-slate-950/50 border border-amber-900/40 p-3">
           <div className="flex justify-between text-xs mb-2"><span className="text-amber-300">ฝั่งขวา</span><span className="text-slate-400">{readiness.rightPct}%</span></div>
           <Progress value={readiness.rightPct} tone="gold" />
           <p className="text-lg font-bold text-white mt-2">{readiness.currentRight.toLocaleString()} <span className="text-xs text-slate-500">/ {readiness.targetRight.toLocaleString()} BV</span></p>
-          <p className="text-xs text-slate-500 mt-1">ขาด {readiness.rightGap.toLocaleString()} BV · Placement {readiness.rightPlacement ? '✓' : 'ยังไม่ครบ'}</p>
+          <p className="text-xs text-slate-500 mt-1">
+            ขาด {readiness.rightGap.toLocaleString()} BV · {rightLeader ? `${rightLeader.name} · Sponsor G${rightLeader.sponsorDepth}` : `Placement ${readiness.rightPlacement ? '✓' : 'ยังไม่ครบ'}`}
+          </p>
         </div>
       </div>
-      <p className="text-xs text-slate-500 mt-3">Placement ที่ต้องการ: {readiness.requiredPlacement} อย่างน้อยฝั่งละ 1 คน · ควรตรวจ Active ประกอบก่อนยืนยันตำแหน่ง</p>
+      <p className="text-xs text-slate-500 mt-3">
+        {readiness.requiredPlacement === 'FA'
+          ? 'ต้องตรวจจำนวน Active FA แต่ละฝั่งประกอบก่อนยืนยันตำแหน่ง'
+          : `ผู้นำที่ต้องการ: ${readiness.requiredPlacement} อย่างน้อยฝั่งละ 1 คน · เป็นสายเลือด Sponsor ชั้น G ใดก็ได้ และใช้ Placement ระบุฝั่ง`}
+      </p>
     </div>
   )
 }

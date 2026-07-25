@@ -428,7 +428,7 @@ function diamondWorkReply(coachData: Record<string, unknown>, question: string):
   if (!candidates.length) return null
 
   const gapLine = diamond
-    ? `เป้า Diamond ต้องมี ${formatNumber(diamond.targetLeft)}/${formatNumber(diamond.targetRight)} BV ตอนนี้ขาดซ้าย ${formatNumber(diamond.leftGap)} BV, ขาดขวา ${formatNumber(diamond.rightGap)} BV และ Placement ต้องมี ${diamond.requiredPlacement} ทั้งสองฝั่ง (${diamond.leftPlacement ? 'ซ้ายผ่าน' : 'ซ้ายยังไม่ผ่าน'}, ${diamond.rightPlacement ? 'ขวาผ่าน' : 'ขวายังไม่ผ่าน'})`
+    ? `เป้า Diamond ต้องมี ${formatNumber(diamond.targetLeft)}/${formatNumber(diamond.targetRight)} BV ตอนนี้ขาดซ้าย ${formatNumber(diamond.leftGap)} BV, ขาดขวา ${formatNumber(diamond.rightGap)} BV และต้องมี ${diamond.requiredPlacement} จากสายเลือด Sponsor ชั้นใดก็ได้ใน Placement ทั้งสองฝั่ง (${diamond.leftPlacement ? 'ซ้ายผ่าน' : 'ซ้ายยังไม่ผ่าน'}, ${diamond.rightPlacement ? 'ขวาผ่าน' : 'ขวายังไม่ผ่าน'})`
     : `สาย${weakSide}ยังต้องเพิ่มประมาณ ${formatNumber(d.balance?.gapToBalance)} BV เพื่อ balance`
 
   const top = candidates[0]
@@ -487,6 +487,8 @@ ${rankKnowledge}${knowledge}`
       currentLeft: number; currentRight: number; targetLeft: number; targetRight: number
       leftGap: number; rightGap: number; leftPlacement: boolean; rightPlacement: boolean
       requiredPlacement: string; qualified: boolean
+      leftQualifiedLeader?: { id: string; name: string; position: string; sponsorDepth: number } | null
+      rightQualifiedLeader?: { id: string; name: string; position: string; sponsorDepth: number } | null
     } | null
     focusCandidates?: Array<{
       id: string; name: string; side: string; position: string
@@ -523,7 +525,7 @@ ${rankKnowledge}${knowledge}`
   ).join('\n') ?? ''
 
   const diamondStr = d.diamond
-    ? `Diamond target ${d.diamond.targetLeft.toLocaleString()}/${d.diamond.targetRight.toLocaleString()} BV, ปัจจุบันซ้าย ${d.diamond.currentLeft.toLocaleString()}, ขวา ${d.diamond.currentRight.toLocaleString()}, gap ซ้าย ${d.diamond.leftGap.toLocaleString()}, gap ขวา ${d.diamond.rightGap.toLocaleString()}, Placement ต้องมี ${d.diamond.requiredPlacement}: ซ้าย ${d.diamond.leftPlacement ? 'ผ่าน' : 'ยังไม่ผ่าน'}, ขวา ${d.diamond.rightPlacement ? 'ผ่าน' : 'ยังไม่ผ่าน'}, สถานะ ${d.diamond.qualified ? 'พร้อม' : 'ยังไม่พร้อม'}`
+    ? `Diamond target ${d.diamond.targetLeft.toLocaleString()}/${d.diamond.targetRight.toLocaleString()} BV, ปัจจุบันซ้าย ${d.diamond.currentLeft.toLocaleString()}, ขวา ${d.diamond.currentRight.toLocaleString()}, gap ซ้าย ${d.diamond.leftGap.toLocaleString()}, gap ขวา ${d.diamond.rightGap.toLocaleString()}, ต้องมี ${d.diamond.requiredPlacement} จากสายเลือด Sponsor ชั้นใดก็ได้: ซ้าย ${d.diamond.leftPlacement ? `ผ่านโดย ${d.diamond.leftQualifiedLeader?.name ?? 'ผู้นำที่เข้าเกณฑ์'} G${d.diamond.leftQualifiedLeader?.sponsorDepth ?? '?'}` : 'ยังไม่ผ่าน'}, ขวา ${d.diamond.rightPlacement ? `ผ่านโดย ${d.diamond.rightQualifiedLeader?.name ?? 'ผู้นำที่เข้าเกณฑ์'} G${d.diamond.rightQualifiedLeader?.sponsorDepth ?? '?'}` : 'ยังไม่ผ่าน'}, สถานะ ${d.diamond.qualified ? 'พร้อม' : 'ยังไม่พร้อม'}`
     : 'ยังไม่มีข้อมูล Diamond Readiness'
 
   const focusCandidateStr = d.focusCandidates?.slice(0, 8).map((c, index) =>

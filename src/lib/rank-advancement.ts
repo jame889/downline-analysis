@@ -57,7 +57,7 @@ const RANK_ALIASES: Array<[string, string[]]> = [
 
 function formatRule(rule: RankAdvancementRule): string {
   const placement = rule.placementRank
-    ? `มีผู้นำระดับ ${rule.placementLabel} อย่างน้อย 1 คนใน Placement ฝั่งซ้าย และ 1 คนฝั่งขวา`
+    ? `มีผู้นำระดับ ${rule.placementLabel} อย่างน้อย 1 คนฝั่งซ้าย และ 1 คนฝั่งขวา โดยเป็นสายเลือด Sponsor ได้ทุกชั้น G1, G2, G3... และใช้ Placement/Upline ระบุฝั่ง`
     : `มี Active FA ${rule.activeFaEachSide.toLocaleString('en-US')} คนต่อฝั่ง`
   const activeCount = rule.placementRank
     ? ` · Active FA ${rule.activeFaEachSide.toLocaleString('en-US')} คนต่อฝั่ง`
@@ -69,7 +69,9 @@ export function buildRankAdvancementKnowledge(): string {
   return [
     '=== เกณฑ์ Rank Advancement Bonus อย่างเป็นทางการ ===',
     ...RANK_ADVANCEMENT_RULES.map(formatRule),
-    'การนับฝั่งและผู้นำต้องอ้างอิง Placement/Upline Tree จริง ไม่ใช่ Sponsor Tree',
+    'ตั้งแต่ Platinum ขึ้นไป ผู้นำ Qualified ไม่จำเป็นต้องเป็นผู้ได้รับการ Sponsor ตรงชั้น G1 สามารถใช้หลาน เหลน หรือผู้สืบสาย Sponsor ชั้น G2, G3, G4, G5... ได้โดยไม่จำกัดความลึก',
+    'การตรวจต้องใช้ต้นไม้สองแบบร่วมกัน: Sponsor Tree ใช้ยืนยันว่าผู้นำเป็นสายเลือดของสมาชิก และ Placement/Upline Tree ใช้ระบุว่าผู้นำนั้นอยู่ฝั่งซ้ายหรือฝั่งขวา',
+    'ผู้นำหนึ่งคนให้นับตาม Placement ได้เพียงฝั่งเดียว และต้องมีตำแหน่งอย่างน้อยตามระดับที่กำหนดในเดือนที่ตรวจ',
     'ผู้รับโบนัสต้องรักษาสถานะ Active และ Qualified โดยจ่ายวันที่ 15 ของเดือนถัดไปหลังขึ้นตำแหน่ง',
     'หมายเหตุจากเอกสาร: Blue Diamond ถึง Crown ระบุโครงสร้าง 3 ขา และ Crown Royal ระบุ 5 ขา แต่ห้ามใช้หมายเหตุนี้ตัดสิน Qualification อัตโนมัติจนกว่าจะมีนิยามขาอย่างเป็นทางการ',
   ].join('\n')
@@ -93,7 +95,8 @@ export function rankAdvancementReply(question: string): string | null {
     matchedCode ? `เงื่อนไขขึ้น ${rules[0].label}` : 'เงื่อนไขขึ้นตำแหน่งแต่ละระดับ',
     ...rules.map(formatRule),
     '',
-    'สำคัญ: ตรวจผู้นำจาก Placement/Upline Tree จริง ไม่ใช่ Sponsor Tree',
+    'สำคัญ: ผู้นำ Qualified เป็นสายเลือด Sponsor ได้ทุกชั้น G1, G2, G3... ไม่จำเป็นต้องเป็นลูก Sponsor ตรง',
+    'Sponsor Tree ใช้ยืนยันสายเลือด ส่วน Placement/Upline Tree ใช้ตัดสินว่าผู้นำนับฝั่งซ้ายหรือขวา',
     'โบนัสจ่ายวันที่ 15 ของเดือนถัดไป และผู้รับต้องรักษาสถานะ Active และ Qualified',
   ].join('\n')
 }

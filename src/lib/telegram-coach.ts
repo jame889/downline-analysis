@@ -188,6 +188,7 @@ BV ซ้าย/ขวา: ${formatNumber(myReport.total_vol_left)}/${formatNumb
 Weak Leg: ${growth?.weakSide ?? 'ไม่ทราบ'}
 Gold Gap: ซ้าย ${formatNumber(growth?.gold.leftGap ?? 0)}, ขวา ${formatNumber(growth?.gold.rightGap ?? 0)}
 Diamond Gap: ซ้าย ${formatNumber(growth?.diamond.leftGap ?? 0)}, ขวา ${formatNumber(growth?.diamond.rightGap ?? 0)}
+Diamond Qualified Leader: ซ้าย ${growth?.diamond.leftQualifiedLeader ? `${growth.diamond.leftQualifiedLeader.name} (${growth.diamond.leftQualifiedLeader.id}) G${growth.diamond.leftQualifiedLeader.sponsorDepth}` : 'ยังไม่มี'} · ขวา ${growth?.diamond.rightQualifiedLeader ? `${growth.diamond.rightQualifiedLeader.name} (${growth.diamond.rightQualifiedLeader.id}) G${growth.diamond.rightQualifiedLeader.sponsorDepth}` : 'ยังไม่มี'}
 
 Focus Candidates:
 ${candidateLines || 'ยังไม่มีข้อมูล'}

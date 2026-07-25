@@ -41,6 +41,15 @@ export interface RankReadiness {
   volumeQualified: boolean
   placementQualified: boolean
   qualified: boolean
+  leftQualifiedLeader: QualifiedPlacementLeader | null
+  rightQualifiedLeader: QualifiedPlacementLeader | null
+}
+
+export interface QualifiedPlacementLeader {
+  id: string
+  name: string
+  position: string
+  sponsorDepth: number
 }
 
 export interface FocusCandidate {
@@ -109,9 +118,66 @@ function reportMap(reports: MonthlyReport[]): Map<string, MonthlyReport> {
   return new Map(reports.map((report) => [report.member_id, report]))
 }
 
-function buildReadiness(report: MonthlyReport, target: typeof RANK_TARGETS[keyof typeof RANK_TARGETS]): RankReadiness {
-  const leftPlacement = rankValue(report.left_highest_pos) >= rankValue(target.placement)
-  const rightPlacement = rankValue(report.right_highest_pos) >= rankValue(target.placement)
+function sponsorDepths(rootId: string, members: Record<string, Member>): Map<string, number> {
+  const children = new Map<string, string[]>()
+  for (const member of Object.values(members)) {
+    if (!member.sponsor_id) continue
+    const ids = children.get(member.sponsor_id) ?? []
+    ids.push(member.id)
+    children.set(member.sponsor_id, ids)
+  }
+
+  const depths = new Map<string, number>()
+  const queue = (children.get(rootId) ?? []).map((id) => ({ id, depth: 1 }))
+  while (queue.length) {
+    const current = queue.shift()!
+    if (depths.has(current.id)) continue
+    depths.set(current.id, current.depth)
+    for (const childId of children.get(current.id) ?? []) {
+      queue.push({ id: childId, depth: current.depth + 1 })
+    }
+  }
+  return depths
+}
+
+function findQualifiedPlacementLeader(
+  rootId: string,
+  side: 'ซ้าย' | 'ขวา',
+  requiredPosition: string,
+  members: Record<string, Member>,
+  reports: Map<string, MonthlyReport>,
+  depths: Map<string, number>,
+): QualifiedPlacementLeader | null {
+  if (requiredPosition === 'FA') return null
+  const candidates = Array.from(depths.entries())
+    .map(([id, sponsorDepth]) => {
+      const member = members[id]
+      const report = reports.get(id)
+      if (!member || !report || sideForMember(rootId, id, members) !== side) return null
+      const position = report.income_position || report.highest_position
+      if (rankValue(position) < rankValue(requiredPosition)) return null
+      return { id, name: member.name, position, sponsorDepth }
+    })
+    .filter(Boolean) as QualifiedPlacementLeader[]
+  return candidates.sort((a, b) =>
+    a.sponsorDepth - b.sponsorDepth ||
+    rankValue(b.position) - rankValue(a.position) ||
+    Number(a.id) - Number(b.id)
+  )[0] ?? null
+}
+
+function buildReadiness(
+  memberId: string,
+  report: MonthlyReport,
+  target: typeof RANK_TARGETS[keyof typeof RANK_TARGETS],
+  members: Record<string, Member>,
+  reports: Map<string, MonthlyReport>,
+): RankReadiness {
+  const depths = sponsorDepths(memberId, members)
+  const leftQualifiedLeader = findQualifiedPlacementLeader(memberId, 'ซ้าย', target.placement, members, reports, depths)
+  const rightQualifiedLeader = findQualifiedPlacementLeader(memberId, 'ขวา', target.placement, members, reports, depths)
+  const leftPlacement = target.placement === 'FA' ? true : leftQualifiedLeader !== null
+  const rightPlacement = target.placement === 'FA' ? true : rightQualifiedLeader !== null
   const volumeQualified = report.total_vol_left >= target.left && report.total_vol_right >= target.right
   const placementQualified = leftPlacement && rightPlacement
   return {
@@ -131,6 +197,8 @@ function buildReadiness(report: MonthlyReport, target: typeof RANK_TARGETS[keyof
     volumeQualified,
     placementQualified,
     qualified: volumeQualified && placementQualified,
+    leftQualifiedLeader,
+    rightQualifiedLeader,
   }
 }
 
@@ -347,8 +415,8 @@ export async function getGrowthDashboardData(memberId: string, window = 9): Prom
     movingUpAverage: trailing.length ? movingUpsLast3 / trailing.length : 0,
     activeConsistency: Math.round((points.filter((point) => point.active).length / points.length) * 100),
     momentumRatio,
-    gold: buildReadiness(latestReport, RANK_TARGETS.GD),
-    diamond: buildReadiness(latestReport, RANK_TARGETS.DM),
+    gold: buildReadiness(memberId, latestReport, RANK_TARGETS.GD, members, latestMap),
+    diamond: buildReadiness(memberId, latestReport, RANK_TARGETS.DM, members, latestMap),
     focusCandidates: focusCandidates.slice(0, 12),
     insights,
   }
