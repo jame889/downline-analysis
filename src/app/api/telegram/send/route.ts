@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getSession } from '@/lib/auth'
 import { getAvailableMonths, getMembersForMonth, getSubtreeIds } from '@/lib/db'
-import { getDailyActivityAnalysis } from '@/lib/daily-activities'
+import { buildTelegramActivityMessage } from '@/lib/telegram-activity-message'
 import { getTelegramBotToken, loadTelegramConfigs, sendTelegramMessage, type TelegramNotificationType } from '@/lib/telegram-config'
 import { buildKeymanGoalAlertMessage } from '@/lib/telegram-keyman-alert'
 
@@ -88,23 +88,6 @@ async function buildWakeupMessage(memberId: string): Promise<string> {
   return `<b>Re-engagement Alert ${month}</b>\n\nDownline ตรงที่ Inactive:\n${lines.slice(0, 20).join('\n')}${lines.length > 20 ? `\n... และอีก ${lines.length - 20} คน` : ''}\n\nลองติดต่อเพื่อกระตุ้นการทำงาน`
 }
 
-async function buildActivityMessage(memberId: string): Promise<string> {
-  const activity = await getDailyActivityAnalysis(memberId)
-  const alerts = activity.notifications.slice(0, 8)
-  const lines = alerts.length > 0
-    ? alerts.map((item) => `- ${item.title}: ${item.detail}`)
-    : ['- ไม่มีงาน Follow-up ค้างหรือกิจกรรมที่ต้องแจ้งเตือนวันนี้']
-
-  return (
-    `<b>Coach JOE - Daily Action</b>\n\n` +
-    `Weekly Score: ${activity.weeklyScorecard.score}/100 (${activity.weeklyScorecard.grade})\n` +
-    `แผน 7 วัน: ทำแล้ว ${activity.planVsActual.completed7}/${activity.planVsActual.planned7} (${activity.planVsActual.completionPct ?? 0}%)\n` +
-    `Funnel: Outreach ${activity.funnel.outreach} → นัด ${activity.funnel.appointments} → Meeting ${activity.funnel.meetings} → Sponsor ${activity.funnel.sponsors} → Start Up ${activity.funnel.startups}\n\n` +
-    `${lines.join('\n')}\n\n` +
-    `Priority: ${activity.weeklyScorecard.summary}`
-  )
-}
-
 export async function POST(request: NextRequest) {
   try {
     const session = await getSession()
@@ -134,7 +117,7 @@ export async function POST(request: NextRequest) {
     let message: string
     switch (type) {
       case 'activity':
-        message = await buildActivityMessage(session.memberId)
+        message = await buildTelegramActivityMessage(session.memberId)
         break
       case 'keyman':
         message = await buildKeymanGoalAlertMessage(session.memberId)
