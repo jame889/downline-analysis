@@ -8,6 +8,7 @@ import {
   type KeymanStructureAnalysis,
   type PlacementLegAnalysis,
 } from './keyman-analysis'
+import { buildRankAdvancementKnowledge, rankAdvancementReply } from './rank-advancement'
 
 type ConversationMessage = { role: 'user' | 'assistant'; content: string }
 
@@ -106,6 +107,9 @@ export async function buildTelegramCoachReply(
   const member = members[memberId]
   const myReport = reportMap.get(memberId)
   if (!member || !myReport) return 'ยังไม่พบข้อมูลสมาชิกใน Business Report ล่าสุดครับ'
+
+  const rankReply = rankAdvancementReply(question)
+  if (rankReply) return rankReply
 
   const subtreeIds = getSubtreeIds(memberId, members)
   const directory = Array.from(subtreeIds)
@@ -208,9 +212,10 @@ ${recentActivities || 'ยังไม่มีบันทึก'}
 ถ้าถามว่าควรทำงานกับใคร ให้ระบุชื่ออย่างน้อย 3 คนจาก Keyman หรือ Focus Candidates พร้อมฝั่ง Placement, Gap ตำแหน่ง, เหตุผล และงาน 7 วัน
 การจัดฝั่งต้องอ้างอิง Placement/Upline เท่านั้น ห้ามใช้ Sponsor ตัดสินฝั่ง
 ห้ามตอบกว้าง ห้ามสร้างชื่อหรือข้อมูลที่ไม่มี และห้ามใช้ Markdown table`
+  const rankKnowledge = buildRankAdvancementKnowledge()
 
   const aiMessages: AiMessage[] = [
-    { role: 'system', content: protect(systemPrompt) },
+    { role: 'system', content: protect(`${systemPrompt}\n\n${rankKnowledge}`) },
     ...history.slice(-6).map((message) => ({ role: message.role, content: protect(message.content.slice(0, 1500)) })),
     { role: 'user', content: protect(question.slice(0, 2000)) },
   ]

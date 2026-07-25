@@ -4,6 +4,7 @@ import path from 'path'
 import { generateCoachReply, getCoachAiHealth, type AiMessage } from '@/lib/coach-ai'
 import { getSession } from '@/lib/auth'
 import type { DailyActivityAnalysis } from '@/lib/daily-activities'
+import { buildRankAdvancementKnowledge, rankAdvancementReply } from '@/lib/rank-advancement'
 
 export const maxDuration = 60
 
@@ -457,9 +458,12 @@ function diamondWorkReply(coachData: Record<string, unknown>, question: string):
 }
 
 async function buildSystemPrompt(coachData: Record<string, unknown> | null): Promise<string> {
+  const rankKnowledge = buildRankAdvancementKnowledge()
   if (!coachData) {
     const knowledge = await loadKnowledge()
-    return `คุณคือ Coach JOE ผู้เชี่ยวชาญด้านธุรกิจ First Community Binary ที่พูดภาษาไทย ตอบสั้น กระชับ และตรงประเด็น${knowledge}`
+    return `คุณคือ Coach JOE ผู้เชี่ยวชาญด้านธุรกิจ First Community Binary ที่พูดภาษาไทย ตอบสั้น กระชับ และตรงประเด็น
+
+${rankKnowledge}${knowledge}`
   }
 
   const d = coachData as {
@@ -644,7 +648,9 @@ Hybrid 20/80: 20% Frontline (Speed) + 80% การขุดลึก (Stability
 - [CHART:levels] → เมื่อพูดถึง Active Rate ตามชั้น
 - [CHART:safezone] → เมื่อพูดถึง Safe Zone หรือสายงาน Gen1
 - [CHART:newmembers] → เมื่อพูดถึงสมาชิกใหม่หรือ การขุดลึก
-ใส่ได้หลาย tag ถ้าจำเป็น แต่ไม่ต้องใส่ทุกคำตอบ ใส่เฉพาะเมื่อ chart ช่วยให้เข้าใจง่ายขึ้น${knowledge}`
+ใส่ได้หลาย tag ถ้าจำเป็น แต่ไม่ต้องใส่ทุกคำตอบ ใส่เฉพาะเมื่อ chart ช่วยให้เข้าใจง่ายขึ้น
+
+${rankKnowledge}${knowledge}`
 }
 
 export async function POST(req: NextRequest) {
@@ -665,6 +671,9 @@ export async function POST(req: NextRequest) {
       .map((message) => ({ role: message.role, content: message.content.slice(0, 2_000) }))
     if (!messages.length) return Response.json({ error: 'Invalid messages' }, { status: 400 })
     const latestQuestion = messages[messages.length - 1]?.content ?? ''
+
+    const rankReply = rankAdvancementReply(latestQuestion)
+    if (rankReply) return ndjsonResponse(rankReply)
 
     if (coachData) {
       const relationship = relationshipReply(coachData, latestQuestion)
