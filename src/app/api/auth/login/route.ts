@@ -4,6 +4,7 @@ import {
   createToken, SESSION_COOKIE, ROOT_MEMBER_ID
 } from '@/lib/auth'
 import { getAllMembers } from '@/lib/db'
+import { recordLoginActivity } from '@/lib/login-activity'
 import fs from 'fs'
 import path from 'path'
 
@@ -39,21 +40,13 @@ export async function POST(req: NextRequest) {
 
   const token = await createToken({ memberId, name, isAdmin })
 
-  // Log login activity when the filesystem is writable. Vercel production is read-only.
   try {
-    const activityFile = path.join(DATA_DIR, 'activity.json')
-    const activity = fs.existsSync(activityFile)
-      ? JSON.parse(fs.readFileSync(activityFile, 'utf-8'))
-      : { logins: [] }
-    activity.logins.push({
+    await recordLoginActivity({
       memberId,
       name,
       timestamp: new Date().toISOString(),
       ip: req.headers.get('x-forwarded-for') ?? req.headers.get('x-real-ip') ?? 'unknown',
     })
-    // Keep max 10000 entries
-    if (activity.logins.length > 10000) activity.logins = activity.logins.slice(-10000)
-    fs.writeFileSync(activityFile, JSON.stringify(activity))
   } catch (error) {
     console.warn('[auth/login] skipped activity log', error)
   }

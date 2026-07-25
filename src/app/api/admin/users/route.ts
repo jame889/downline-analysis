@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getSession } from '@/lib/auth'
+import { loadLoginActivities } from '@/lib/login-activity'
 import fs from 'fs'
 import path from 'path'
 
@@ -22,7 +23,7 @@ export async function GET(req: NextRequest) {
   const passwords = safeRead<Record<string, string>>(path.join(DATA_DIR, 'passwords.json'), {})
   const passwordMeta = safeRead<Record<string, any>>(path.join(DATA_DIR, 'password_meta.json'), {})
   const blocked = safeRead<Record<string, any>>(path.join(DATA_DIR, 'blocked.json'), {})
-  const activity = safeRead<{ logins: any[] }>(path.join(DATA_DIR, 'activity.json'), { logins: [] })
+  const loginActivity = await loadLoginActivities()
 
   // Get latest month report
   const months: string[] = safeRead(path.join(DATA_DIR, 'months.json'), [])
@@ -32,7 +33,7 @@ export async function GET(req: NextRequest) {
 
   // Build login stats per member
   const loginStats: Record<string, { lastLogin: string | null; loginCount: number; lastIp: string | null }> = {}
-  for (const entry of activity.logins) {
+  for (const entry of loginActivity) {
     if (!loginStats[entry.memberId]) loginStats[entry.memberId] = { lastLogin: null, loginCount: 0, lastIp: null }
     loginStats[entry.memberId].loginCount++
     if (!loginStats[entry.memberId].lastLogin || entry.timestamp > loginStats[entry.memberId].lastLogin!) {
