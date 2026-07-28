@@ -27,6 +27,7 @@ export default function Navbar() {
     { href: '/', label: 'Dashboard' },
     { href: '/my', label: 'องค์กรของฉัน' },
     { href: '/growth', label: '📈 Command' },
+    { href: '/team-health', label: '💚 Team Health' },
     { href: '/members', label: 'สมาชิก' },
     { href: '/tree', label: 'โครงสร้าง' },
     { href: '/income-plan', label: '💰 รายได้' },
@@ -43,6 +44,7 @@ export default function Navbar() {
   const memberLinks = [
     { href: '/my', label: 'องค์กรของฉัน' },
     { href: '/growth', label: '📈 Command' },
+    { href: '/team-health', label: '💚 Team Health' },
     { href: `/tree?member=${session?.memberId ?? ''}`, label: 'โครงสร้าง' },
     { href: '/income-plan', label: '💰 รายได้' },
     { href: '/coach', label: 'Coach JOE' },
