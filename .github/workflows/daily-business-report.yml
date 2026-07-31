@@ -56,12 +56,15 @@ jobs:
         env:
           BUSINESS_REPORT_SYNC_SECRET: ${{ secrets.BUSINESS_REPORT_SYNC_SECRET }}
         run: |
-          curl --fail-with-body --show-error --silent \
+          response=$(curl --fail-with-body --show-error --silent --location \
             --request POST \
             --header "Authorization: Bearer $BUSINESS_REPORT_SYNC_SECRET" \
             --header "Content-Type: application/json" \
             --data '{"type":"activity"}' \
-            https://downline-analyzer.vercel.app/api/admin/telegram-broadcast
+            https://downline-analyzer.vercel.app/api/admin/telegram-broadcast)
+          echo "$response"
+          BROADCAST_RESPONSE="$response" python -c \
+            'import json, os; payload=json.loads(os.environ["BROADCAST_RESPONSE"]); assert payload.get("ok") is True, payload'
 
       - name: Archive source report
         if: always()
