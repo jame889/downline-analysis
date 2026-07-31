@@ -76,9 +76,73 @@ def safe_int(v) -> int:
     except (ValueError, TypeError):
         return 0
 
+
+def status_is_true(value) -> bool:
+    return str(value or "").strip().upper() in {"1", "O", "Y", "YES", "TRUE"}
+
+
+def process_first_global_file(ws, month: str, members: dict) -> list[dict]:
+    """Parse the 27-column First Global report introduced in July 2026."""
+    reports = []
+    for row in ws.iter_rows(min_row=3, values_only=True):
+        padded = (list(row) + [None] * 27)[:27]
+        (
+            level, member_id, name, join_date, highest_pos, income_pos,
+            promo_goal, country, free_active_end, plv, _autoship,
+            _autoship_bv, monthly_bv, sponsor_ref, upline_ref, is_active,
+            is_qualified, left_pos, right_pos, total_vol_l, total_vol_r,
+            prev_vol_l, prev_vol_r, curr_vol_l, curr_vol_r, ded_vol_l,
+            ded_vol_r,
+        ) = padded
+
+        member_id = str(member_id or "").strip()
+        if not member_id:
+            continue
+
+        upline_id = parse_id_from_ref(upline_ref)
+        sponsor_id = parse_id_from_ref(sponsor_ref)
+        member_name = str(name or "").strip()
+        members[member_id] = {
+            "id": member_id,
+            "name": member_name or members.get(member_id, {}).get("name", member_id),
+            "join_date": str(join_date) if join_date else None,
+            "country": str(country) if country else None,
+            "lv": safe_float(plv),
+            "upline_id": upline_id,
+            "sponsor_id": sponsor_id,
+        }
+
+        reports.append({
+            "member_id": member_id,
+            "month": month,
+            "level": safe_int(level),
+            "highest_position": str(highest_pos) if highest_pos else "FA",
+            "income_position": str(income_pos) if income_pos else "FA",
+            "promotion_goal": str(promo_goal) if promo_goal and str(promo_goal) != "-" else None,
+            "free_active_end_month": str(free_active_end) if free_active_end else None,
+            "monthly_bv": safe_float(monthly_bv),
+            "is_active": status_is_true(is_active),
+            "is_qualified": status_is_true(is_qualified),
+            "left_highest_pos": str(left_pos) if left_pos else "FA",
+            "right_highest_pos": str(right_pos) if right_pos else "FA",
+            "total_vol_left": safe_float(total_vol_l),
+            "total_vol_right": safe_float(total_vol_r),
+            "prev_month_vol_left": safe_float(prev_vol_l),
+            "prev_month_vol_right": safe_float(prev_vol_r),
+            "current_month_vol_left": safe_float(curr_vol_l),
+            "current_month_vol_right": safe_float(curr_vol_r),
+            "deducted_vol_left": safe_float(ded_vol_l),
+            "deducted_vol_right": safe_float(ded_vol_r),
+        })
+
+    return reports
+
 # ── Main ──────────────────────────────────────────────────────────────────────
 
 def process_file(ws, month: str, members: dict) -> list[dict]:
+    if str(ws.cell(1, 2).value or "").strip() in {"รหัสสมาชิก", "Member ID"}:
+        return process_first_global_file(ws, month, members)
+
     reports = []
     for row in ws.iter_rows(min_row=2, values_only=True):
         padded = (list(row) + [None] * 30)[:25]
@@ -133,8 +197,8 @@ def process_file(ws, month: str, members: dict) -> list[dict]:
             "promotion_goal": str(promo_goal) if promo_goal else None,
             "free_active_end_month": str(free_active_end) if free_active_end else None,
             "monthly_bv": safe_float(monthly_bv),
-            "is_active": str(is_active).upper() == "Y",
-            "is_qualified": str(is_qualified).upper() == "Y",
+            "is_active": status_is_true(is_active),
+            "is_qualified": status_is_true(is_qualified),
             "left_highest_pos": str(left_pos) if left_pos else "FA",
             "right_highest_pos": str(right_pos) if right_pos else "FA",
             "total_vol_left": safe_float(total_vol_l),
@@ -176,7 +240,7 @@ def main():
             continue
         try:
             wb = openpyxl.load_workbook(f, read_only=True, data_only=True)
-            ws = wb["Business Report"]
+            ws = wb["Business Report"] if "Business Report" in wb.sheetnames else wb["รายงานธุรกิจ"]
             reports = process_file(ws, month, members)
 
             out_path = reports_dir / f"{month}.json"
