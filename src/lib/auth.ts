@@ -11,7 +11,7 @@ const SECRET = new TextEncoder().encode(SECRET_TEXT)
 export const SESSION_COOKIE = 'dl_session'
 export const PASSWORD_COOKIE_PREFIX = 'dl_pw_'
 export const ROOT_MEMBER_ID = process.env.NEXT_PUBLIC_ROOT_MEMBER_ID ?? '900057'
-const ROOT_INITIAL_PASSWORD = process.env.ROOT_INITIAL_PASSWORD ?? '083119'
+const ROOT_INITIAL_PASSWORD = process.env.ROOT_INITIAL_PASSWORD ?? ROOT_MEMBER_ID
 
 export interface SessionPayload {
   memberId: string
