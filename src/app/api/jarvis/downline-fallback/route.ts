@@ -1,16 +1,10 @@
 import { NextResponse } from 'next/server'
-import { jarvisDownlineFallbackSecret } from '@/lib/jarvis-downline-auth'
+import { verifyJarvisClientRequest } from '@/lib/jarvis-downline-signing'
 import { loadBusinessReportSyncStatus, loadLatestBusinessReportSnapshot } from '@/lib/business-report-sync'
 
-function authorized(request: Request): boolean {
-  const secret = jarvisDownlineFallbackSecret()
-  if (!secret) return false
-  const auth = request.headers.get('authorization')
-  return auth === `Bearer ${secret}`
-}
 
 export async function GET(request: Request) {
-  if (!authorized(request)) {
+  if (!(await verifyJarvisClientRequest(request))) {
     return NextResponse.json({ ok: false, error: 'unauthorized' }, { status: 401 })
   }
 
