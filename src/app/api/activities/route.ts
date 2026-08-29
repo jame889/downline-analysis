@@ -2,6 +2,7 @@ import { randomUUID } from 'crypto'
 import { NextRequest, NextResponse } from 'next/server'
 import { getSession } from '@/lib/auth'
 import { getAvailableMonths, getMembersForMonth } from '@/lib/db'
+import { buildActivityAddedEvent, pushDownlineEventsToJarvis } from '@/lib/jarvis-downline-events'
 import {
   ACTIVITY_TYPES,
   ACTIVITY_OUTCOMES,
@@ -138,6 +139,10 @@ export async function POST(request: NextRequest) {
     }
 
     await saveDailyActivity(activity)
+    if (!existing) {
+      const jarvisPush = await pushDownlineEventsToJarvis([buildActivityAddedEvent(activity)], 2_000)
+      if (!jarvisPush.ok) console.warn('[activities] Jarvis activity push failed; daily sync/fallback remains available', jarvisPush)
+    }
     const weakSide = await getBusinessWeakSide(session.memberId)
     const analysis = await getDailyActivityAnalysis(session.memberId, new Date(), weakSide)
     return NextResponse.json({ success: true, activity, analysis })

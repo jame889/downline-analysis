@@ -83,6 +83,18 @@ export function buildDownlineDiffEvents(
   const previousReports = reportMap(previous)
   const currentReports = reportMap(current)
 
+  if (!previous) {
+    emit(events, 'jarvis.downline.sync_completed', current.month, now, {
+      checksum: current.checksum,
+      previousChecksum: null,
+      memberCount: Object.keys(current.members).length,
+      diffEventCount: 0,
+      changed: true,
+      bootstrap: true,
+    })
+    return events
+  }
+
   for (const [id, member] of Object.entries(current.members)) {
     const currentReport = currentReports.get(id)
     const previousMember = previous?.members?.[id]
@@ -201,6 +213,32 @@ export function buildDownlineDiffEvents(
   return events
 }
 
+
+export function buildActivityAddedEvent(activity: { id: string; memberId: string; date: string; startTime: string; type: string; status?: string; outcome?: string; leftCount: number; rightCount: number; createdAt: string; updatedAt: string }): JarvisDownlineEvent {
+  const occurredAt = activity.updatedAt || new Date().toISOString()
+  const month = activity.date.slice(0, 7)
+  const payload: Record<string, unknown> = {
+    activityId: activity.id,
+    memberId: activity.memberId,
+    date: activity.date,
+    startTime: activity.startTime,
+    activityType: activity.type,
+    status: activity.status ?? 'planned',
+    outcome: activity.outcome ?? 'none',
+    leftCount: activity.leftCount,
+    rightCount: activity.rightCount,
+  }
+  return {
+    id: stableId('jarvis.downline.activity_added', month, { activityId: activity.id, createdAt: activity.createdAt }),
+    type: 'jarvis.downline.activity_added',
+    occurredAt,
+    source: 'downline-analyzer',
+    version: 1,
+    month,
+    payload,
+  }
+}
+
 export interface JarvisPushResult {
   ok: boolean
   skipped?: boolean
@@ -208,7 +246,7 @@ export interface JarvisPushResult {
   error?: string
 }
 
-export async function pushDownlineEventsToJarvis(events: JarvisDownlineEvent[]): Promise<JarvisPushResult> {
+export async function pushDownlineEventsToJarvis(events: JarvisDownlineEvent[], timeoutMs = 10_000): Promise<JarvisPushResult> {
   const url = process.env.JARVIS_DOWNLINE_INGEST_URL
   const secret = process.env.JARVIS_DOWNLINE_INGEST_SECRET
   if (!url || !secret) return { ok: true, skipped: true }
@@ -225,7 +263,7 @@ export async function pushDownlineEventsToJarvis(events: JarvisDownlineEvent[]):
         'x-jarvis-signature': signature,
       },
       body,
-      signal: AbortSignal.timeout(10_000),
+      signal: AbortSignal.timeout(timeoutMs),
     })
     if (!response.ok) {
       return { ok: false, status: response.status, error: (await response.text()).slice(0, 1000) }
