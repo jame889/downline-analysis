@@ -1,5 +1,6 @@
 import crypto from 'crypto'
 import type { BusinessReportSnapshot } from './business-report-sync'
+import type { Member, MonthlyReport } from './types'
 
 export const JARVIS_DOWNLINE_EVENT_TYPES = [
   'jarvis.downline.member_joined',
@@ -33,23 +34,6 @@ function stableId(type: JarvisDownlineEventType, month: string, payload: Record<
     .slice(0, 32)
 }
 
-function toNumber(value: unknown): number {
-  const n = Number(value)
-  return Number.isFinite(n) ? n : 0
-}
-
-function pickMemberSummary(member: Record<string, unknown>) {
-  return {
-    id: member.id ?? member.memberId ?? member.code ?? null,
-    name: member.name ?? member.fullName ?? member.displayName ?? null,
-    rank: member.rank ?? member.position ?? null,
-    leftBV: toNumber(member.leftBV ?? member.left_bv ?? member.volL),
-    rightBV: toNumber(member.rightBV ?? member.right_bv ?? member.volR),
-    totalBV: toNumber(member.totalBV ?? member.total_bv ?? member.bv),
-    sponsorId: member.sponsorId ?? member.sponsor_id ?? null,
-  }
-}
-
 function emit(
   events: JarvisDownlineEvent[],
   type: JarvisDownlineEventType,
@@ -68,70 +52,149 @@ function emit(
   })
 }
 
+function reportMap(snapshot: BusinessReportSnapshot | null): Map<string, MonthlyReport> {
+  return new Map((snapshot?.reports ?? []).map((report) => [String(report.member_id), report]))
+}
+
+function memberSummary(member: Member, report?: MonthlyReport) {
+  return {
+    id: member.id,
+    name: member.name,
+    sponsorId: member.sponsor_id,
+    uplineId: member.upline_id,
+    joinDate: member.join_date,
+    rank: report?.income_position ?? null,
+    highestPosition: report?.highest_position ?? null,
+    promotionGoal: report?.promotion_goal ?? null,
+    monthlyBV: report?.monthly_bv ?? 0,
+    active: report?.is_active ?? false,
+    qualified: report?.is_qualified ?? false,
+    leftVolume: report?.current_month_vol_left ?? 0,
+    rightVolume: report?.current_month_vol_right ?? 0,
+  }
+}
+
 export function buildDownlineDiffEvents(
   previous: BusinessReportSnapshot | null,
   current: BusinessReportSnapshot
 ): JarvisDownlineEvent[] {
   const events: JarvisDownlineEvent[] = []
   const now = current.syncedAt || new Date().toISOString()
-  const prevMembers = previous?.members ?? {}
-  const currMembers = current.members ?? {}
+  const previousReports = reportMap(previous)
+  const currentReports = reportMap(current)
 
-  for (const [id, rawCurrent] of Object.entries(currMembers)) {
-    const currentMember = rawCurrent as unknown as Record<string, unknown>
-    const rawPrevious = prevMembers[id]
-    if (!rawPrevious) {
+  for (const [id, member] of Object.entries(current.members)) {
+    const currentReport = currentReports.get(id)
+    const previousMember = previous?.members?.[id]
+    const previousReport = previousReports.get(id)
+
+    if (!previousMember) {
       emit(events, 'jarvis.downline.member_joined', current.month, now, {
-        member: pickMemberSummary(currentMember),
+        member: memberSummary(member, currentReport),
       })
       continue
     }
 
-    const previousMember = rawPrevious as unknown as Record<string, unknown>
-    const before = pickMemberSummary(previousMember)
-    const after = pickMemberSummary(currentMember)
+    if (!currentReport || !previousReport) continue
 
-    if (before.rank !== after.rank) {
+    const rankChanged = previousReport.income_position !== currentReport.income_position
+    if (rankChanged) {
       emit(events, 'jarvis.downline.rank_changed', current.month, now, {
-        memberId: after.id ?? id,
-        name: after.name,
-        from: before.rank,
-        to: after.rank,
+        memberId: id,
+        name: member.name,
+        from: previousReport.income_position,
+        to: currentReport.income_position,
+        highestPosition: currentReport.highest_position,
       })
     }
 
-    if (before.totalBV !== after.totalBV || before.leftBV !== after.leftBV || before.rightBV !== after.rightBV) {
-      emit(events, 'jarvis.downline.bv_changed', current.month, now, {
-        memberId: after.id ?? id,
-        name: after.name,
-        before: { totalBV: before.totalBV, leftBV: before.leftBV, rightBV: before.rightBV },
-        after: { totalBV: after.totalBV, leftBV: after.leftBV, rightBV: after.rightBV },
-        delta: {
-          totalBV: after.totalBV - before.totalBV,
-          leftBV: after.leftBV - before.leftBV,
-          rightBV: after.rightBV - before.rightBV,
-        },
-      })
+    const monthlyBvDelta = currentReport.monthly_bv - previousReport.monthly_bv
+    const leftDelta = currentReport.current_month_vol_left - previousReport.current_month_vol_left
+    const rightDelta = currentReport.current_month_vol_right - previousReport.current_month_vol_right
 
-      const leftDelta = after.leftBV - before.leftBV
-      const rightDelta = after.rightBV - before.rightBV
-      if (leftDelta !== 0 || rightDelta !== 0) {
-        emit(events, 'jarvis.downline.leg_growth', current.month, now, {
-          memberId: after.id ?? id,
-          name: after.name,
-          leftDelta,
-          rightDelta,
-          weakerLeg: after.leftBV <= after.rightBV ? 'left' : 'right',
-        })
-      }
+    if (monthlyBvDelta !== 0 || leftDelta !== 0 || rightDelta !== 0) {
+      emit(events, 'jarvis.downline.bv_changed', current.month, now, {
+        memberId: id,
+        name: member.name,
+        before: {
+          monthlyBV: previousReport.monthly_bv,
+          leftVolume: previousReport.current_month_vol_left,
+          rightVolume: previousReport.current_month_vol_right,
+        },
+        after: {
+          monthlyBV: currentReport.monthly_bv,
+          leftVolume: currentReport.current_month_vol_left,
+          rightVolume: currentReport.current_month_vol_right,
+        },
+        delta: { monthlyBV: monthlyBvDelta, leftVolume: leftDelta, rightVolume: rightDelta },
+      })
+    }
+
+    if (leftDelta !== 0 || rightDelta !== 0) {
+      emit(events, 'jarvis.downline.leg_growth', current.month, now, {
+        memberId: id,
+        name: member.name,
+        leftDelta,
+        rightDelta,
+        leftVolume: currentReport.current_month_vol_left,
+        rightVolume: currentReport.current_month_vol_right,
+        weakerLeg: currentReport.current_month_vol_left <= currentReport.current_month_vol_right ? 'left' : 'right',
+      })
+    }
+
+    if (previousReport.is_active && !currentReport.is_active) {
+      emit(events, 'jarvis.downline.inactive_risk', current.month, now, {
+        memberId: id,
+        name: member.name,
+        previousMonthlyBV: previousReport.monthly_bv,
+        monthlyBV: currentReport.monthly_bv,
+        rank: currentReport.income_position,
+        reason: 'became_inactive',
+      })
+    }
+
+    if (previousReport.promotion_goal !== currentReport.promotion_goal || rankChanged) {
+      emit(events, 'jarvis.downline.goal_progress', current.month, now, {
+        memberId: id,
+        name: member.name,
+        previousGoal: previousReport.promotion_goal,
+        goal: currentReport.promotion_goal,
+        previousRank: previousReport.income_position,
+        rank: currentReport.income_position,
+      })
+    }
+
+    const positiveMomentum = rankChanged || monthlyBvDelta >= 500 || leftDelta + rightDelta >= 1000
+    if (positiveMomentum && currentReport.is_active) {
+      emit(events, 'jarvis.downline.keyman_emerging', current.month, now, {
+        memberId: id,
+        name: member.name,
+        rank: currentReport.income_position,
+        monthlyBvDelta,
+        leftDelta,
+        rightDelta,
+        signal: rankChanged ? 'rank_progress' : monthlyBvDelta >= 500 ? 'bv_acceleration' : 'leg_growth',
+      })
+    }
+
+    const negativeMomentum = (previousReport.is_active && !currentReport.is_active) || monthlyBvDelta <= -500
+    if (negativeMomentum) {
+      emit(events, 'jarvis.downline.keyman_declining', current.month, now, {
+        memberId: id,
+        name: member.name,
+        rank: currentReport.income_position,
+        monthlyBvDelta,
+        active: currentReport.is_active,
+        signal: !currentReport.is_active ? 'inactive' : 'bv_drop',
+      })
     }
   }
 
   emit(events, 'jarvis.downline.sync_completed', current.month, now, {
     checksum: current.checksum,
     previousChecksum: previous?.checksum ?? null,
-    memberCount: Object.keys(currMembers).length,
-    eventCount: events.length,
+    memberCount: Object.keys(current.members).length,
+    diffEventCount: events.length,
     changed: previous?.checksum !== current.checksum,
   })
 
