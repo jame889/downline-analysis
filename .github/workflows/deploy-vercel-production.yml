@@ -34,6 +34,15 @@ jobs:
       - name: Verify application build
         run: npm run build
 
+      - name: Validate Vercel deploy credential
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        run: |
+          if [ -z "$VERCEL_TOKEN" ]; then
+            echo "VERCEL_TOKEN is not configured. Rotate/re-authorize the repository secret before deploying." >&2
+            exit 1
+          fi
+
       - name: Pull Production configuration
         run: npx vercel@56.3.1 pull --yes --environment=production --token=${{ secrets.VERCEL_TOKEN }}
 
