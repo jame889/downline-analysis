@@ -15,7 +15,8 @@ export async function middleware(request: NextRequest) {
     pathname === '/api/admin/business-report-sync' ||
     pathname === '/api/admin/telegram-broadcast' ||
     pathname === '/api/cron/telegram' ||
-    pathname === '/api/telegram/webhook'
+    pathname === '/api/telegram/webhook' ||
+    pathname.startsWith('/api/jarvis/')
 
   // Always allow static assets, auth endpoints, chat API, and signed machine routes.
   if (
