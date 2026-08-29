@@ -1,8 +1,9 @@
 import { NextResponse } from 'next/server'
+import { jarvisDownlineFallbackSecret } from '@/lib/jarvis-downline-auth'
 import { loadBusinessReportSyncStatus, loadLatestBusinessReportSnapshot } from '@/lib/business-report-sync'
 
 function authorized(request: Request): boolean {
-  const secret = process.env.JARVIS_DOWNLINE_FALLBACK_SECRET || process.env.JARVIS_DOWNLINE_INGEST_SECRET
+  const secret = jarvisDownlineFallbackSecret()
   if (!secret) return false
   const auth = request.headers.get('authorization')
   return auth === `Bearer ${secret}`

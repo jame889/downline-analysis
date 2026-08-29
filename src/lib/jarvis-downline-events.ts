@@ -1,6 +1,7 @@
 import crypto from 'crypto'
 import type { BusinessReportSnapshot } from './business-report-sync'
 import type { Member, MonthlyReport } from './types'
+import { jarvisDownlineIngestSecret, jarvisDownlineIngestUrl } from './jarvis-downline-auth'
 
 export const JARVIS_DOWNLINE_EVENT_TYPES = [
   'jarvis.downline.member_joined',
@@ -247,9 +248,9 @@ export interface JarvisPushResult {
 }
 
 export async function pushDownlineEventsToJarvis(events: JarvisDownlineEvent[], timeoutMs = 10_000): Promise<JarvisPushResult> {
-  const url = process.env.JARVIS_DOWNLINE_INGEST_URL
-  const secret = process.env.JARVIS_DOWNLINE_INGEST_SECRET
-  if (!url || !secret) return { ok: true, skipped: true }
+  const url = jarvisDownlineIngestUrl()
+  const secret = jarvisDownlineIngestSecret()
+  if (!secret) return { ok: true, skipped: true }
 
   const body = JSON.stringify({ source: 'downline-analyzer', version: 1, events })
   const signature = crypto.createHmac('sha256', secret).update(body).digest('hex')
