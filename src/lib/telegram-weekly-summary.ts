@@ -1,4 +1,5 @@
 import { getAvailableMonths, getMembersForMonth, getSubtreeIds } from './db'
+import { loadBusinessReportSnapshot, loadBusinessReportSyncStatus } from './business-report-sync'
 
 export interface TelegramWeeklySummary {
   month: string
@@ -14,12 +15,50 @@ export interface TelegramWeeklySummary {
   currentVolRight: number
   deductedVolLeft: number
   deductedVolRight: number
+  sourceChecksum: string
+  syncedAt: string
+}
+
+const DEFAULT_MAX_SYNC_AGE_MINUTES = 180
+
+function weeklyMaxSyncAgeMs(): number {
+  const configured = Number(process.env.TELEGRAM_WEEKLY_MAX_SYNC_AGE_MINUTES ?? DEFAULT_MAX_SYNC_AGE_MINUTES)
+  const minutes = Number.isFinite(configured) && configured > 0 ? configured : DEFAULT_MAX_SYNC_AGE_MINUTES
+  return minutes * 60_000
+}
+
+export async function assertTelegramWeeklyFreshness(now = new Date()): Promise<{ month: string; checksum: string; syncedAt: string }> {
+  const status = await loadBusinessReportSyncStatus()
+  if (!status?.ok) throw new Error('Weekly summary blocked: latest Business Report sync is unavailable')
+
+  const snapshot = await loadBusinessReportSnapshot(status.month)
+  if (!snapshot) throw new Error(`Weekly summary blocked: snapshot ${status.month} is unavailable`)
+  if (snapshot.checksum !== status.checksum) {
+    throw new Error(`Weekly summary blocked: checksum mismatch for ${status.month}`)
+  }
+  if (snapshot.syncedAt !== status.syncedAt) {
+    throw new Error(`Weekly summary blocked: sync timestamp mismatch for ${status.month}`)
+  }
+  if (snapshot.reports.length !== status.rows || Object.keys(snapshot.members).length !== status.members) {
+    throw new Error(`Weekly summary blocked: snapshot cardinality mismatch for ${status.month}`)
+  }
+
+  const syncedAt = new Date(status.syncedAt)
+  const ageMs = now.getTime() - syncedAt.getTime()
+  if (!Number.isFinite(syncedAt.getTime()) || ageMs < 0 || ageMs > weeklyMaxSyncAgeMs()) {
+    throw new Error(`Weekly summary blocked: Business Report sync is stale (${status.syncedAt})`)
+  }
+  return { month: status.month, checksum: status.checksum, syncedAt: status.syncedAt }
 }
 
 export async function getTelegramWeeklySummary(memberId: string): Promise<TelegramWeeklySummary | null> {
+  const freshness = await assertTelegramWeeklyFreshness()
   const months = (await getAvailableMonths()).slice().sort()
   const month = months.at(-1)
   if (!month) return null
+  if (month !== freshness.month) {
+    throw new Error(`Weekly summary blocked: latest data month ${month} does not match fresh sync ${freshness.month}`)
+  }
 
   const data = await getMembersForMonth(month)
   const membersMap = Object.fromEntries(data.map((member) => [member.id, member]))
@@ -54,6 +93,8 @@ export async function getTelegramWeeklySummary(memberId: string): Promise<Telegr
     currentVolRight: report.current_month_vol_right,
     deductedVolLeft: report.deducted_vol_left,
     deductedVolRight: report.deducted_vol_right,
+    sourceChecksum: freshness.checksum,
+    syncedAt: freshness.syncedAt,
   }
 }
 
@@ -66,6 +107,6 @@ export function formatTelegramWeeklySummary(summary: TelegramWeeklySummary): str
     `Total BV: ${summary.totalBV.toLocaleString()}\n` +
     `Vol Left: ${summary.totalVolLeft.toLocaleString()}\n` +
     `Vol Right: ${summary.totalVolRight.toLocaleString()}\n\n` +
-    `<i>Source: First Global Business Report • member ${summary.memberId}</i>`
+    `<i>Source: First Global Business Report • member ${summary.memberId} • sync ${summary.syncedAt} • checksum ${summary.sourceChecksum.slice(0, 12)}</i>`
   )
 }
