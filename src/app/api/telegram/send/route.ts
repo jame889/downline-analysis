@@ -4,6 +4,7 @@ import { getAvailableMonths, getMembersForMonth, getSubtreeIds } from '@/lib/db'
 import { buildTelegramActivityMessage } from '@/lib/telegram-activity-message'
 import { getTelegramBotToken, loadTelegramConfigs, sendTelegramMessage, type TelegramNotificationType } from '@/lib/telegram-config'
 import { buildKeymanGoalAlertMessage } from '@/lib/telegram-keyman-alert'
+import { formatTelegramWeeklySummary, getTelegramWeeklySummary } from '@/lib/telegram-weekly-summary'
 
 export const dynamic = 'force-dynamic'
 
@@ -52,24 +53,8 @@ async function buildLeaderboardMessage(): Promise<string> {
 }
 
 async function buildWeeklyMessage(memberId: string): Promise<string> {
-  const months = (await getAvailableMonths()).slice().sort()
-  const month = months[months.length - 1]
-  if (!month) return 'ไม่มีข้อมูล'
-
-  const data = await getMembersForMonth(month)
-  const membersMap = Object.fromEntries(data.map((m) => [m.id, m]))
-  const subtreeIds = getSubtreeIds(memberId, membersMap)
-  const myTeam = data.filter((m) => subtreeIds.has(m.id))
-  const active = myTeam.filter((m) => m.report.is_active).length
-  const totalBV = myTeam.reduce((sum, m) => sum + (m.report.monthly_bv ?? 0), 0)
-
-  const me = data.find((m) => m.id === memberId)
-  return `<b>Weekly Summary - ${month}</b>\n\n` +
-    `สมาชิกในทีม: ${myTeam.length}\n` +
-    `Active: ${active} (${myTeam.length > 0 ? Math.round((active / myTeam.length) * 100) : 0}%)\n` +
-    `Total BV: ${totalBV.toLocaleString()}\n` +
-    `Vol Left: ${(me?.report.total_vol_left ?? 0).toLocaleString()}\n` +
-    `Vol Right: ${(me?.report.total_vol_right ?? 0).toLocaleString()}`
+  const summary = await getTelegramWeeklySummary(memberId)
+  return summary ? formatTelegramWeeklySummary(summary) : 'ไม่มีข้อมูล'
 }
 
 async function buildWakeupMessage(memberId: string): Promise<string> {
