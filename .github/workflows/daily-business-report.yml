@@ -37,6 +37,9 @@ jobs:
       - name: Install report dependencies
         run: python -m pip install openpyxl requests
 
+      - name: Test report column mapping
+        run: python -m unittest discover -s scripts -p 'test_business_report_columns.py'
+
       - name: Download, validate, and sync report
         env:
           FIRST_THAILAND_USER: ${{ secrets.FIRST_THAILAND_USER }}

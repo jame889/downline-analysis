@@ -18,7 +18,7 @@ import requests
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 
-from import_data import process_file
+from import_data import first_global_column_indices, process_file
 
 
 BASE_URL = "https://www.myfirstglobal.com"
@@ -150,8 +150,9 @@ def parse_report(content: bytes, month: str) -> tuple[dict, list[dict]]:
     worksheet = workbook[sheet_name]
     is_first_global = str(worksheet.cell(1, 2).value or "").strip() == "รหัสสมาชิก"
     if is_first_global:
-        sponsor_header = str(worksheet.cell(1, 14).value or "")
-        upline_header = str(worksheet.cell(1, 15).value or "")
+        indices = first_global_column_indices(worksheet)
+        sponsor_header = str(worksheet.cell(1, indices[13] + 1).value or "")
+        upline_header = str(worksheet.cell(1, indices[14] + 1).value or "")
         relationships_valid = sponsor_header == "ผู้แนะนำ" and upline_header == "ผู้สนับสนุน"
     else:
         upline_header = str(worksheet.cell(1, 11).value or "")
@@ -236,10 +237,11 @@ def main() -> None:
     for month in selected_months(args.month, args.include_previous):
         content = download(session, month)
         checksum = hashlib.sha256(content).hexdigest()
-        members, reports = parse_report(content, month)
-        connector_count = merge_binary_tree(members, reports, binary_tree)
+        # Preserve the source for diagnosing schema changes, even when validation fails.
         output_path = args.output_dir / f"business_report_SPS_{month}.xlsx"
         output_path.write_bytes(content)
+        members, reports = parse_report(content, month)
+        connector_count = merge_binary_tree(members, reports, binary_tree)
         payload = {
             "month": month,
             "checksum": checksum,

@@ -81,11 +81,52 @@ def status_is_true(value) -> bool:
     return str(value or "").strip().upper() in {"1", "O", "Y", "YES", "TRUE"}
 
 
+FIRST_GLOBAL_COLUMNS = [
+    ("LV", ""), ("รหัสสมาชิก", ""), ("ชื่อ", ""), ("วันที่สมัคร", ""),
+    ("ตำแหน่งสูงสุด", ""), ("อันดับที่ต้องชำระเงิน", ""),
+    ("เป้าหมายการเลื่อนตำแหน่ง", ""), ("ประเทศ", ""), ("สิ้นสุดฟรีแอคทีฟ", ""),
+    ("PLV", ""), ("ออโต้ชิป", ""), ("ออโต้ชิป BV", ""),
+    ("ยอดสั่งซื้อเดือนนี้ BV", ""), ("ผู้แนะนำ", ""), ("ผู้สนับสนุน", ""),
+    ("แอกทีฟ", ""), ("คลอรีเฟรช", ""),
+    ("ตำแหน่งสูงสุด", "ซ้าย"), ("ตำแหน่งสูงสุด", "ขวา"),
+    ("BV สะสมรวม", "ซ้าย"), ("BV สะสมรวม", "ขวา"),
+    ("BV เดือนก่อน", "ซ้าย"), ("BV เดือนก่อน", "ขวา"),
+    ("BV เดือนนี้", "ซ้าย"), ("BV เดือนนี้", "ขวา"),
+    ("BV หักลบ", "ซ้าย"), ("BV หักลบ", "ขวา"),
+]
+
+
+def first_global_column_indices(ws) -> list[int]:
+    """Match both header rows so reordered columns cannot silently shift BV or lineage."""
+    headers = list(ws.iter_rows(min_row=1, max_row=2, values_only=True))
+    if len(headers) != 2:
+        raise ValueError("First Global report requires two header rows")
+    columns = {}
+    group = ""
+    for index, (title, side) in enumerate(zip(*headers)):
+        title = str(title or "").strip()
+        side = str(side or "").strip()
+        side = {"ทีมซ้าย": "ซ้าย", "ทีมขวา": "ขวา"}.get(side, side)
+        if title:
+            group = title
+        elif not side:
+            continue
+        key = (title or group, side)
+        if key in columns:
+            raise ValueError(f"Duplicate First Global column: {key!r}")
+        columns[key] = index
+    missing = [key for key in FIRST_GLOBAL_COLUMNS if key not in columns]
+    if missing:
+        raise ValueError(f"Missing First Global columns: {missing!r}")
+    return [columns[key] for key in FIRST_GLOBAL_COLUMNS]
+
+
 def process_first_global_file(ws, month: str, members: dict) -> list[dict]:
-    """Parse the 27-column First Global report introduced in July 2026."""
+    """Parse First Global reports using names and left/right subheaders."""
+    indices = first_global_column_indices(ws)
     reports = []
     for row in ws.iter_rows(min_row=3, values_only=True):
-        padded = (list(row) + [None] * 27)[:27]
+        padded = [row[index] for index in indices]
         (
             level, member_id, name, join_date, highest_pos, income_pos,
             promo_goal, country, free_active_end, plv, _autoship,
