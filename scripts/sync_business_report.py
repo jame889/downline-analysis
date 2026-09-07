@@ -236,10 +236,11 @@ def main() -> None:
     for month in selected_months(args.month, args.include_previous):
         content = download(session, month)
         checksum = hashlib.sha256(content).hexdigest()
-        members, reports = parse_report(content, month)
-        connector_count = merge_binary_tree(members, reports, binary_tree)
+        # Preserve the source for diagnosing schema changes, even when validation fails.
         output_path = args.output_dir / f"business_report_SPS_{month}.xlsx"
         output_path.write_bytes(content)
+        members, reports = parse_report(content, month)
+        connector_count = merge_binary_tree(members, reports, binary_tree)
         payload = {
             "month": month,
             "checksum": checksum,
