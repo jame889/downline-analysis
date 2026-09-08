@@ -101,6 +101,23 @@ export async function loadBusinessReportSnapshot(month: string): Promise<Busines
   }
 }
 
+/** Load report payloads for many months in one database request. */
+export async function loadBusinessReportSnapshotSeries(months: string[]): Promise<Array<Pick<BusinessReportSnapshot, 'month' | 'reports' | 'syncedAt'>>> {
+  if (!months.length) return []
+  if (hasSupabase()) {
+    const filter = months.map((month) => encodeURIComponent(month)).join(',')
+    const rows = await sbSelect<{
+      month: string
+      reports: MonthlyReport[]
+      synced_at: string
+    }>('business_report_snapshots', `month=in.(${filter})&select=month,reports,synced_at`)
+    return rows.map((row) => ({ month: row.month, reports: row.reports, syncedAt: row.synced_at }))
+  }
+  const snapshots = await Promise.all(months.map((month) => loadBusinessReportSnapshot(month)))
+  return snapshots.filter((snapshot): snapshot is BusinessReportSnapshot => Boolean(snapshot))
+    .map(({ month, reports, syncedAt }) => ({ month, reports, syncedAt }))
+}
+
 export async function loadLatestBusinessReportSnapshot(): Promise<BusinessReportSnapshot | null> {
   const months = await loadBusinessReportMonths()
   const latest = months.slice().sort().pop()

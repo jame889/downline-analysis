@@ -1,11 +1,11 @@
-import { loadBusinessReportSnapshot } from '@/lib/business-report-sync'
+import { loadBusinessReportSnapshot, loadBusinessReportSnapshotSeries } from '@/lib/business-report-sync'
 import { withDataRequest } from '@/lib/data-request'
 import { NextRequest, NextResponse } from 'next/server'
 import { getSession } from '@/lib/auth'
 import {
-  getAllMembers, getAvailableMonths, getMember, getMemberHistory,
-  getMembersForMonth, getMembersForMonthSubtree, getReportsForMonths, getSubtreeIds, bvToThb
+  getAllMembers, getAvailableMonths, getSubtreeIds, bvToThb
 } from '@/lib/db'
+import { getBundledHistoryReport } from '@/lib/history-db'
 import { analyzeKeymanStructure } from '@/lib/keyman-analysis'
 import type { Member, MonthlyReport } from '@/lib/types'
 
@@ -64,18 +64,34 @@ export async function GET(req: NextRequest) {
   const selectedMonthIndex = months.indexOf(month)
   const previousMonth = selectedMonthIndex >= 0 ? months[selectedMonthIndex + 1] : undefined
 
-  const [member, allMembers] = await Promise.all([
-    getMember(session.memberId),
-    getAllMembers(),
+  // Current synchronized snapshots are authoritative. Fetch their report
+  // series once rather than making one large database request per month.
+  const [selectedSnapshot, snapshotSeries] = await Promise.all([
+    loadBusinessReportSnapshot(month),
+    loadBusinessReportSnapshotSeries(months.filter((item) => item !== month)),
   ])
-  const history = await getMemberHistory(session.memberId)
+  const allMembers = selectedSnapshot?.members ?? await getAllMembers()
+  const member = allMembers[session.memberId] ?? null
+  const historyReportsByMonth = Object.fromEntries(snapshotSeries.map((item) => [item.month, item.reports]))
+  if (selectedSnapshot) historyReportsByMonth[selectedSnapshot.month] = selectedSnapshot.reports
+  for (const historyMonth of months) {
+    if (!historyReportsByMonth[historyMonth]) {
+      historyReportsByMonth[historyMonth] = getBundledHistoryReport(historyMonth)
+    }
+  }
+  const history = months.slice().sort().flatMap((historyMonth) => {
+    const report = historyReportsByMonth[historyMonth]?.find((row) => row.member_id === session.memberId)
+    return report ? [report] : []
+  })
 
   // Organization and report data for the selected month
-  const [subtreeMembers, monthMembers, historyReportsByMonth] = await Promise.all([
-    getMembersForMonthSubtree(month, session.memberId),
-    getMembersForMonth(month),
-    getReportsForMonths(history.map((report) => report.month)),
-  ])
+  const selectedReports = selectedSnapshot?.reports ?? historyReportsByMonth[month] ?? []
+  const monthMembers = selectedReports.flatMap((report) => {
+    const item = allMembers[report.member_id]
+    return item ? [{ ...item, report }] : []
+  })
+  const subtreeIds = getSubtreeIds(session.memberId, allMembers)
+  const subtreeMembers = monthMembers.filter((item) => subtreeIds.has(item.id))
   const myReport = subtreeMembers.find((m) => m.id === session.memberId)?.report ?? null
   const keymanStructure = analyzeKeymanStructure(
     session.memberId,
@@ -196,9 +212,8 @@ export async function GET(req: NextRequest) {
     total_bv: visibleMembers.reduce((s, m) => s + m.report.monthly_bv, 0),
   }
 
-  const snapshot = await loadBusinessReportSnapshot(month)
   return NextResponse.json({
-    source: { month, syncedAt: snapshot?.syncedAt ?? null },
+    source: { month, syncedAt: selectedSnapshot?.syncedAt ?? null },
     member,
     myReport: myReport
       ? {
