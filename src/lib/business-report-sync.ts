@@ -1,10 +1,13 @@
 import fs from 'fs'
 import path from 'path'
+import { revalidateTag, unstable_cache } from 'next/cache'
 import type { Member, MonthlyReport } from './types'
 import { hasSupabase, sbSelect, sbUpsert } from './supabase'
 
 const LOCAL_DIR = path.join(process.cwd(), 'data', 'automated-reports')
 const LOCAL_STATUS_PATH = path.join(process.cwd(), 'data', 'business-report-sync-status.json')
+const REPORT_CACHE_TAG = 'business-report-snapshots'
+const REPORT_CACHE_SECONDS = 300
 
 export interface BusinessReportSyncStatus {
   ok: boolean
@@ -59,11 +62,13 @@ function snapshotLocalPath(month: string): string {
   return path.join(LOCAL_DIR, `${month}.json`)
 }
 
+const loadBusinessReportMonthsCached = unstable_cache(async (): Promise<string[]> => {
+  const rows = await sbSelect<{ month: string }>('business_report_snapshots', 'select=month')
+  return rows.map((row) => row.month).sort()
+}, ['business-report-months'], { tags: [REPORT_CACHE_TAG], revalidate: REPORT_CACHE_SECONDS })
+
 export async function loadBusinessReportMonths(): Promise<string[]> {
-  if (hasSupabase()) {
-    const rows = await sbSelect<{ month: string }>('business_report_snapshots', 'select=month')
-    return rows.map((row) => row.month).sort()
-  }
+  if (hasSupabase()) return loadBusinessReportMonthsCached()
   if (!fs.existsSync(LOCAL_DIR)) return []
   return fs.readdirSync(LOCAL_DIR)
     .filter((name) => /^\d{4}-\d{2}\.json$/.test(name))
@@ -71,8 +76,7 @@ export async function loadBusinessReportMonths(): Promise<string[]> {
     .sort()
 }
 
-export async function loadBusinessReportSnapshot(month: string): Promise<BusinessReportSnapshot | null> {
-  if (hasSupabase()) {
+const loadBusinessReportSnapshotCached = unstable_cache(async (month: string): Promise<BusinessReportSnapshot | null> => {
     const rows = await sbSelect<{
       month: string
       checksum: string
@@ -91,7 +95,10 @@ export async function loadBusinessReportSnapshot(month: string): Promise<Busines
       reports: row.reports,
       syncedAt: row.synced_at,
     } : null
-  }
+}, ['business-report-snapshot'], { tags: [REPORT_CACHE_TAG], revalidate: REPORT_CACHE_SECONDS })
+
+export async function loadBusinessReportSnapshot(month: string): Promise<BusinessReportSnapshot | null> {
+  if (hasSupabase()) return loadBusinessReportSnapshotCached(month)
   const file = snapshotLocalPath(month)
   if (!fs.existsSync(file)) return null
   try {
@@ -102,9 +109,7 @@ export async function loadBusinessReportSnapshot(month: string): Promise<Busines
 }
 
 /** Load report payloads for many months in one database request. */
-export async function loadBusinessReportSnapshotSeries(months: string[]): Promise<Array<Pick<BusinessReportSnapshot, 'month' | 'reports' | 'syncedAt'>>> {
-  if (!months.length) return []
-  if (hasSupabase()) {
+const loadBusinessReportSnapshotSeriesCached = unstable_cache(async (months: string[]): Promise<Array<Pick<BusinessReportSnapshot, 'month' | 'reports' | 'syncedAt'>>> => {
     const filter = months.map((month) => encodeURIComponent(month)).join(',')
     const rows = await sbSelect<{
       month: string
@@ -112,7 +117,11 @@ export async function loadBusinessReportSnapshotSeries(months: string[]): Promis
       synced_at: string
     }>('business_report_snapshots', `month=in.(${filter})&select=month,reports,synced_at`)
     return rows.map((row) => ({ month: row.month, reports: row.reports, syncedAt: row.synced_at }))
-  }
+}, ['business-report-snapshot-series'], { tags: [REPORT_CACHE_TAG], revalidate: REPORT_CACHE_SECONDS })
+
+export async function loadBusinessReportSnapshotSeries(months: string[]): Promise<Array<Pick<BusinessReportSnapshot, 'month' | 'reports' | 'syncedAt'>>> {
+  if (!months.length) return []
+  if (hasSupabase()) return loadBusinessReportSnapshotSeriesCached(months)
   const snapshots = await Promise.all(months.map((month) => loadBusinessReportSnapshot(month)))
   return snapshots.filter((snapshot): snapshot is BusinessReportSnapshot => Boolean(snapshot))
     .map(({ month, reports, syncedAt }) => ({ month, reports, syncedAt }))
@@ -133,6 +142,7 @@ export async function saveBusinessReportSnapshot(snapshot: BusinessReportSnapsho
       reports: snapshot.reports,
       synced_at: snapshot.syncedAt,
     })
+    revalidateTag(REPORT_CACHE_TAG)
     return
   }
 
