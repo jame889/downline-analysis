@@ -68,7 +68,7 @@ export async function GET(req: NextRequest) {
   // series once rather than making one large database request per month.
   const [selectedSnapshot, snapshotSeries] = await Promise.all([
     loadBusinessReportSnapshot(month),
-    loadBusinessReportSnapshotSeries(months.filter((item) => item !== month)),
+    loadBusinessReportSnapshotSeries(previousMonth ? [previousMonth] : []),
   ])
   const allMembers = selectedSnapshot?.members ?? await getAllMembers()
   const member = allMembers[session.memberId] ?? null
