@@ -1,5 +1,6 @@
 'use client'
-import { useEffect, useMemo, useState } from 'react'
+import { fetchJson, RequestError } from '@/lib/client/fetch-json'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, Legend
@@ -323,32 +324,55 @@ export default function MyPage() {
   const [activeKeymenOnly, setActiveKeymenOnly] = useState(false)
   const [keymanSide, setKeymanSide] = useState<'ทั้งหมด' | 'ซ้าย' | 'ขวา'>('ทั้งหมด')
   const [loading, setLoading] = useState(true)
+  const [refreshing, setRefreshing] = useState(false)
+  const [error, setError] = useState('')
+  const [loginRequired, setLoginRequired] = useState(false)
+  const [sourceTime, setSourceTime] = useState<string | null>(null)
+  const [loadedMonth, setLoadedMonth] = useState('')
+  const currentRequest = useRef<AbortController | null>(null)
+  const requestedMonth = useRef('')
+  const lastFetch = useRef(0)
 
   // Sub-view: "ดูผังทีมงานนี้"
   const [focusMemberId, setFocusMemberId] = useState<string | null>(null)
   const [focusMemberName, setFocusMemberName] = useState<string>('')
   const [teamFocus, setTeamFocus] = useState<{ left: AnalyzeNode[]; right: AnalyzeNode[] } | null>(null)
 
-  function fetchData(month: string) {
-    setLoading(true)
-    fetch(`/api/my?month=${month}`)
-      .then((r) => r.json())
-      .then((d) => {
-        setMember(d.member)
-        setMyReport(d.myReport)
-        setHistory(d.history ?? [])
-        setDirectSponsored(d.directSponsored ?? [])
-        setOrgStats(d.orgStats)
-        setTreeNodes(d.treeNodes ?? [])
-        setKeymanStructure(d.keymanStructure ?? null)
-        if (!selectedMonth) setMonths(d.months ?? [])
-        setLoading(false)
-        setShowAllKeymen(false)
-        // Close sub-view when month changes
-        setFocusMemberId(null)
-        setTeamFocus(null)
-      })
-  }
+  const fetchData = useCallback(async (month: string, background = false) => {
+    currentRequest.current?.abort()
+    const controller = new AbortController()
+    currentRequest.current = controller
+    requestedMonth.current = month
+    lastFetch.current = Date.now()
+    const timeout = setTimeout(() => controller.abort('timeout'), 25000)
+    setError(''); setLoginRequired(false)
+    if (background) setRefreshing(true)
+    else setLoading(true)
+    try {
+      const d = await fetchJson<{
+        member: Member; myReport: Report; history: HistoryRow[]; directSponsored: SponsoredRow[];
+        orgStats: OrgStats; treeNodes: TreeNode[]; keymanStructure: KeymanStructure;
+        months: string[]; month: string; source?: { syncedAt: string | null };
+      }>(month ? `/api/my?month=${encodeURIComponent(month)}` : '/api/my', controller.signal)
+      if (controller.signal.aborted) return
+      if (!d.member || !Array.isArray(d.months) || !d.month) throw new Error('Invalid data')
+      setMember(d.member); setMyReport(d.myReport); setHistory(d.history ?? [])
+      setDirectSponsored(d.directSponsored ?? []); setOrgStats(d.orgStats)
+      setTreeNodes(d.treeNodes ?? []); setKeymanStructure(d.keymanStructure ?? null)
+      setMonths(d.months); setSelectedMonth(d.month); setLoadedMonth(d.month)
+      requestedMonth.current = d.month
+      setSourceTime(d.source?.syncedAt ?? null)
+      if (!background) { setShowAllKeymen(false); setFocusMemberId(null); setTeamFocus(null) }
+    } catch (cause) {
+      if (currentRequest.current !== controller) return
+      if (controller.signal.aborted && controller.signal.reason !== 'timeout') return
+      setLoginRequired(cause instanceof RequestError && cause.status === 401)
+      setError(cause instanceof RequestError ? cause.message : 'โหลดข้อมูลไม่สำเร็จหรือใช้เวลานานเกินไป กรุณาลองใหม่')
+    } finally {
+      clearTimeout(timeout)
+      if (currentRequest.current === controller) { setLoading(false); setRefreshing(false) }
+    }
+  }, [])
 
   function handleViewTeam(memberId: string, memberName: string) {
     if (focusMemberId === memberId) {
@@ -365,21 +389,21 @@ export default function MyPage() {
   }
 
   useEffect(() => {
-    fetch('/api/my')
-      .then((r) => r.json())
-      .then((d) => {
-        setMember(d.member)
-        setMyReport(d.myReport)
-        setHistory(d.history ?? [])
-        setDirectSponsored(d.directSponsored ?? [])
-        setOrgStats(d.orgStats)
-        setTreeNodes(d.treeNodes ?? [])
-        setKeymanStructure(d.keymanStructure ?? null)
-        setMonths(d.months ?? [])
-        setSelectedMonth(d.month ?? '')
-        setLoading(false)
-      })
-  }, [])
+    void fetchData('')
+    const refresh = () => {
+      if (document.visibilityState === 'visible' && Date.now() - lastFetch.current > 10000) {
+        void fetchData(requestedMonth.current, true)
+      }
+    }
+    document.addEventListener('visibilitychange', refresh)
+    window.addEventListener('focus', refresh)
+    const interval = setInterval(refresh, 60000)
+    return () => {
+      currentRequest.current?.abort(); clearInterval(interval)
+      document.removeEventListener('visibilitychange', refresh)
+      window.removeEventListener('focus', refresh)
+    }
+  }, [fetchData])
 
   const lrChartData = history.map((r) => ({
     month: r.month.slice(2),
@@ -417,7 +441,13 @@ export default function MyPage() {
     && (keymanSide === 'ทั้งหมด' || item.side === keymanSide))
   const visibleKeymen = showAllKeymen ? filteredKeymen : filteredKeymen.slice(0, 20)
 
-  if (loading) return <div className="text-slate-400 py-16 text-center">กำลังโหลด...</div>
+  const errorView = <div role="alert" className="rounded-xl border border-amber-700 bg-amber-950/20 p-4 text-amber-200">
+    <p>{error}</p>
+    {loginRequired ? <a href="/login" className="mt-2 inline-block underline">เข้าสู่ระบบ</a>
+      : <button onClick={() => void fetchData(requestedMonth.current)} className="mt-2 rounded border border-amber-600 px-3 py-2">ลองอีกครั้ง</button>}
+  </div>
+  if (loading) return <div role="status" className="text-slate-400 py-16 text-center">กำลังโหลด...</div>
+  if (error && (!member || selectedMonth !== loadedMonth)) return errorView
 
   const leftPct = myReport && (myReport.total_vol_left + myReport.total_vol_right) > 0
     ? (myReport.total_vol_left / (myReport.total_vol_left + myReport.total_vol_right) * 100).toFixed(1)
@@ -428,6 +458,13 @@ export default function MyPage() {
 
   return (
     <div className="space-y-6">
+      {error && errorView}
+      <div className="flex flex-wrap items-center justify-between gap-2 text-sm text-slate-400">
+        <p role="status">{refreshing ? 'กำลังอัปเดตข้อมูล…' : sourceTime
+          ? `Business Report อัปเดต: ${new Intl.DateTimeFormat('th-TH', { timeZone: 'Asia/Bangkok', dateStyle: 'medium', timeStyle: 'short' }).format(new Date(sourceTime))}`
+          : 'รายงานย้อนหลัง: ไม่ทราบเวลาที่อัปเดต'}</p>
+        <button disabled={refreshing} onClick={() => void fetchData(requestedMonth.current, true)} className="rounded-lg border border-slate-700 px-3 py-2 text-white disabled:opacity-50">อัปเดตข้อมูล</button>
+      </div>
       {/* Header */}
       <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
@@ -441,6 +478,7 @@ export default function MyPage() {
         <div className="flex items-center gap-3">
           {myReport && <PositionBadge pos={myReport.highest_position} />}
           <select
+            aria-label="เดือนรายงาน"
             value={selectedMonth}
             onChange={(e) => { setSelectedMonth(e.target.value); fetchData(e.target.value) }}
             className="bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white"

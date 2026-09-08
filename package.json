@@ -6,7 +6,9 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start -p ${PORT:-3000}",
-    "import": "python3 scripts/import_data.py"
+    "import": "python3 scripts/import_data.py",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
   },
   "engines": {
     "node": ">=20.0.0"
@@ -14,26 +16,31 @@
   "dependencies": {
     "clsx": "^2.1.1",
     "jose": "^6.2.2",
-    "lucide-react": "^0.400.0",
+    "lucide-react": "1.43.0",
     "msedge-tts": "^2.0.4",
     "mupdf": "^1.28.0",
-    "next": "14.2.5",
+    "next": "15.5.25",
     "pdf-parse": "^2.4.5",
-    "react": "^18",
-    "react-dom": "^18",
-    "recharts": "^2.12.7",
+    "react": "19.2.8",
+    "react-dom": "19.2.8",
+    "recharts": "2.15.4",
     "tesseract.js": "^7.0.0",
-    "three": "^0.180.0",
-    "xlsx": "^0.18.5"
+    "three": "^0.180.0"
   },
   "devDependencies": {
     "@types/node": "^20",
-    "@types/react": "^18",
-    "@types/react-dom": "^18",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
     "@types/three": "^0.180.0",
     "autoprefixer": "^10.0.1",
-    "postcss": "^8",
+    "postcss": "8.5.28",
     "tailwindcss": "^3.4.1",
-    "typescript": "^5"
+    "typescript": "^5",
+    "vitest": "4.1.11"
+  },
+  "overrides": {
+    "next": {
+      "postcss": "8.5.28"
+    }
   }
 }

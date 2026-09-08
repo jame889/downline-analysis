@@ -36,7 +36,7 @@ export async function assertTelegramWeeklyFreshness(now = new Date()): Promise<{
   if (snapshot.checksum !== status.checksum) {
     throw new Error(`Weekly summary blocked: checksum mismatch for ${status.month}`)
   }
-  if (snapshot.syncedAt !== status.syncedAt) {
+  if (Date.parse(snapshot.syncedAt) !== Date.parse(status.syncedAt)) {
     throw new Error(`Weekly summary blocked: sync timestamp mismatch for ${status.month}`)
   }
   if (snapshot.reports.length !== status.rows || Object.keys(snapshot.members).length !== status.members) {

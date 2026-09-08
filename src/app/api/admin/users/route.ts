@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getSession } from '@/lib/auth'
 import { loadLoginActivities } from '@/lib/login-activity'
+import { hasSupabase, sbSelect } from '@/lib/supabase'
+import { getAllMembers, getAvailableMonths, getReportsForMonths } from '@/lib/db'
 import fs from 'fs'
 import path from 'path'
 
@@ -19,16 +21,19 @@ export async function GET(req: NextRequest) {
 
   const search = new URL(req.url).searchParams.get('search')?.toLowerCase() ?? ''
 
-  const members = safeRead<Record<string, any>>(path.join(DATA_DIR, 'members.json'), {})
+  try {
+  const members = await getAllMembers()
   const passwords = safeRead<Record<string, string>>(path.join(DATA_DIR, 'passwords.json'), {})
-  const passwordMeta = safeRead<Record<string, any>>(path.join(DATA_DIR, 'password_meta.json'), {})
+  const passwordMeta = hasSupabase()
+    ? Object.fromEntries((await sbSelect<{member_id:string,is_default:boolean}>('password_meta', 'select=member_id,is_default')).map(r => [r.member_id, {isDefault:r.is_default}]))
+    : safeRead<Record<string, any>>(path.join(DATA_DIR, 'password_meta.json'), {})
   const blocked = safeRead<Record<string, any>>(path.join(DATA_DIR, 'blocked.json'), {})
   const loginActivity = await loadLoginActivities()
 
   // Get latest month report
-  const months: string[] = safeRead(path.join(DATA_DIR, 'months.json'), [])
+  const months = await getAvailableMonths()
   const latestMonth = months.sort().reverse()[0] ?? ''
-  const report: any[] = latestMonth ? safeRead(path.join(DATA_DIR, 'reports', `${latestMonth}.json`), []) : []
+  const report = latestMonth ? (await getReportsForMonths([latestMonth]))[latestMonth] : []
   const repMap = new Map(report.map((r: any) => [r.member_id, r]))
 
   // Build login stats per member
@@ -47,7 +52,7 @@ export async function GET(req: NextRequest) {
     .map((m: any) => {
       const r = repMap.get(m.id)
       const stats = loginStats[m.id] ?? { lastLogin: null, loginCount: 0, lastIp: null }
-      const isDefault = passwordMeta[m.id]?.isDefault !== false && passwords[m.id] === m.id
+      const isDefault = passwordMeta[m.id]?.isDefault ?? (!passwords[m.id] || passwords[m.id] === m.id)
       return {
         id: m.id, name: m.name, join_date: m.join_date, lv: m.lv,
         position: r?.highest_position ?? 'FA',
@@ -64,5 +69,8 @@ export async function GET(req: NextRequest) {
       }
     })
 
-  return NextResponse.json({ users, total: users.length, month: latestMonth })
+  return NextResponse.json({ users, total: users.length, month: latestMonth }, { headers: { 'Cache-Control': 'no-store' } })
+  } catch {
+    return NextResponse.json({ error: 'User data unavailable' }, { status: 503 })
+  }
 }

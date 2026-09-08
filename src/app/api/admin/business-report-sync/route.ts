@@ -8,7 +8,8 @@ import {
 import { buildDownlineDiffEvents, pushDownlineEventsToJarvis } from '@/lib/jarvis-downline-events'
 import { upsertMembers, upsertMonthlyReports } from '@/lib/db'
 import { sbSelect } from '@/lib/supabase'
-import { loadTelegramConfigs, sendTelegramMessage } from '@/lib/telegram-config'
+import { loadTelegramConfigs } from '@/lib/telegram-config'
+import { sendScheduledTelegram } from '@/lib/telegram-delivery'
 import type { Member, MonthlyReport } from '@/lib/types'
 
 export const dynamic = 'force-dynamic'
@@ -67,11 +68,9 @@ async function notifyRoot(month: string, rows: number, checksum: string): Promis
   const config = (await loadTelegramConfigs())[rootId]
   const token = config?.botToken ?? process.env.TELEGRAM_BOT_TOKEN
   if (!config?.enabled || !config.chatId || !token) return false
-  return sendTelegramMessage(
-    config.chatId,
-    `<b>Business Report updated</b>\n\nMonth: ${month}\nMembers: ${rows}\nChecksum: ${checksum.slice(0, 12)}`,
-    token
-  )
+  const result = await sendScheduledTelegram({ memberId: rootId, chatId: config.chatId, token, type: 'report-updated', sourceVersion: `${month}:${checksum}`, message: `<b>Business Report updated</b>\n\nMonth: ${month}\nMembers: ${rows}\nChecksum: ${checksum.slice(0, 12)}`,
+  })
+  return result.success
 }
 
 export async function GET(request: NextRequest) {
@@ -108,7 +107,6 @@ export async function POST(request: NextRequest) {
     const currentSnapshot = { month, checksum, members, reports, syncedAt }
     const jarvisEvents = buildDownlineDiffEvents(existingSnapshot, currentSnapshot)
 
-    await saveBusinessReportSnapshot(currentSnapshot)
     let supabaseSynced = false
     if (process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY) {
       try {
@@ -116,9 +114,16 @@ export async function POST(request: NextRequest) {
         await upsertMonthlyReports(month, reports)
         supabaseSynced = true
       } catch (error) {
-        console.warn('[business-report-sync] Supabase sync unavailable; Blob snapshot saved', error)
+        console.warn('[business-report-sync] Table sync incomplete')
       }
     }
+
+    if (!supabaseSynced) {
+      await saveBusinessReportSyncStatus({ ok: false, month, rows: reports.length,
+        members: Object.keys(members).length, checksum, syncedAt, telegramNotified: false, supabaseSynced: false })
+      return NextResponse.json({ ok: false, supabaseSynced: false, error: 'Table sync incomplete; notifications blocked' }, { status: 503 })
+    }
+    await saveBusinessReportSnapshot(currentSnapshot)
 
     const [telegramNotified, jarvisPush] = await Promise.all([
       notifyRoot(month, reports.length, checksum),

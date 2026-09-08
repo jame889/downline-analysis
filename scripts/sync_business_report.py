@@ -36,7 +36,7 @@ def selected_months(explicit_month: str | None, include_previous: bool) -> list[
     now = datetime.now(ZoneInfo("Asia/Bangkok"))
     months = [now.strftime("%Y-%m")]
     if include_previous and now.day <= 3:
-        months.append((now.replace(day=1) - timedelta(days=1)).strftime("%Y-%m"))
+        months.insert(0, (now.replace(day=1) - timedelta(days=1)).strftime("%Y-%m"))
     return months
 
 
@@ -197,7 +197,10 @@ def sync_report(sync_url: str, secret: str, payload: dict) -> dict:
     )
     if not response.ok:
         raise RuntimeError(f"Production sync failed ({response.status_code}): {response.text[:500]}")
-    return response.json()
+    result = response.json()
+    if result.get("ok") is not True or result.get("supabaseSynced") is not True:
+        raise RuntimeError("Production sync is incomplete; notifications blocked")
+    return result
 
 
 def main() -> None:

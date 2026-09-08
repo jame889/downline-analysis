@@ -1,3 +1,5 @@
+import { loadBusinessReportSnapshot } from '@/lib/business-report-sync'
+import { withDataRequest } from '@/lib/data-request'
 import { NextRequest, NextResponse } from 'next/server'
 import { getSession } from '@/lib/auth'
 import {
@@ -51,12 +53,14 @@ function getPlacementLegIds(rootId: string, members: Record<string, Member>) {
 }
 
 export async function GET(req: NextRequest) {
+  return withDataRequest(async () => {
   const session = await getSession()
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const { searchParams } = new URL(req.url)
   const months = await getAvailableMonths()
   const month = searchParams.get('month') ?? months[0]
+  if (!months.includes(month)) return NextResponse.json({ error: 'Invalid report month' }, { status: 400 })
   const selectedMonthIndex = months.indexOf(month)
   const previousMonth = selectedMonthIndex >= 0 ? months[selectedMonthIndex + 1] : undefined
 
@@ -192,7 +196,9 @@ export async function GET(req: NextRequest) {
     total_bv: visibleMembers.reduce((s, m) => s + m.report.monthly_bv, 0),
   }
 
+  const snapshot = await loadBusinessReportSnapshot(month)
   return NextResponse.json({
+    source: { month, syncedAt: snapshot?.syncedAt ?? null },
     member,
     myReport: myReport
       ? {
@@ -212,5 +218,6 @@ export async function GET(req: NextRequest) {
     orgStats,
     month,
     months,
+  })
   })
 }

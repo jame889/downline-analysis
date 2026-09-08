@@ -4,7 +4,8 @@ import MonthlyTeamHealth from '@/components/MonthlyTeamHealth'
 
 export const dynamic = 'force-dynamic'
 
-export default async function TeamHealthPage({ searchParams }: { searchParams?: { month?: string; member?: string } }) {
+export default async function TeamHealthPage(props: { searchParams?: Promise<{ month?: string; member?: string }> }) {
+  const searchParams = await props.searchParams;
   const session = await getSession()
   const memberId = session?.isAdmin && searchParams?.member ? searchParams.member : session?.memberId ?? ROOT_MEMBER_ID
   const data = await getMonthlyTeamHealth(memberId, searchParams?.month)
