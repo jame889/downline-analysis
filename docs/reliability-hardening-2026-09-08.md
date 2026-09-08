@@ -1,6 +1,6 @@
 # Downline reliability hardening — 2026-09-08
 
-Status: implementation and local verification complete for the listed changes; production rollout pending database migration and post-deploy acceptance.
+Status: implementation, local verification, and the production database migration are complete; production application rollout and post-deploy acceptance remain pending.
 
 ## Changes
 - Durable scrypt password storage, legacy credential migration, fail-closed database errors, durable admin reset, and current admin password metadata.
@@ -19,14 +19,13 @@ Status: implementation and local verification complete for the listed changes; p
 - No console errors on the normal local My Organization flow.
 - Vercel owner CLI restored. Target project identity verified as prj_3a9o3fHpgOWBs3E6J8FPirtmPSK3.
 - GitHub VERCEL_TOKEN replaced with a token scoped to Downline Analyzer, expires 2026-12-07; authenticated project API returned 200.
+- Applied the telegram_deliveries migration to Supabase project dyrofaaovyqetwkdrmmf. Service-role REST read returned 200 with zero existing deliveries; RLS is enabled, anon/authenticated SELECT is denied, and the refreshed Security Advisor reports zero errors and zero warnings.
 - Existing production deployment dpl_8bMYTyiETy81HevAu3aVVXi1Gwik is dated 2026-08-09.
 
 ## Required rollout gates
-1. Apply supabase/migrations/20260908150356_telegram_delivery_ledger.sql to project dyrofaaovyqetwkdrmmf. Current service-role REST access cannot create tables; owner database access is pending.
-2. Verify RLS/privileges and durable claim/receipt behavior against the deployed database before sending.
-3. Deploy this revision, then assert /api/version matches the deployed Git SHA.
-4. Verify production browser/API behavior with admin and a designated normal-member account, including actual source timestamp and API latency.
-5. Verify the next sync -> notification workflow and partial-failure reporting. Do not replay uncertain Telegram sends.
+1. Deploy this revision, then assert /api/version matches the deployed Git SHA.
+2. Verify production browser/API behavior with admin and a designated normal-member account, including actual source timestamp and API latency.
+3. Verify the next sync -> notification workflow and partial-failure reporting. Do not replay uncertain Telegram sends.
 
 The workflow changes must not be enabled without the delivery table and corresponding application deployment. Local tests do not establish production readiness.
 
