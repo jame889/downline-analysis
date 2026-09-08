@@ -93,12 +93,18 @@ export async function GET(req: NextRequest) {
   const subtreeIds = getSubtreeIds(session.memberId, allMembers)
   const subtreeMembers = monthMembers.filter((item) => subtreeIds.has(item.id))
   const myReport = subtreeMembers.find((m) => m.id === session.memberId)?.report ?? null
-  const keymanStructure = analyzeKeymanStructure(
+  const analyzedKeymen = analyzeKeymanStructure(
     session.memberId,
     allMembers,
     monthMembers.map((item) => item.report),
     previousMonth ? historyReportsByMonth[previousMonth] ?? [] : [],
   )
+  const includeKeyman = (item: { leftBv: number; rightBv: number }) => Math.max(item.leftBv, item.rightBv) >= 100
+  const keymanStructure = {
+    left: analyzedKeymen.left.filter(includeKeyman),
+    right: analyzedKeymen.right.filter(includeKeyman),
+    unknown: analyzedKeymen.unknown.filter(includeKeyman),
+  }
 
   const reportByMemberId = new Map(monthMembers.map((item) => [item.id, item.report]))
 
@@ -135,13 +141,9 @@ export async function GET(req: NextRequest) {
     .map((item) => ({
       id: item.id,
       name: item.name,
-      join_date: item.join_date,
-      country: item.country,
       // Preserve the real missing Upline id. The 3D renderer presents that
       // branch separately instead of inventing a Sponsor-based connection.
       upline_id: item.upline_id,
-      sponsor_id: item.sponsor_id,
-      sponsor_name: item.sponsor_id ? (allMembers[item.sponsor_id]?.name ?? '') : '',
       level: item.report.level,
       highest_position: item.report.highest_position,
       is_active: item.report.is_active ? 1 : 0,
@@ -155,11 +157,7 @@ export async function GET(req: NextRequest) {
     .map((item) => ({
       id: item.id,
       name: item.name,
-      join_date: item.join_date,
-      country: item.country,
       upline_id: item.upline_id,
-      sponsor_id: item.sponsor_id,
-      sponsor_name: item.sponsor_id ? (allMembers[item.sponsor_id]?.name ?? '') : '',
       level: 0,
       highest_position: 'Connector',
       is_active: 0,
@@ -170,21 +168,6 @@ export async function GET(req: NextRequest) {
       is_connector: true,
     }))
   const treeNodes = [...reportedTreeNodes, ...connectorTreeNodes]
-  const visibleSponsorIds = new Set(treeNodes.map((item) => item.id))
-  const sponsorDirectory = Object.values(allMembers)
-    .filter((item) => item.sponsor_id && visibleSponsorIds.has(item.sponsor_id))
-    .map((item) => {
-      const report = reportByMemberId.get(item.id)
-      return {
-        id: item.id,
-        name: item.name,
-        sponsor_id: item.sponsor_id,
-        sponsor_name: item.sponsor_id ? (allMembers[item.sponsor_id]?.name ?? '') : '',
-        upline_id: item.upline_id,
-        is_active: report?.is_active ? 1 : 0,
-        highest_position: report?.highest_position ?? '',
-      }
-    })
 
   // Enrich history with THB
   const placementLegIds = getPlacementLegIds(session.memberId, allMembers)
@@ -228,7 +211,6 @@ export async function GET(req: NextRequest) {
     history: historyWithThb,
     directSponsored,
     treeNodes,
-    sponsorDirectory,
     keymanStructure,
     orgStats,
     month,

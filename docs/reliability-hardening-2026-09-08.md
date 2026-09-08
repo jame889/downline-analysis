@@ -18,6 +18,7 @@ Status: implementation, local verification, and the production database migratio
 - Local performance trace: LCP 300ms, INP 30ms, CLS 0.00; local /api/my 65ms. These use bundled local data and are not production benchmarks.
 - No console errors on the normal local My Organization flow.
 - Initial production trace after rollout exposed a 5.9s `/api/my` response and 5.1s LCP caused by per-month snapshot reads. The follow-up batches snapshot history into one database request and uses bundled history for months without a synchronized snapshot; production re-measurement is required after redeploy.
+- The first follow-up reduced `/api/my` to a 2.69s median and LCP to 4.09s. A second follow-up removes an unused sponsor directory, filters hidden Keyman rows before serialization, and trims unused tree fields; production re-measurement is required after redeploy.
 - Vercel owner CLI restored. Target project identity verified as prj_3a9o3fHpgOWBs3E6J8FPirtmPSK3.
 - GitHub VERCEL_TOKEN replaced with a token scoped to Downline Analyzer, expires 2026-12-07; authenticated project API returned 200.
 - Applied the telegram_deliveries migration to Supabase project dyrofaaovyqetwkdrmmf. Service-role REST read returned 200 with zero existing deliveries; RLS is enabled, anon/authenticated SELECT is denied, and the refreshed Security Advisor reports zero errors and zero warnings.
