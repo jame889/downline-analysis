@@ -36,4 +36,5 @@ The workflow changes must not be enabled without the delivery table and correspo
 ## Remaining audit boundaries
 - Existing block/unblock management still uses local files and should be migrated before relying on it as a durable account suspension control.
 - Existing GitHub Pages static export is incompatible with server routes; Vercel is the production deployment target.
+- The legacy GitHub Pages workflow is manual-only so main deployments report the Vercel result without a known static-export failure.
 - Legacy tracked .env.production history requires separate credential rotation/history handling; this change does not expose or rewrite it.

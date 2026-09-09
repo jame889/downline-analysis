@@ -1,8 +1,8 @@
 name: Deploy to GitHub Pages
 
 on:
-  push:
-    branches: [main]
+  # The application uses dynamic server routes and deploys to Vercel.
+  # Keep the legacy static export available only for explicit diagnostics.
   workflow_dispatch:
 
 permissions:
