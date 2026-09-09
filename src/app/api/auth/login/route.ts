@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import {
   checkPassword,
-  createToken, SESSION_COOKIE, ROOT_MEMBER_ID
+  createToken, SESSION_COOKIE, ROOT_MEMBER_ID, passwordOverrideCookieName
 } from '@/lib/auth'
 import { getAllMembers } from '@/lib/db'
 import { recordLoginActivity } from '@/lib/login-activity'
@@ -11,9 +11,10 @@ import path from 'path'
 const DATA_DIR = path.join(process.cwd(), 'data')
 
 export async function POST(req: NextRequest) {
+  try {
   const { memberId, password } = await req.json()
 
-  if (!memberId || !password) {
+  if (typeof memberId !== 'string' || !/^[a-zA-Z0-9_-]{1,64}$/.test(memberId) || typeof password !== 'string' || !password || password.length > 1024) {
     return NextResponse.json({ error: 'กรุณากรอกรหัสสมาชิกและรหัสผ่าน' }, { status: 400 })
   }
 
@@ -31,7 +32,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'บัญชีถูกระงับการใช้งาน' }, { status: 403 })
   }
 
-  if (!checkPassword(memberId, password)) {
+  if (!await checkPassword(memberId, password)) {
     return NextResponse.json({ error: 'รหัสผ่านไม่ถูกต้อง' }, { status: 401 })
   }
 
@@ -59,5 +60,9 @@ export async function POST(req: NextRequest) {
     maxAge: 60 * 60 * 24 * 7, // 7 days
     path: '/',
   })
+  res.cookies.delete(passwordOverrideCookieName(memberId))
   return res
+  } catch {
+    return NextResponse.json({ error: 'ระบบเข้าสู่ระบบไม่พร้อมใช้งาน กรุณาลองใหม่' }, { status: 503 })
+  }
 }

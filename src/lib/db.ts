@@ -1,3 +1,4 @@
+import { requestMemo } from './data-request'
 import fs from 'fs'
 import path from 'path'
 import type { Member, MonthlyReport, MonthlySummary, Position } from './types'
@@ -77,7 +78,7 @@ async function getMonthsSupabase(): Promise<string[]> {
 
 // ── Smart loaders: Supabase + bundled history ─────────────────────────────────
 
-async function loadMembers(): Promise<Record<string, Member>> {
+const loadMembers = requestMemo('loadMembers', async function(): Promise<Record<string, Member>> {
   const local = loadMembersLocal()
   const [latestSnapshot, mbtiOverrides] = await Promise.all([
     loadLatestBusinessReportSnapshot(),
@@ -93,20 +94,20 @@ async function loadMembers(): Promise<Record<string, Member>> {
     if (merged[memberId]) merged[memberId] = { ...merged[memberId], mbti }
   }
   return merged
-}
+})
 
-async function loadReport(month: string): Promise<MonthlyReport[]> {
+const loadReport = requestMemo('loadReport', async function(month: string): Promise<MonthlyReport[]> {
   const live = await loadBusinessReportSnapshot(month)
   if (live?.reports.length) return live.reports
   if (!USE_SUPABASE) return loadReportLocal(month)
   const sb = await loadReportSupabase(month)
   if (sb.length > 0) return sb
   return loadReportLocal(month)
-}
+})
 
 // ── Public API (async) ────────────────────────────────────────────────────────
 
-export async function getAvailableMonths(): Promise<string[]> {
+export const getAvailableMonths = requestMemo('getAvailableMonths', async function(): Promise<string[]> {
   const [liveMonths, localMonths] = await Promise.all([
     loadBusinessReportMonths(),
     Promise.resolve(getMonthsLocal()),
@@ -114,7 +115,7 @@ export async function getAvailableMonths(): Promise<string[]> {
   const sbMonths = liveMonths.length === 0 && USE_SUPABASE ? await getMonthsSupabase() : []
   const all = new Set([...liveMonths, ...sbMonths, ...localMonths])
   return Array.from(all).sort().reverse()
-}
+})
 
 export async function getAllMembers(): Promise<Record<string, Member>> {
   return loadMembers()
@@ -185,13 +186,9 @@ export async function getMember(id: string): Promise<Member | null> {
 export async function getMemberHistory(id: string): Promise<MonthlyReport[]> {
   const months = await getAvailableMonths()
   const sorted = months.slice().sort()
-  const history: MonthlyReport[] = []
-  for (const month of sorted) {
-    const reports = await loadReport(month)
-    const r = reports.find((x) => x.member_id === id)
-    if (r) history.push(r)
-  }
-  return history
+  const history = await Promise.all(sorted.map(async (month) =>
+    (await loadReport(month)).find((row) => row.member_id === id)))
+  return history.filter((row): row is MonthlyReport => Boolean(row))
 }
 
 export async function getTreeData(month: string, rootMemberId?: string) {

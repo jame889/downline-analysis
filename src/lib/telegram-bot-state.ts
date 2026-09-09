@@ -1,6 +1,6 @@
 import fs from 'fs'
 import path from 'path'
-import { hasSupabase, sbInsert, sbSelect, sbUpsert } from './supabase'
+import { hasSupabase, sbInsert, sbSelect, sbUpsert, SupabaseError } from './supabase'
 
 const LOCAL_PATH = path.join(process.cwd(), 'data', 'telegram-bot-state.json')
 
@@ -80,7 +80,7 @@ export async function claimTelegramUpdate(updateId: string): Promise<boolean> {
       await sbInsert('telegram_processed_updates', { update_id: updateId })
       return true
     } catch (error) {
-      if (String(error).includes('duplicate key')) return false
+      if (error instanceof SupabaseError && error.code === '23505') return false
       throw error
     }
   }

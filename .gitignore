@@ -15,6 +15,7 @@ build/
 .env.development.local
 .env.test.local
 .env.production.local
+.env.production
 
 # Sensitive data
 data/telegram.json
@@ -38,3 +39,7 @@ next-env.d.ts
 
 # Vercel
 .vercel
+
+# Supabase CLI temporary metadata
+supabase/.temp/
+.env*

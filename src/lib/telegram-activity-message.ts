@@ -1,25 +1,21 @@
-import { getAvailableMonths, getMembersForMonth } from '@/lib/db'
 import { getDailyActivityAnalysis } from '@/lib/daily-activities'
-import { loadBusinessReportSyncStatus } from '@/lib/business-report-sync'
+import { loadBusinessReportSyncStatus, loadLatestBusinessReportSnapshot } from '@/lib/business-report-sync'
 
 function formatBv(value: number | undefined): string {
-  return (value ?? 0).toLocaleString('en-US')
+  return value === undefined ? 'ไม่พร้อมใช้งาน' : value.toLocaleString('en-US')
 }
 
 export async function buildTelegramActivityMessage(memberId: string): Promise<string> {
-  const [activity, months, syncStatus] = await Promise.all([
+  const [activity, snapshot, syncStatus] = await Promise.all([
     getDailyActivityAnalysis(memberId),
-    getAvailableMonths(),
+    loadLatestBusinessReportSnapshot(),
     loadBusinessReportSyncStatus(),
   ])
-  const latestMonth = months.slice().sort().at(-1)
-  const member = latestMonth
-    ? (await getMembersForMonth(latestMonth)).find((item) => item.id === memberId)
-    : undefined
-  const report = member?.report
-  const syncedAt = syncStatus?.syncedAt ? new Date(syncStatus.syncedAt) : null
+  const latestMonth = snapshot?.month
+  const report = snapshot?.reports.find(item => item.member_id === memberId)
+  const syncedAt = snapshot?.syncedAt ? new Date(snapshot.syncedAt) : null
   const syncedAtValid = syncedAt && !Number.isNaN(syncedAt.getTime())
-  const isStale = !syncedAtValid || Date.now() - syncedAt.getTime() > 36 * 60 * 60 * 1000
+  const isStale = !report || !syncStatus?.ok || !syncStatus.supabaseSynced || snapshot?.checksum !== syncStatus.checksum || !syncedAtValid || Date.now() - syncedAt.getTime() > 36 * 60 * 60 * 1000
   const sourceLabel = syncedAtValid
     ? new Intl.DateTimeFormat('th-TH', {
       timeZone: 'Asia/Bangkok',

@@ -63,7 +63,7 @@ jobs:
             --request POST \
             --header "Authorization: Bearer $BUSINESS_REPORT_SYNC_SECRET" \
             --header "Content-Type: application/json" \
-            --data '{"type":"activity"}' \
+            --data '{"type":"report"}' \
             https://downline-analyzer.vercel.app/api/admin/telegram-broadcast)
           echo "$response"
           BROADCAST_RESPONSE="$response" python -c \

@@ -6,13 +6,14 @@ import LeaderGrowthDashboard from '@/components/LeaderGrowthDashboard'
 export const dynamic = 'force-dynamic'
 
 interface Props {
-  searchParams?: {
+  searchParams?: Promise<{
     member?: string
     months?: string
-  }
+  }>
 }
 
-export default async function GrowthCommandCenterPage({ searchParams }: Props) {
+export default async function GrowthCommandCenterPage(props: Props) {
+  const searchParams = await props.searchParams;
   const session = await getSession()
   const canSelectMember = !!session?.isAdmin
   const requestedMember = searchParams?.member

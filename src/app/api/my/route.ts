@@ -1,9 +1,11 @@
+import { loadBusinessReportSnapshot, loadBusinessReportSnapshotSeries } from '@/lib/business-report-sync'
+import { withDataRequest } from '@/lib/data-request'
 import { NextRequest, NextResponse } from 'next/server'
 import { getSession } from '@/lib/auth'
 import {
-  getAllMembers, getAvailableMonths, getMember, getMemberHistory,
-  getMembersForMonth, getMembersForMonthSubtree, getReportsForMonths, getSubtreeIds, bvToThb
+  getAllMembers, getAvailableMonths, getSubtreeIds, bvToThb
 } from '@/lib/db'
+import { getBundledHistoryReport } from '@/lib/history-db'
 import { analyzeKeymanStructure } from '@/lib/keyman-analysis'
 import type { Member, MonthlyReport } from '@/lib/types'
 
@@ -51,34 +53,58 @@ function getPlacementLegIds(rootId: string, members: Record<string, Member>) {
 }
 
 export async function GET(req: NextRequest) {
+  return withDataRequest(async () => {
   const session = await getSession()
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const { searchParams } = new URL(req.url)
   const months = await getAvailableMonths()
   const month = searchParams.get('month') ?? months[0]
+  if (!months.includes(month)) return NextResponse.json({ error: 'Invalid report month' }, { status: 400 })
   const selectedMonthIndex = months.indexOf(month)
   const previousMonth = selectedMonthIndex >= 0 ? months[selectedMonthIndex + 1] : undefined
 
-  const [member, allMembers] = await Promise.all([
-    getMember(session.memberId),
-    getAllMembers(),
+  // Current synchronized snapshots are authoritative. Fetch their report
+  // series once rather than making one large database request per month.
+  const [selectedSnapshot, snapshotSeries] = await Promise.all([
+    loadBusinessReportSnapshot(month),
+    loadBusinessReportSnapshotSeries(previousMonth ? [previousMonth] : []),
   ])
-  const history = await getMemberHistory(session.memberId)
+  const allMembers = selectedSnapshot?.members ?? await getAllMembers()
+  const member = allMembers[session.memberId] ?? null
+  const historyReportsByMonth = Object.fromEntries(snapshotSeries.map((item) => [item.month, item.reports]))
+  if (selectedSnapshot) historyReportsByMonth[selectedSnapshot.month] = selectedSnapshot.reports
+  for (const historyMonth of months) {
+    if (!historyReportsByMonth[historyMonth]) {
+      historyReportsByMonth[historyMonth] = getBundledHistoryReport(historyMonth)
+    }
+  }
+  const history = months.slice().sort().flatMap((historyMonth) => {
+    const report = historyReportsByMonth[historyMonth]?.find((row) => row.member_id === session.memberId)
+    return report ? [report] : []
+  })
 
   // Organization and report data for the selected month
-  const [subtreeMembers, monthMembers, historyReportsByMonth] = await Promise.all([
-    getMembersForMonthSubtree(month, session.memberId),
-    getMembersForMonth(month),
-    getReportsForMonths(history.map((report) => report.month)),
-  ])
+  const selectedReports = selectedSnapshot?.reports ?? historyReportsByMonth[month] ?? []
+  const monthMembers = selectedReports.flatMap((report) => {
+    const item = allMembers[report.member_id]
+    return item ? [{ ...item, report }] : []
+  })
+  const subtreeIds = getSubtreeIds(session.memberId, allMembers)
+  const subtreeMembers = monthMembers.filter((item) => subtreeIds.has(item.id))
   const myReport = subtreeMembers.find((m) => m.id === session.memberId)?.report ?? null
-  const keymanStructure = analyzeKeymanStructure(
+  const analyzedKeymen = analyzeKeymanStructure(
     session.memberId,
     allMembers,
     monthMembers.map((item) => item.report),
     previousMonth ? historyReportsByMonth[previousMonth] ?? [] : [],
   )
+  const includeKeyman = (item: { leftBv: number; rightBv: number }) => Math.max(item.leftBv, item.rightBv) >= 100
+  const keymanStructure = {
+    left: analyzedKeymen.left.filter(includeKeyman),
+    right: analyzedKeymen.right.filter(includeKeyman),
+    unknown: analyzedKeymen.unknown.filter(includeKeyman),
+  }
 
   const reportByMemberId = new Map(monthMembers.map((item) => [item.id, item.report]))
 
@@ -115,13 +141,9 @@ export async function GET(req: NextRequest) {
     .map((item) => ({
       id: item.id,
       name: item.name,
-      join_date: item.join_date,
-      country: item.country,
       // Preserve the real missing Upline id. The 3D renderer presents that
       // branch separately instead of inventing a Sponsor-based connection.
       upline_id: item.upline_id,
-      sponsor_id: item.sponsor_id,
-      sponsor_name: item.sponsor_id ? (allMembers[item.sponsor_id]?.name ?? '') : '',
       level: item.report.level,
       highest_position: item.report.highest_position,
       is_active: item.report.is_active ? 1 : 0,
@@ -135,11 +157,7 @@ export async function GET(req: NextRequest) {
     .map((item) => ({
       id: item.id,
       name: item.name,
-      join_date: item.join_date,
-      country: item.country,
       upline_id: item.upline_id,
-      sponsor_id: item.sponsor_id,
-      sponsor_name: item.sponsor_id ? (allMembers[item.sponsor_id]?.name ?? '') : '',
       level: 0,
       highest_position: 'Connector',
       is_active: 0,
@@ -150,21 +168,6 @@ export async function GET(req: NextRequest) {
       is_connector: true,
     }))
   const treeNodes = [...reportedTreeNodes, ...connectorTreeNodes]
-  const visibleSponsorIds = new Set(treeNodes.map((item) => item.id))
-  const sponsorDirectory = Object.values(allMembers)
-    .filter((item) => item.sponsor_id && visibleSponsorIds.has(item.sponsor_id))
-    .map((item) => {
-      const report = reportByMemberId.get(item.id)
-      return {
-        id: item.id,
-        name: item.name,
-        sponsor_id: item.sponsor_id,
-        sponsor_name: item.sponsor_id ? (allMembers[item.sponsor_id]?.name ?? '') : '',
-        upline_id: item.upline_id,
-        is_active: report?.is_active ? 1 : 0,
-        highest_position: report?.highest_position ?? '',
-      }
-    })
 
   // Enrich history with THB
   const placementLegIds = getPlacementLegIds(session.memberId, allMembers)
@@ -193,6 +196,7 @@ export async function GET(req: NextRequest) {
   }
 
   return NextResponse.json({
+    source: { month, syncedAt: selectedSnapshot?.syncedAt ?? null },
     member,
     myReport: myReport
       ? {
@@ -207,10 +211,10 @@ export async function GET(req: NextRequest) {
     history: historyWithThb,
     directSponsored,
     treeNodes,
-    sponsorDirectory,
     keymanStructure,
     orgStats,
     month,
     months,
+  })
   })
 }

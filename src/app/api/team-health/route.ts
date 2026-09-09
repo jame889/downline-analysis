@@ -1,3 +1,4 @@
+import { withDataRequest } from '@/lib/data-request'
 import { NextRequest, NextResponse } from 'next/server'
 import { getSession } from '@/lib/auth'
 import { getMonthlyTeamHealth } from '@/lib/team-health'
@@ -5,6 +6,7 @@ import { getMonthlyTeamHealth } from '@/lib/team-health'
 export const dynamic = 'force-dynamic'
 
 export async function GET(request: NextRequest) {
+  return withDataRequest(async () => {
   const session = await getSession()
   if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
@@ -13,4 +15,5 @@ export async function GET(request: NextRequest) {
   const data = await getMonthlyTeamHealth(memberId, request.nextUrl.searchParams.get('month') ?? undefined)
   if (!data) return NextResponse.json({ error: 'ไม่พบข้อมูล Business Report สำหรับสมาชิกนี้' }, { status: 404 })
   return NextResponse.json(data)
+  })
 }

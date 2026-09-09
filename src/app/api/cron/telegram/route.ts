@@ -1,3 +1,4 @@
+import { sendScheduledTelegram } from '@/lib/telegram-delivery'
 import { NextRequest, NextResponse } from 'next/server'
 import { getAvailableMonths, getMembersForMonth, getSubtreeIds } from '@/lib/db'
 import { buildTelegramActivityMessage } from '@/lib/telegram-activity-message'
@@ -76,6 +77,7 @@ const CRON_SCHEDULES: Record<string, { type: 'weekly' | 'wakeup' | 'watchlist' |
 export async function GET(request: NextRequest) {
   // Verify cron secret to prevent unauthorized access
   const cronSecret = process.env.CRON_SECRET
+  if (!cronSecret) return NextResponse.json({ ok: false, error: 'Cron authentication unavailable' }, { status: 503 })
   if (cronSecret) {
     const authHeader = request.headers.get('authorization')
     if (authHeader !== `Bearer ${cronSecret}`) {
@@ -91,6 +93,9 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: 'Invalid cron type. Use: activity, keyman, weekly, wakeup, watchlist' }, { status: 400 })
   }
 
+  if (['activity', 'keyman', 'weekly'].includes(cronType)) {
+    return NextResponse.json({ ok: true, skipped: true, reason: 'Notifications run only after Business Report sync' })
+  }
   const allConfigs = await loadTelegramConfigs()
 
   const results: { memberId: string; success: boolean; error?: string }[] = []
@@ -123,12 +128,13 @@ export async function GET(request: NextRequest) {
         break
     }
 
-    const success = await sendTelegramMessage(config.chatId, message, botToken)
-    results.push({ memberId, success })
+    const date = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Bangkok' }).format(new Date())
+    const delivery = await sendScheduledTelegram({ memberId, chatId: config.chatId, token: botToken, type: cronType, sourceVersion: date, message })
+    results.push({ memberId, ...delivery })
   }
 
   const sent = results.filter((r) => r.success).length
   console.log(`[Cron Telegram] ${schedule.label}: sent ${sent}/${results.length}`)
 
-  return NextResponse.json({ ok: true, type: cronType, sent, total: results.length, results })
+  return NextResponse.json({ ok: sent === results.length, type: cronType, sent, total: results.length, failed: results.length - sent, results }, { status: sent === results.length ? 200 : 207 })
 }
