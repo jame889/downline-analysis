@@ -48,6 +48,9 @@ jobs:
             exit 1
           fi
 
+      - name: Pin supported Groq production model
+        run: npx vercel@56.3.1 env add GROQ_MODEL production --value qwen/qwen3.8-27b --yes --force --scope=bossjoes-projects --token=${{ secrets.VERCEL_TOKEN }}
+
       - name: Pull Production configuration
         run: npx vercel@56.3.1 pull --yes --environment=production --scope=bossjoes-projects --token=${{ secrets.VERCEL_TOKEN }}
 
@@ -67,4 +70,16 @@ jobs:
               revision = json.load(response).get('revision')
           assert revision == os.environ['EXPECTED_REVISION'], 'Production revision mismatch'
           print('Production revision verified:', revision)
+          PYVERIFY
+
+      - name: Verify production Coach AI completion
+        run: |
+          python - <<'PYVERIFY'
+          import json, urllib.request
+          with urllib.request.urlopen('https://downline-analyzer.vercel.app/api/chat', timeout=30) as response:
+              health = json.load(response)
+          assert health.get('online') is True, f"Coach AI offline: {health}"
+          assert health.get('provider') == 'groq', f"Unexpected primary provider: {health}"
+          assert health.get('model') == 'qwen/qwen3.8-27b', f"Unexpected Groq model: {health}"
+          print('Production Coach AI completion verified:', health['provider'], health['model'])
           PYVERIFY
