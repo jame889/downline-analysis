@@ -65,11 +65,19 @@ jobs:
           EXPECTED_REVISION: ${{ github.sha }}
         run: |
           python - <<'PYVERIFY'
-          import json, os, urllib.request
-          with urllib.request.urlopen('https://downline-analyzer.vercel.app/api/version', timeout=30) as response:
-              revision = json.load(response).get('revision')
-          assert revision == os.environ['EXPECTED_REVISION'], 'Production revision mismatch'
-          print('Production revision verified:', revision)
+          import json, os, time, urllib.request
+          expected = os.environ['EXPECTED_REVISION']
+          revision = None
+          for attempt in range(12):
+              with urllib.request.urlopen('https://downline-analyzer.vercel.app/api/version', timeout=30) as response:
+                  revision = json.load(response).get('revision')
+              if revision == expected:
+                  print('Production revision verified:', revision)
+                  break
+              if attempt < 11:
+                  time.sleep(5)
+          else:
+              raise AssertionError(f'Production revision mismatch: expected {expected}, received {revision}')
           PYVERIFY
 
       - name: Verify production Coach AI completion
