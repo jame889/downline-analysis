@@ -30,6 +30,25 @@ class ReportColumnsTest(unittest.TestCase):
         self.assertEqual(new_members['900057']['sponsor_id'], '900001')
         self.assertEqual(new_members['900057']['upline_id'], '900002')
 
+    def test_current_first_global_header_aliases_are_accepted(self):
+        baseline_members, renamed_members = {}, {}
+        baseline = process_file(self.worksheet(), '2026-09', baseline_members)
+        renamed = self.worksheet()
+        renamed.cell(1, 6).value = 'ตำแหน่งที่รับรายได้'
+        renamed.cell(1, 17).value = 'ควอลิไฟด์'
+        current = process_file(renamed, '2026-09', renamed_members)
+
+        self.assertEqual(baseline, current)
+        self.assertEqual(baseline_members, renamed_members)
+        self.assertEqual(current[0]['income_position'], 'SP')
+        self.assertTrue(current[0]['is_qualified'])
+
+    def test_alias_and_legacy_header_collision_is_rejected(self):
+        sheet = self.worksheet()
+        sheet.cell(1, 7).value = 'ตำแหน่งที่รับรายได้'
+        with self.assertRaisesRegex(ValueError, 'Duplicate First Global column'):
+            process_file(sheet, '2026-09', {})
+
     def test_missing_bv_header_rejected(self):
         sheet = self.worksheet()
         sheet.cell(1, 24).value = 'Unknown BV'
