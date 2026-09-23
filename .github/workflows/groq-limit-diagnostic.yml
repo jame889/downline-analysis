@@ -1,0 +1,75 @@
+name: Groq Limit Diagnostic
+
+on:
+  push:
+    branches:
+      - codex/production-acceptance-final
+    paths:
+      - .github/workflows/groq-limit-diagnostic.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+      VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+      VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      - name: Pull project link
+        run: npx vercel@56.3.1 pull --yes --environment=production --scope=bossjoes-projects --token="$VERCEL_TOKEN"
+
+      - name: Probe Groq request sizes
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > /tmp/groq-probe.mjs <<'NODE'
+          const key = process.env.GROQ_API_KEY
+          const model = process.env.GROQ_MODEL || 'qwen/qwen3.8-27b'
+          if (!key) throw new Error('GROQ_API_KEY unavailable')
+
+          for (const chars of [500, 4000, 12000, 24000, 40000]) {
+            const prompt = 'ทดสอบ '.repeat(Math.ceil(chars / 6)).slice(0, chars)
+            const started = Date.now()
+            const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+              method: 'POST',
+              headers: {
+                Authorization: `Bearer ${key}`,
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({
+                model,
+                messages: [{ role: 'user', content: prompt }],
+                stream: false,
+                temperature: 0,
+                max_tokens: 32,
+                reasoning_effort: 'none',
+              }),
+            })
+            const text = await response.text()
+            console.log(JSON.stringify({
+              chars,
+              status: response.status,
+              durationMs: Date.now() - started,
+              limitTokens: response.headers.get('x-ratelimit-limit-tokens'),
+              remainingTokens: response.headers.get('x-ratelimit-remaining-tokens'),
+              resetTokens: response.headers.get('x-ratelimit-reset-tokens'),
+              retryAfter: response.headers.get('retry-after'),
+              body: response.ok ? 'OK' : text.slice(0, 600),
+            }))
+            await new Promise(r => setTimeout(r, 1200))
+          }
+          NODE
+
+          npx vercel@56.3.1 env run -e production -- node /tmp/groq-probe.mjs
