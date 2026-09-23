@@ -1,0 +1,107 @@
+name: Diagnose Jarvis Downline Push
+
+on:
+  push:
+    branches: [codex/diagnose-jarvis-push]
+    paths:
+      - .github/workflows/diagnose-jarvis-push.yml
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+      VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      - name: Pull Production environment safely
+        run: npx vercel@56.3.1 pull --yes --environment=production --scope=bossjoes-projects --token=${{ secrets.VERCEL_TOKEN }}
+
+      - name: Inspect Jarvis transport configuration
+        shell: bash
+        run: |
+          set -euo pipefail
+          set -a
+          source .vercel/.env.production.local
+          set +a
+          node --input-type=module <<'NODE'
+          const safeUrl = (value) => {
+            try {
+              const u = new URL(value)
+              return { protocol: u.protocol, host: u.host, pathname: u.pathname }
+            } catch { return null }
+          }
+          const ingest = process.env.JARVIS_DOWNLINE_INGEST_URL || 'https://mac-mini.tailac7560.ts.net/jarvis-downline/api/jarvis/downline/events'
+          const clientIdentity = process.env.JARVIS_DOWNLINE_CLIENT_IDENTITY_URL || 'https://mac-mini.tailac7560.ts.net/jarvis-downline/api/jarvis/downline/client-identity'
+          console.log(JSON.stringify({
+            jwtSecretConfigured: Boolean(process.env.JWT_SECRET),
+            jwtSecretLengthOk: (process.env.JWT_SECRET || '').trim().length >= 32,
+            legacyIngestSecretConfigured: Boolean((process.env.JARVIS_DOWNLINE_INGEST_SECRET || '').trim()),
+            legacyFallbackSecretConfigured: Boolean((process.env.JARVIS_DOWNLINE_FALLBACK_SECRET || '').trim()),
+            ingest: safeUrl(ingest),
+            clientIdentity: safeUrl(clientIdentity),
+          }))
+          NODE
+
+      - name: Check Jarvis client identity reachability
+        shell: bash
+        run: |
+          set -euo pipefail
+          set -a
+          source .vercel/.env.production.local
+          set +a
+          url="${JARVIS_DOWNLINE_CLIENT_IDENTITY_URL:-https://mac-mini.tailac7560.ts.net/jarvis-downline/api/jarvis/downline/client-identity}"
+          code=$(curl --silent --show-error --max-time 12 --output /tmp/jarvis-identity.json --write-out '%{http_code}' "$url" || true)
+          echo "JARVIS_CLIENT_IDENTITY_HTTP=$code"
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs'
+          const path='/tmp/jarvis-identity.json'
+          if (!fs.existsSync(path)) {
+            console.log('JARVIS_CLIENT_IDENTITY_BODY=unavailable')
+            process.exit(0)
+          }
+          const text=fs.readFileSync(path,'utf8')
+          try {
+            const d=JSON.parse(text)
+            console.log(JSON.stringify({
+              keyId:d.keyId || null,
+              algorithm:d.algorithm || null,
+              hasPublicKey:Boolean(d.publicKey),
+              error:d.error || null,
+            }))
+          } catch {
+            console.log('JARVIS_CLIENT_IDENTITY_NON_JSON', text.slice(0,300))
+          }
+          NODE
+
+      - name: Check Downline server identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          code=$(curl --silent --show-error --max-time 12 --output /tmp/downline-identity.json --write-out '%{http_code}' https://downline-analyzer.vercel.app/api/jarvis/downline-identity || true)
+          echo "DOWNLINE_IDENTITY_HTTP=$code"
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs'
+          const text=fs.existsSync('/tmp/downline-identity.json')?fs.readFileSync('/tmp/downline-identity.json','utf8'):''
+          try {
+            const d=JSON.parse(text)
+            console.log(JSON.stringify({ok:d.ok,keyId:d.keyId||null,algorithm:d.algorithm||null,hasPublicKey:Boolean(d.publicKey)}))
+          } catch { console.log('DOWNLINE_IDENTITY_NON_JSON', text.slice(0,300)) }
+          NODE
+
+      - name: Inspect recent Vercel Jarvis errors
+        shell: bash
+        run: |
+          set +e
+          npx vercel@56.3.1 logs --environment production --query "Jarvis" --since 2h --limit 100 --expand --scope=bossjoes-projects --token=${{ secrets.VERCEL_TOKEN }} 2>&1 | tail -200
+          echo "---- provider/network failures ----"
+          npx vercel@56.3.1 logs --environment production --query "jarvis" --since 2h --level error --limit 100 --expand --scope=bossjoes-projects --token=${{ secrets.VERCEL_TOKEN }} 2>&1 | tail -200
+          exit 0
