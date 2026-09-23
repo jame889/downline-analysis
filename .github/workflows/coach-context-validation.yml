@@ -1,0 +1,38 @@
+name: Coach Context Validation
+
+on:
+  push:
+    branches:
+      - codex/production-acceptance-final
+    paths:
+      - src/app/api/chat/route.ts
+      - src/lib/coach-ai.ts
+      - .github/workflows/coach-context-validation.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    env:
+      VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+      VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+      VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+      - name: Unit tests
+        run: npm test
+      - name: Typecheck
+        run: npm run typecheck
+      - name: Pull Production configuration
+        run: npx vercel@56.3.1 pull --yes --environment=production --scope=bossjoes-projects --token="$VERCEL_TOKEN"
+      - name: Production-config build
+        run: npx vercel@56.3.1 build --prod --scope=bossjoes-projects --token="$VERCEL_TOKEN"
