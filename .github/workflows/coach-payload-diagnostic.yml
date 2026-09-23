@@ -1,0 +1,99 @@
+name: Coach Payload Diagnostic
+
+on:
+  push:
+    branches:
+      - codex/production-acceptance-final
+    paths:
+      - .github/workflows/coach-payload-diagnostic.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+      VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+      VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+      BASE_URL: https://downline-analyzer.vercel.app
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Pull Production configuration
+        run: npx vercel@56.3.1 pull --yes --environment=production --scope=bossjoes-projects --token="$VERCEL_TOKEN"
+
+      - name: Compare small vs full Coach payload
+        shell: bash
+        run: |
+          set -euo pipefail
+          set -a
+          source .vercel/.env.production.local
+          set +a
+
+          node --input-type=module <<'NODE'
+          import { SignJWT } from 'jose'
+
+          const base = process.env.BASE_URL
+          const rootId = process.env.NEXT_PUBLIC_ROOT_MEMBER_ID || '900057'
+          const secret = process.env.JWT_SECRET
+          if (!secret || secret.length < 32) throw new Error('JWT secret unavailable')
+
+          const token = await new SignJWT({ memberId: rootId, name: 'Payload Diagnostic', isAdmin: true })
+            .setProtectedHeader({ alg: 'HS256' })
+            .setIssuedAt()
+            .setExpirationTime('10m')
+            .sign(new TextEncoder().encode(secret))
+          const headers = { cookie: `dl_session=${token}` }
+
+          const coachRes = await fetch(`${base}/api/coach`, { headers })
+          if (!coachRes.ok) throw new Error(`Coach data HTTP ${coachRes.status}`)
+          const coach = await coachRes.json()
+
+          const variants = [
+            ['small', null],
+            ['minimal', {
+              member: coach.member,
+              balance: coach.balance,
+              actions: coach.actions?.slice?.(0, 5) ?? [],
+              safeLines: coach.safeLines,
+              gen1: coach.gen1?.slice?.(0, 8) ?? [],
+              myPersonalSponsors: coach.myPersonalSponsors,
+            }],
+            ['full', coach],
+          ]
+
+          for (const [name, coachData] of variants) {
+            const body = JSON.stringify({
+              messages: [{ role: 'user', content: 'ตอบสั้น ๆ ว่า OK' }],
+              coachData,
+            })
+            const started = Date.now()
+            const response = await fetch(`${base}/api/chat`, {
+              method: 'POST',
+              headers: { ...headers, 'content-type': 'application/json' },
+              body,
+            })
+            const text = await response.text()
+            console.log(JSON.stringify({
+              variant: name,
+              requestBytes: Buffer.byteLength(body),
+              provider: response.headers.get('x-coach-provider'),
+              status: response.status,
+              durationMs: Date.now() - started,
+              responseBytes: Buffer.byteLength(text),
+            }))
+          }
+          NODE
