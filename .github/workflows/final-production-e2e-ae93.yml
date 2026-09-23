@@ -1,0 +1,168 @@
+name: Final Production E2E ae93
+
+on:
+  push:
+    branches:
+      - codex/final-acceptance-ae93
+    paths:
+      - .github/workflows/final-production-e2e-ae93.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+      VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+      VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+      BASE_URL: https://downline-analyzer.vercel.app
+      EXPECTED_REVISION: ae93e2724f2bae078e2a8a6b7b49a3aa2ef76c53
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+
+      - name: Pull Production configuration
+        run: npx vercel@56.3.1 pull --yes --environment=production --scope=bossjoes-projects --token="$VERCEL_TOKEN"
+
+      - name: Full production E2E
+        shell: bash
+        run: |
+          set -euo pipefail
+          set -a
+          source .vercel/.env.production.local
+          set +a
+
+          node --input-type=module <<'NODE'
+          import { SignJWT } from 'jose'
+          const base=process.env.BASE_URL
+          const rootId=process.env.NEXT_PUBLIC_ROOT_MEMBER_ID || '900057'
+          const secret=process.env.JWT_SECRET
+          const expected=process.env.EXPECTED_REVISION
+          const assert=(x,m)=>{if(!x) throw new Error(m)}
+          const json=async(url,options={})=>{
+            const response=await fetch(url,{redirect:'manual',...options})
+            const text=await response.text()
+            let data=null; try{data=text?JSON.parse(text):null}catch{}
+            return {response,text,data}
+          }
+
+          const version=await json(`${base}/api/version`)
+          assert(version.response.ok && version.data?.revision===expected,
+            `revision mismatch: ${version.data?.revision}`)
+          console.log('PASS revision',version.data.revision)
+
+          const health=await json(`${base}/api/chat`)
+          const groq=health.data?.providers?.find(p=>p.provider==='groq')
+          const openrouter=health.data?.providers?.find(p=>p.provider==='openrouter')
+          assert(health.response.ok && groq?.online===true && openrouter?.online===true,
+            `provider health failed: ${health.text.slice(0,300)}`)
+          console.log('PASS provider health groq+openrouter')
+
+          assert(secret && secret.length>=32,'JWT secret unavailable')
+          const token=await new SignJWT({memberId:rootId,name:'Final Production Acceptance',isAdmin:true})
+            .setProtectedHeader({alg:'HS256'}).setIssuedAt().setExpirationTime('15m')
+            .sign(new TextEncoder().encode(secret))
+          const authHeaders={cookie:`dl_session=${token}`}
+
+          const dashboard=await fetch(`${base}/`,{headers:authHeaders,redirect:'manual'})
+          const dashboardHtml=await dashboard.text()
+          assert(dashboard.status===200 && dashboardHtml.includes('Dashboard'),
+            `Dashboard HTTP ${dashboard.status}`)
+          console.log('PASS Dashboard')
+
+          const summary=await json(`${base}/api/summary`,{headers:authHeaders})
+          assert(summary.response.ok && Array.isArray(summary.data?.months) && summary.data.months.length>0,
+            'summary unavailable')
+          const month=summary.data.months[0]
+
+          const members=await json(`${base}/api/members?month=${encodeURIComponent(month)}`,{headers:authHeaders})
+          assert(members.response.ok && Array.isArray(members.data?.members) && members.data.members.length>0,
+            'member lookup unavailable')
+          console.log('PASS member lookup',members.data.members.length,'month',month)
+
+          let loginCookie='', loginMember=''
+          const attempts=[]
+          if(process.env.ROOT_INITIAL_PASSWORD) attempts.push({id:rootId,password:process.env.ROOT_INITIAL_PASSWORD})
+          for(const m of members.data.members){
+            const id=String(m.id||'')
+            if(!id || id===rootId) continue
+            attempts.push({id,password:id})
+            if(attempts.length>=12) break
+          }
+          for(const a of attempts){
+            const login=await json(`${base}/api/auth/login`,{
+              method:'POST',headers:{'content-type':'application/json'},
+              body:JSON.stringify({memberId:a.id,password:a.password})
+            })
+            if(login.response.status===200 && login.data?.ok===true){
+              const c=(login.response.headers.get('set-cookie')||'').split(';')[0]
+              if(c.startsWith('dl_session=')){loginCookie=c;loginMember=a.id;break}
+            }
+          }
+          assert(loginCookie,'Login acceptance failed')
+          const my=await fetch(`${base}/my`,{headers:{cookie:loginCookie},redirect:'manual'})
+          assert(loginMember===rootId ? [200,307,308].includes(my.status) : my.status===200,
+            `authenticated navigation HTTP ${my.status}`)
+          console.log('PASS Login',loginMember)
+
+          const team=await json(`${base}/api/team-health?member=${encodeURIComponent(rootId)}&month=${encodeURIComponent(month)}`,{headers:authHeaders})
+          assert(team.response.ok && String(team.data?.member?.id||'')===rootId,
+            `Team Health failed HTTP ${team.response.status}: ${team.text.slice(0,200)}`)
+          console.log('PASS Team Health')
+
+          const coach=await json(`${base}/api/coach`,{headers:authHeaders})
+          assert(coach.response.ok && coach.data?.member,'Coach data unavailable')
+          const body=JSON.stringify({
+            messages:[{role:'user',content:'ทดสอบ Production Acceptance: จากข้อมูลทีมตอนนี้ สรุปสิ่งที่ควรโฟกัสวันนี้แบบสั้น 3 ข้อ'}],
+            coachData:coach.data
+          })
+          const started=Date.now()
+          const chat=await fetch(`${base}/api/chat`,{
+            method:'POST',
+            headers:{...authHeaders,'content-type':'application/json'},
+            body
+          })
+          const chatText=await chat.text()
+          const provider=chat.headers.get('x-coach-provider')
+          assert(chat.ok && chatText.trim().length>20,`Coach chat failed HTTP ${chat.status}`)
+          assert(provider==='groq',`Coach full-context expected groq, got ${provider}`)
+          console.log('PASS Coach JOE full-context provider=groq',
+            'requestBytes='+Buffer.byteLength(body),'durationMs='+(Date.now()-started))
+
+          const tg=await json(`${base}/api/telegram`,{headers:authHeaders})
+          assert(tg.response.ok && tg.data?.configured===true,
+            `Telegram config failed: ${tg.text.slice(0,200)}`)
+          const send=await json(`${base}/api/telegram/send`,{
+            method:'POST',headers:{...authHeaders,'content-type':'application/json'},
+            body:JSON.stringify({type:'activity'})
+          })
+          assert(send.response.ok && send.data?.success===true,
+            `Telegram send failed HTTP ${send.response.status}: ${send.text.slice(0,200)}`)
+          console.log('PASS Telegram real delivery')
+          console.log('FULL_E2E_PASS')
+          NODE
+
+      - name: Vercel runtime error gate
+        shell: bash
+        run: |
+          set -euo pipefail
+          npx vercel@56.3.1 logs --environment production --status-code 5xx --since 30m --limit 100 --json --scope=bossjoes-projects --token="$VERCEL_TOKEN" > /tmp/5xx.jsonl
+          npx vercel@56.3.1 logs --environment production --level error --since 30m --limit 100 --json --scope=bossjoes-projects --token="$VERCEL_TOKEN" > /tmp/errors.jsonl
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs'
+          const parse=p=>fs.readFileSync(p,'utf8').split(/\r?\n/).filter(Boolean).flatMap(l=>{try{return[JSON.parse(l)]}catch{return[]}})
+          const five=parse('/tmp/5xx.jsonl'), errors=parse('/tmp/errors.jsonl')
+          console.log('VERCEL_5XX_COUNT='+five.length)
+          console.log('VERCEL_ERROR_LOG_COUNT='+errors.length)
+          if(five.length||errors.length) process.exit(1)
+          console.log('PASS Vercel runtime error gate')
+          NODE
