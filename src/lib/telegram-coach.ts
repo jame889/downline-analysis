@@ -220,8 +220,17 @@ ${recentActivities || 'ยังไม่มีบันทึก'}
     ...history.slice(-6).map((message) => ({ role: message.role, content: protect(message.content.slice(0, 1500)) })),
     { role: 'user', content: protect(question.slice(0, 2000)) },
   ]
+  const aiStartedAt = Date.now()
   try {
     const result = await generateCoachReply(aiMessages)
+    console.info(JSON.stringify({
+      level: 'info',
+      message: 'coach_ai_completed',
+      channel: 'telegram',
+      provider: result.provider,
+      model: result.model,
+      durationMs: Date.now() - aiStartedAt,
+    }))
     return restore(result.content).replace(/\[CHART:[^\]]+\]/g, '').trim()
   } catch (error) {
     console.warn('[telegram-coach] Cloud AI unavailable', error)
