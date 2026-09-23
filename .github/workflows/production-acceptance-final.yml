@@ -35,6 +35,7 @@ jobs:
         run: npx vercel@56.3.1 pull --yes --environment=production --scope=bossjoes-projects --token=${{ secrets.VERCEL_TOKEN }}
 
       - name: Live production acceptance
+        id: live
         shell: bash
         run: |
           set -euo pipefail
@@ -43,6 +44,7 @@ jobs:
           set +a
 
           node --input-type=module <<'NODE'
+          import fs from 'node:fs'
           import { SignJWT } from 'jose'
 
           const base = process.env.BASE_URL
@@ -61,7 +63,6 @@ jobs:
             if (!condition) throw new Error(message)
           }
 
-          // 0) Revision and provider health
           const version = await json(`${base}/api/version`)
           assert(version.response.ok, `/api/version HTTP ${version.response.status}`)
           console.log('PASS version', version.data?.revision || 'unknown')
@@ -74,7 +75,6 @@ jobs:
           assert(openrouter?.online === true, `OpenRouter not online: ${JSON.stringify(openrouter)}`)
           console.log('PASS provider health groq+openrouter online')
 
-          // Create a short-lived admin session exactly as production middleware expects.
           const token = await new SignJWT({ memberId: rootId, name: 'Production Acceptance', isAdmin: true })
             .setProtectedHeader({ alg: 'HS256' })
             .setIssuedAt()
@@ -83,13 +83,11 @@ jobs:
           const adminCookie = `dl_session=${token}`
           const authHeaders = { cookie: adminCookie }
 
-          // 1) Dashboard
           const dashboard = await fetch(`${base}/`, { headers: authHeaders, redirect: 'manual' })
           const dashboardHtml = await dashboard.text()
           assert(dashboard.status === 200 && dashboardHtml.includes('Dashboard'), `Dashboard failed HTTP ${dashboard.status}`)
           console.log('PASS Dashboard')
 
-          // 2) Member lookup + latest data month
           const summary = await json(`${base}/api/summary`, { headers: authHeaders })
           assert(summary.response.ok && Array.isArray(summary.data?.months) && summary.data.months.length > 0, `Summary failed: ${summary.text.slice(0,200)}`)
           const latestMonth = summary.data.months[0]
@@ -97,13 +95,10 @@ jobs:
           assert(members.response.ok && Array.isArray(members.data?.members) && members.data.members.length > 0, `Members API failed: ${members.text.slice(0,200)}`)
           console.log('PASS member lookup', members.data.members.length, 'members', 'month', latestMonth)
 
-          // 3) Login: prefer root credential if configured; otherwise use documented default password on current non-root members.
           let loginCookie = ''
           let loginMember = ''
           const attempts = []
-          if (process.env.ROOT_INITIAL_PASSWORD) {
-            attempts.push({ id: rootId, password: process.env.ROOT_INITIAL_PASSWORD })
-          }
+          if (process.env.ROOT_INITIAL_PASSWORD) attempts.push({ id: rootId, password: process.env.ROOT_INITIAL_PASSWORD })
           for (const member of members.data.members) {
             const id = String(member.id || '')
             if (!id || id === rootId) continue
@@ -117,8 +112,7 @@ jobs:
               body: JSON.stringify({ memberId: attempt.id, password: attempt.password }),
             })
             if (login.response.status === 200 && login.data?.ok === true) {
-              const setCookie = login.response.headers.get('set-cookie') || ''
-              const cookie = setCookie.split(';')[0]
+              const cookie = (login.response.headers.get('set-cookie') || '').split(';')[0]
               if (cookie.startsWith('dl_session=')) {
                 loginCookie = cookie
                 loginMember = attempt.id
@@ -131,19 +125,17 @@ jobs:
 
           const myPage = await fetch(`${base}/my`, { headers: { cookie: loginCookie }, redirect: 'manual' })
           if (loginMember === rootId) {
-            assert(myPage.status === 307 || myPage.status === 308 || myPage.status === 200, `Authenticated root navigation failed HTTP ${myPage.status}`)
+            assert([200, 307, 308].includes(myPage.status), `Authenticated root navigation failed HTTP ${myPage.status}`)
           } else {
             assert(myPage.status === 200, `/my failed HTTP ${myPage.status}`)
           }
           console.log('PASS authenticated navigation')
 
-          // 4) Team Health
           const teamHealth = await json(`${base}/api/team-health?member=${encodeURIComponent(rootId)}&month=${encodeURIComponent(latestMonth)}`, { headers: authHeaders })
           assert(teamHealth.response.ok, `Team Health failed HTTP ${teamHealth.response.status}: ${teamHealth.text.slice(0,250)}`)
           assert(String(teamHealth.data?.member?.id || '') === rootId, 'Team Health returned unexpected root member')
           console.log('PASS Team Health')
 
-          // 5) Coach JOE data + live Groq completion
           const coach = await json(`${base}/api/coach`, { headers: authHeaders })
           assert(coach.response.ok && coach.data?.member, `Coach data failed HTTP ${coach.response.status}: ${coach.text.slice(0,250)}`)
           const chat = await fetch(`${base}/api/chat`, {
@@ -155,12 +147,11 @@ jobs:
             }),
           })
           const chatText = await chat.text()
-          const chatProvider = chat.headers.get('x-coach-provider')
+          const chatProvider = chat.headers.get('x-coach-provider') || 'unknown'
           assert(chat.ok && chatText.trim().length > 10, `Coach chat failed HTTP ${chat.status}: ${chatText.slice(0,250)}`)
-          assert(chatProvider === 'groq', `Coach JOE expected groq, got ${chatProvider}`)
-          console.log('PASS Coach JOE provider=groq')
+          fs.appendFileSync(process.env.GITHUB_OUTPUT, `coach_provider=${chatProvider}\n`)
+          console.log('PASS Coach JOE response provider=' + chatProvider)
 
-          // 6) Telegram config + one real delivery
           const telegramConfig = await json(`${base}/api/telegram`, { headers: authHeaders })
           assert(telegramConfig.response.ok && telegramConfig.data?.configured === true, `Telegram not configured: ${telegramConfig.text.slice(0,250)}`)
           const telegramSend = await json(`${base}/api/telegram/send`, {
@@ -170,11 +161,12 @@ jobs:
           })
           assert(telegramSend.response.ok && telegramSend.data?.success === true, `Telegram delivery failed HTTP ${telegramSend.response.status}: ${telegramSend.text.slice(0,250)}`)
           console.log('PASS Telegram real delivery')
-
           console.log('LIVE_ACCEPTANCE_PASS')
           NODE
 
       - name: Force Groq failure and verify OpenRouter takeover
+        id: failover
+        continue-on-error: true
         shell: bash
         run: |
           set -euo pipefail
@@ -201,11 +193,15 @@ jobs:
           rm -f tests/production-failover.live.test.ts
 
       - name: Inspect Vercel production runtime errors
+        id: logs
+        if: always()
+        continue-on-error: true
         shell: bash
         run: |
           set -euo pipefail
           npx vercel@56.3.1 logs --environment production --status-code 5xx --since 1h --limit 100 --json --scope=bossjoes-projects --token=${{ secrets.VERCEL_TOKEN }} > /tmp/vercel-5xx.jsonl
           npx vercel@56.3.1 logs --environment production --level error --since 1h --limit 100 --json --scope=bossjoes-projects --token=${{ secrets.VERCEL_TOKEN }} > /tmp/vercel-errors.jsonl
+          npx vercel@56.3.1 logs --environment production --query "coach_ai_provider_failed" --since 1h --limit 100 --json --scope=bossjoes-projects --token=${{ secrets.VERCEL_TOKEN }} > /tmp/vercel-provider-failures.jsonl
 
           node --input-type=module <<'NODE'
           import fs from 'node:fs'
@@ -214,12 +210,46 @@ jobs:
           })
           const five = parse('/tmp/vercel-5xx.jsonl')
           const errors = parse('/tmp/vercel-errors.jsonl')
+          const providerFailures = parse('/tmp/vercel-provider-failures.jsonl')
           console.log(`VERCEL_5XX_COUNT=${five.length}`)
           console.log(`VERCEL_ERROR_LOG_COUNT=${errors.length}`)
+          console.log(`COACH_PROVIDER_FAILURE_COUNT=${providerFailures.length}`)
           if (five.length) console.log('5xx samples:', five.slice(0, 5).map((x) => ({ path: x.requestPath || x.path, statusCode: x.statusCode, message: x.message })))
           if (errors.length) console.log('error samples:', errors.slice(0, 5).map((x) => ({ path: x.requestPath || x.path, statusCode: x.statusCode, message: x.message })))
-          if (five.length || errors.length) process.exit(1)
+          if (providerFailures.length) console.log('provider failure samples:', providerFailures.slice(0, 5).map((x) => ({ path: x.requestPath || x.path, level: x.level, message: x.message })))
+          fs.appendFileSync(process.env.GITHUB_OUTPUT, `five_count=${five.length}\nerror_count=${errors.length}\nprovider_failure_count=${providerFailures.length}\n`)
           NODE
 
-      - name: Production Ready
-        run: echo "DOWNLINE ANALYZER PRODUCTION READY"
+      - name: Production Ready Gate
+        if: always()
+        env:
+          LIVE_OUTCOME: ${{ steps.live.outcome }}
+          LIVE_PROVIDER: ${{ steps.live.outputs.coach_provider }}
+          FAILOVER_OUTCOME: ${{ steps.failover.outcome }}
+          LOGS_OUTCOME: ${{ steps.logs.outcome }}
+          VERCEL_5XX_COUNT: ${{ steps.logs.outputs.five_count }}
+          VERCEL_ERROR_COUNT: ${{ steps.logs.outputs.error_count }}
+          PROVIDER_FAILURE_COUNT: ${{ steps.logs.outputs.provider_failure_count }}
+        run: |
+          echo "LIVE_OUTCOME=$LIVE_OUTCOME"
+          echo "LIVE_PROVIDER=$LIVE_PROVIDER"
+          echo "FAILOVER_OUTCOME=$FAILOVER_OUTCOME"
+          echo "LOGS_OUTCOME=$LOGS_OUTCOME"
+          echo "VERCEL_5XX_COUNT=$VERCEL_5XX_COUNT"
+          echo "VERCEL_ERROR_COUNT=$VERCEL_ERROR_COUNT"
+          echo "PROVIDER_FAILURE_COUNT=$PROVIDER_FAILURE_COUNT"
+
+          if [ "$LIVE_OUTCOME" != "success" ] || [ "$FAILOVER_OUTCOME" != "success" ] || [ "$LOGS_OUTCOME" != "success" ]; then
+            echo "DOWNLINE ANALYZER NOT READY"
+            exit 1
+          fi
+          if [ "$LIVE_PROVIDER" != "groq" ]; then
+            echo "DOWNLINE ANALYZER NOT READY: primary Coach provider is $LIVE_PROVIDER"
+            exit 1
+          fi
+          if [ "${VERCEL_5XX_COUNT:-999}" != "0" ] || [ "${VERCEL_ERROR_COUNT:-999}" != "0" ]; then
+            echo "DOWNLINE ANALYZER NOT READY: Vercel runtime errors detected"
+            exit 1
+          fi
+
+          echo "DOWNLINE ANALYZER PRODUCTION READY"
