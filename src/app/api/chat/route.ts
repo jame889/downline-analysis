@@ -5,6 +5,7 @@ import { generateCoachReply, getCoachAiHealth, type AiMessage } from '@/lib/coac
 import { getSession } from '@/lib/auth'
 import type { DailyActivityAnalysis } from '@/lib/daily-activities'
 import { buildRankAdvancementKnowledge, rankAdvancementReply } from '@/lib/rank-advancement'
+import { formatKeymanGoalQueryReply, type KeymanGoalSource } from '@/lib/keyman-goal-candidates'
 
 export const maxDuration = 60
 
@@ -257,6 +258,24 @@ type KeymanRiskPromptEntry = {
   id: string; name: string; side: string; position: string; isActive: boolean
   risk: 'critical' | 'warning'; currentNewBv: number; previousNewBv: number
   changePct: number | null; weakSide: 'ซ้าย' | 'ขวา'; reasons: string[]; action: string
+}
+
+function keymanGoalQueryReply(coachData: Record<string, unknown>, question: string): string | null {
+  const d = coachData as {
+    month?: string
+    keymanStructure?: {
+      left?: KeymanGoalSource[]
+      right?: KeymanGoalSource[]
+      unknown?: KeymanGoalSource[]
+    }
+  }
+  const keymen = [
+    ...(d.keymanStructure?.left ?? []),
+    ...(d.keymanStructure?.right ?? []),
+    ...(d.keymanStructure?.unknown ?? []),
+  ]
+  if (!keymen.length) return null
+  return formatKeymanGoalQueryReply(question, keymen, d.month)
 }
 
 function isKeymanRiskQuestion(question: string) {
@@ -674,6 +693,9 @@ export async function POST(req: NextRequest) {
     if (rankReply) return ndjsonResponse(rankReply)
 
     if (coachData) {
+      const goalQuery = keymanGoalQueryReply(coachData, latestQuestion)
+      if (goalQuery) return ndjsonResponse(goalQuery)
+
       const relationship = relationshipReply(coachData, latestQuestion)
       if (relationship) return ndjsonResponse(relationship)
 

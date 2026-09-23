@@ -9,6 +9,7 @@ import {
   type PlacementLegAnalysis,
 } from './keyman-analysis'
 import { buildRankAdvancementKnowledge, rankAdvancementReply } from './rank-advancement'
+import { formatKeymanGoalQueryReply } from './keyman-goal-candidates'
 
 type ConversationMessage = { role: 'user' | 'assistant'; content: string }
 
@@ -139,6 +140,12 @@ export async function buildTelegramCoachReply(
     reports,
     previousMonth ? reportsByMonth[previousMonth] ?? [] : [],
   )
+  const goalQueryReply = formatKeymanGoalQueryReply(
+    question,
+    [...keymanStructure.left, ...keymanStructure.right, ...keymanStructure.unknown],
+    latestMonth,
+  )
+  if (goalQueryReply) return goalQueryReply
   if (/key\s*man|คีย์\s*แมน|โครงสร้าง.*(?:ซ้าย|ขวา)|องค์กรโตจากใคร|คะแนน(?:สะสม)?ซ้ายขวา|(?:ใกล้|ขาด|ขึ้น|ตำแหน่ง).*?(?:star|bronze|silver|สตาร์|บรอนซ์|ซิลเวอร์)|(?:star|bronze|silver|สตาร์|บรอนซ์|ซิลเวอร์).*?(?:ใคร|ขาด|อีกเท่าไร)/i.test(question)) {
     return formatKeymanStructureReply(latestMonth, keymanStructure)
   }
