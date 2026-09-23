@@ -1,0 +1,229 @@
+name: Production Acceptance Final
+
+on:
+  push:
+    branches:
+      - codex/production-acceptance-final
+    paths:
+      - .github/workflows/production-acceptance-final.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  production-acceptance:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+      VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+      BASE_URL: https://downline-analyzer.vercel.app
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Pull Production configuration
+        run: npx vercel@56.3.1 pull --yes --environment=production --scope=bossjoes-projects --token=${{ secrets.VERCEL_TOKEN }}
+
+      - name: Live production acceptance
+        shell: bash
+        run: |
+          set -euo pipefail
+          set -a
+          source .vercel/.env.production.local
+          set +a
+
+          node --input-type=module <<'NODE'
+          import { SignJWT } from 'jose'
+
+          const base = process.env.BASE_URL
+          const required = (name) => {
+            const value = process.env[name]
+            if (!value) throw new Error(`Missing production env: ${name}`)
+            return value
+          }
+          const supabaseUrl = required('SUPABASE_URL').replace(/\/$/, '')
+          const supabaseKey = required('SUPABASE_SERVICE_ROLE_KEY')
+          const jwtSecret = required('JWT_SECRET')
+          const rootId = process.env.NEXT_PUBLIC_ROOT_MEMBER_ID || '900057'
+
+          const json = async (url, options = {}) => {
+            const response = await fetch(url, { redirect: 'manual', ...options })
+            const text = await response.text()
+            let data = null
+            try { data = text ? JSON.parse(text) : null } catch {}
+            return { response, text, data }
+          }
+          const assert = (condition, message) => {
+            if (!condition) throw new Error(message)
+          }
+          const sb = async (path) => {
+            const r = await fetch(`${supabaseUrl}/rest/v1/${path}`, {
+              headers: { apikey: supabaseKey, Authorization: `Bearer ${supabaseKey}` },
+            })
+            const text = await r.text()
+            assert(r.ok, `Supabase ${path} failed HTTP ${r.status}: ${text.slice(0,200)}`)
+            return JSON.parse(text)
+          }
+
+          // 0) Revision and provider health
+          const version = await json(`${base}/api/version`)
+          assert(version.response.ok, `/api/version HTTP ${version.response.status}`)
+          console.log('PASS version', version.data?.revision || 'unknown')
+
+          const health = await json(`${base}/api/chat`)
+          assert(health.response.ok && health.data?.online === true, `Coach health failed: ${health.text.slice(0,300)}`)
+          const groq = health.data.providers?.find((p) => p.provider === 'groq')
+          const openrouter = health.data.providers?.find((p) => p.provider === 'openrouter')
+          assert(groq?.online === true, `Groq not online: ${JSON.stringify(groq)}`)
+          assert(openrouter?.online === true, `OpenRouter not online: ${JSON.stringify(openrouter)}`)
+          console.log('PASS provider health groq+openrouter online')
+
+          // 1) Login with a real current member that has no stored password override.
+          const latest = await sb('monthly_reports?select=month&order=month.desc&limit=1')
+          assert(latest.length > 0 && latest[0].month, 'No monthly_reports found')
+          const latestMonth = latest[0].month
+          const reports = await sb(`monthly_reports?select=member_id&month=eq.${encodeURIComponent(latestMonth)}&limit=1000`)
+          const passwords = await sb('passwords?select=member_id&limit=1000')
+          const changed = new Set(passwords.map((row) => String(row.member_id)))
+          const candidate = reports
+            .map((row) => String(row.member_id))
+            .find((id) => id !== rootId && !changed.has(id))
+          assert(candidate, 'No safe default-password member available for login acceptance')
+
+          const login = await json(`${base}/api/auth/login`, {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ memberId: candidate, password: candidate }),
+          })
+          assert(login.response.status === 200 && login.data?.ok === true, `Login failed HTTP ${login.response.status}: ${login.text.slice(0,200)}`)
+          const setCookie = login.response.headers.get('set-cookie') || ''
+          const memberCookie = setCookie.split(';')[0]
+          assert(memberCookie.startsWith('dl_session='), 'Login did not set dl_session cookie')
+          console.log('PASS login member', candidate)
+
+          const myPage = await fetch(`${base}/my`, { headers: { cookie: memberCookie }, redirect: 'manual' })
+          assert(myPage.status === 200, `/my failed HTTP ${myPage.status}`)
+          console.log('PASS authenticated member home')
+
+          // Admin session generated exactly with the production JWT secret to exercise protected admin routes.
+          const token = await new SignJWT({ memberId: rootId, name: 'Production Acceptance', isAdmin: true })
+            .setProtectedHeader({ alg: 'HS256' })
+            .setIssuedAt()
+            .setExpirationTime('15m')
+            .sign(new TextEncoder().encode(jwtSecret))
+          const adminCookie = `dl_session=${token}`
+          const authHeaders = { cookie: adminCookie }
+
+          // 2) Dashboard
+          const dashboard = await fetch(`${base}/`, { headers: authHeaders, redirect: 'manual' })
+          const dashboardHtml = await dashboard.text()
+          assert(dashboard.status === 200 && dashboardHtml.includes('Dashboard'), `Dashboard failed HTTP ${dashboard.status}`)
+          console.log('PASS Dashboard')
+
+          // 3) Member lookup
+          const members = await json(`${base}/api/members?month=${encodeURIComponent(latestMonth)}`, { headers: authHeaders })
+          assert(members.response.ok && Array.isArray(members.data?.members) && members.data.members.length > 0, `Members API failed: ${members.text.slice(0,200)}`)
+          assert(members.data.members.some((m) => String(m.id) === candidate), 'Selected login member not found in member lookup')
+          console.log('PASS member lookup', members.data.members.length, 'members')
+
+          // 4) Team Health
+          const teamHealth = await json(`${base}/api/team-health?member=${encodeURIComponent(rootId)}&month=${encodeURIComponent(latestMonth)}`, { headers: authHeaders })
+          assert(teamHealth.response.ok, `Team Health failed HTTP ${teamHealth.response.status}: ${teamHealth.text.slice(0,250)}`)
+          assert(String(teamHealth.data?.member?.id || '') === rootId, 'Team Health returned unexpected root member')
+          console.log('PASS Team Health')
+
+          // 5) Coach JOE data + live Groq completion
+          const coach = await json(`${base}/api/coach`, { headers: authHeaders })
+          assert(coach.response.ok && coach.data?.member, `Coach data failed HTTP ${coach.response.status}: ${coach.text.slice(0,250)}`)
+          const chat = await fetch(`${base}/api/chat`, {
+            method: 'POST',
+            headers: { ...authHeaders, 'content-type': 'application/json' },
+            body: JSON.stringify({
+              messages: [{ role: 'user', content: 'ทดสอบระบบ Production ตอบสั้น ๆ ว่า Coach JOE พร้อมใช้งาน' }],
+              coachData: coach.data,
+            }),
+          })
+          const chatText = await chat.text()
+          const chatProvider = chat.headers.get('x-coach-provider')
+          assert(chat.ok && chatText.trim().length > 10, `Coach chat failed HTTP ${chat.status}: ${chatText.slice(0,250)}`)
+          assert(chatProvider === 'groq', `Coach JOE expected groq, got ${chatProvider}`)
+          console.log('PASS Coach JOE provider=groq')
+
+          // 6) Telegram config + one real delivery
+          const telegramConfig = await json(`${base}/api/telegram`, { headers: authHeaders })
+          assert(telegramConfig.response.ok && telegramConfig.data?.configured === true, `Telegram not configured: ${telegramConfig.text.slice(0,250)}`)
+          const telegramSend = await json(`${base}/api/telegram/send`, {
+            method: 'POST',
+            headers: { ...authHeaders, 'content-type': 'application/json' },
+            body: JSON.stringify({ type: 'activity' }),
+          })
+          assert(telegramSend.response.ok && telegramSend.data?.success === true, `Telegram delivery failed HTTP ${telegramSend.response.status}: ${telegramSend.text.slice(0,250)}`)
+          console.log('PASS Telegram real delivery')
+
+          console.log('LIVE_ACCEPTANCE_PASS')
+          NODE
+
+      - name: Force Groq failure and verify OpenRouter takeover
+        shell: bash
+        run: |
+          set -euo pipefail
+          set -a
+          source .vercel/.env.production.local
+          set +a
+
+          cat > tests/production-failover.live.test.ts <<'TEST'
+          import { expect, test } from 'vitest'
+
+          test('production OpenRouter takes over when Groq fails', async () => {
+            process.env.GROQ_API_KEY = 'acceptance-invalid-groq-key'
+            process.env.AI_TIMEOUT_MS = '10000'
+            process.env.AI_MAX_TOKENS = '32'
+            const { generateCoachReply } = await import('../src/lib/coach-ai')
+            const result = await generateCoachReply([{ role: 'user', content: 'Reply exactly OK.' }])
+            console.log(`FAILOVER_PROVIDER=${result.provider} MODEL=${result.model}`)
+            expect(result.provider).toBe('openrouter')
+            expect(result.content.trim().length).toBeGreaterThan(0)
+          })
+          TEST
+
+          npx vitest run tests/production-failover.live.test.ts --reporter=verbose
+          rm -f tests/production-failover.live.test.ts
+
+      - name: Inspect Vercel production runtime errors
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          npx vercel@56.3.1 logs --environment production --status-code 5xx --since 1h --limit 100 --json --scope=bossjoes-projects --token=${{ secrets.VERCEL_TOKEN }} > /tmp/vercel-5xx.jsonl
+          npx vercel@56.3.1 logs --environment production --level error --since 1h --limit 100 --json --scope=bossjoes-projects --token=${{ secrets.VERCEL_TOKEN }} > /tmp/vercel-errors.jsonl
+
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs'
+          const parse = (path) => fs.readFileSync(path, 'utf8').split(/\r?\n/).filter(Boolean).flatMap((line) => {
+            try { return [JSON.parse(line)] } catch { return [] }
+          })
+          const five = parse('/tmp/vercel-5xx.jsonl')
+          const errors = parse('/tmp/vercel-errors.jsonl')
+          console.log(`VERCEL_5XX_COUNT=${five.length}`)
+          console.log(`VERCEL_ERROR_LOG_COUNT=${errors.length}`)
+          if (five.length) {
+            console.log('5xx samples:', five.slice(0, 5).map((x) => ({ path: x.requestPath || x.path, statusCode: x.statusCode, message: x.message })))
+          }
+          if (errors.length) {
+            console.log('error samples:', errors.slice(0, 5).map((x) => ({ path: x.requestPath || x.path, statusCode: x.statusCode, message: x.message })))
+          }
+          if (five.length || errors.length) process.exit(1)
+          NODE
+
+      - name: Production Ready
+        run: echo "DOWNLINE ANALYZER PRODUCTION READY"
