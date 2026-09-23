@@ -50,7 +50,7 @@ describe('Coach AI provider routing', () => {
     const { generateCoachReply } = await import('../src/lib/coach-ai')
     const result = await generateCoachReply([{ role: 'user', content: 'ทดสอบ fallback' }])
 
-    expect(result).toMatchObject({ provider: 'openrouter', model: 'openrouter/free' })
+    expect(result).toMatchObject({ provider: 'openrouter', model: 'qwen/qwen3.8-27b' })
     expect(request).toHaveBeenCalledTimes(2)
   })
 
@@ -70,14 +70,15 @@ describe('Coach AI provider routing', () => {
 
     expect(first).toEqual([
       { provider: 'groq', model: 'qwen/qwen3.8-27b', configured: true, online: false },
-      { provider: 'openrouter', model: 'openrouter/free', configured: true, online: true },
+      { provider: 'openrouter', model: 'qwen/qwen3.8-27b', configured: true, online: true },
       { provider: 'cloudflare', model: '', configured: false, online: false },
     ])
     expect(second).toEqual(first)
     expect(request).toHaveBeenCalledTimes(2)
     for (const call of request.mock.calls) {
       const body = JSON.parse(String((call[1] as RequestInit).body))
-      expect(body.max_tokens).toBe(8)
+      expect(body.max_tokens).toBe(32)
+      expect(body.reasoning_effort).toBe('none')
     }
   })
 })
