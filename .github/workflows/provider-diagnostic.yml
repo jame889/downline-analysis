@@ -1,0 +1,86 @@
+name: Provider Diagnostic
+
+on:
+  push:
+    branches:
+      - codex/production-acceptance-final
+    paths:
+      - .github/workflows/provider-diagnostic.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+      VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+      VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Pull project link
+        run: npx vercel@56.3.1 pull --yes --environment=production --scope=bossjoes-projects --token="$VERCEL_TOKEN"
+
+      - name: Verify OpenRouter takeover with Vercel-injected production env
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat > tests/provider-diagnostic.live.test.ts <<'TEST'
+          import { expect, test } from 'vitest'
+
+          test('OpenRouter takeover using Vercel-injected production env', async () => {
+            process.env.GROQ_API_KEY = 'acceptance-invalid-groq-key'
+            process.env.AI_TIMEOUT_MS = '10000'
+            process.env.AI_MAX_TOKENS = '32'
+            const { generateCoachReply } = await import('../src/lib/coach-ai')
+            const result = await generateCoachReply([{ role: 'user', content: 'Reply exactly OK.' }])
+            console.log(`TAKEOVER_PROVIDER=${result.provider} MODEL=${result.model}`)
+            expect(result.provider).toBe('openrouter')
+            expect(result.content.trim().length).toBeGreaterThan(0)
+          })
+          TEST
+
+          npx vercel@56.3.1 env run -e production --             env GROQ_API_KEY=acceptance-invalid-groq-key AI_TIMEOUT_MS=10000 AI_MAX_TOKENS=32             npx vitest run tests/provider-diagnostic.live.test.ts --reporter=verbose
+
+          rm -f tests/provider-diagnostic.live.test.ts
+
+      - name: Collect warning-level provider failures
+        shell: bash
+        run: |
+          set -euo pipefail
+          npx vercel@56.3.1 logs --environment production --level warning --since 1h --limit 200 --json --scope=bossjoes-projects --token="$VERCEL_TOKEN" > /tmp/vercel-warnings.jsonl
+
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs'
+          const lines = fs.readFileSync('/tmp/vercel-warnings.jsonl', 'utf8').split(/\r?\n/).filter(Boolean)
+          const rows = lines.flatMap((line) => {
+            try { return [JSON.parse(line)] } catch { return [] }
+          })
+          const textOf = (row) => [
+            row.message, row.msg, row.text, row.proxy?.message, row.requestPath, row.path
+          ].filter(Boolean).join(' ')
+          const provider = rows.filter((row) => textOf(row).includes('coach_ai_provider_failed'))
+          console.log(`WARNING_ROWS=${rows.length}`)
+          console.log(`PROVIDER_FAILURE_ROWS=${provider.length}`)
+          for (const row of provider.slice(0, 20)) {
+            console.log(JSON.stringify({
+              timestamp: row.timestamp || row.time || row.createdAt,
+              path: row.requestPath || row.path,
+              level: row.level,
+              message: row.message || row.msg || row.text,
+            }))
+          }
+          NODE
