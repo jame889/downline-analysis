@@ -1,0 +1,52 @@
+name: Verify Business Report Repair
+
+on:
+  push:
+    branches:
+      - codex/fix-business-report-sync-schema
+    paths:
+      - scripts/import_data.py
+      - scripts/test_business_report_columns.py
+      - scripts/sync_business_report.py
+      - .github/workflows/verify-business-report-repair.yml
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install report dependencies
+        run: python -m pip install openpyxl requests
+      - name: Run report parser regression tests
+        run: python -m unittest discover -s scripts -p 'test_business_report_columns.py'
+      - name: Dry-run current First Global report
+        env:
+          FIRST_THAILAND_USER: ${{ secrets.FIRST_THAILAND_USER }}
+          FIRST_THAILAND_PASSWORD: ${{ secrets.FIRST_THAILAND_PASSWORD }}
+        run: |
+          set -euo pipefail
+          output=$(python scripts/sync_business_report.py --month 2026-09 --dry-run --output-dir downloaded_reports)
+          echo "$output"
+          REPORT_OUTPUT="$output" python - <<'PY'
+          import json, os
+          lines = [line for line in os.environ["REPORT_OUTPUT"].splitlines() if line.strip().startswith("{")]
+          assert lines, "No report result emitted"
+          result = json.loads(lines[-1])
+          assert result["month"] == "2026-09", result
+          assert result["rows"] >= 500, result
+          assert result["members"] >= result["rows"], result
+          print("CURRENT_REPORT_SCHEMA_PASS", result["rows"], result["members"])
+          PY
+      - name: Archive verified source
+        uses: actions/upload-artifact@v4
+        with:
+          name: verified-business-report-${{ github.run_id }}
+          path: downloaded_reports/*.xlsx
+          retention-days: 7
