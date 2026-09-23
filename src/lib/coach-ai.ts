@@ -24,7 +24,7 @@ const cleanEnv = (value: string | undefined) => value?.replace(/\\n|\n/g, '').re
 const TIMEOUT_MS = Number(cleanEnv(process.env.AI_TIMEOUT_MS)) || 22_000
 const MAX_TOKENS = Number(cleanEnv(process.env.AI_MAX_TOKENS)) || 900
 const HEALTH_TIMEOUT_MS = 5_000
-const HEALTH_MAX_TOKENS = 8
+const HEALTH_MAX_TOKENS = 32
 const HEALTH_CACHE_MS = 5 * 60_000
 
 type ProviderConfig = {
@@ -51,7 +51,7 @@ function providerConfigs(): ProviderConfig[] {
   if (openRouterKey) {
     configs.push({
       provider: 'openrouter',
-      model: cleanEnv(process.env.OPENROUTER_MODEL) || 'openrouter/free',
+      model: cleanEnv(process.env.OPENROUTER_MODEL) || 'qwen/qwen3.8-27b',
       apiKey: openRouterKey,
     })
   }
@@ -107,7 +107,7 @@ async function callOpenAiCompatible(
     temperature: 0.3,
     max_tokens: maxTokens,
   }
-  if (isGroq && /^qwen\/qwen3\.(?:6|8)-27b$/.test(config.model)) {
+  if (/^qwen\/qwen3\.(?:6|8)-27b(?::free)?$/.test(config.model)) {
     body.reasoning_effort = 'none'
   }
   if (!isGroq) {
