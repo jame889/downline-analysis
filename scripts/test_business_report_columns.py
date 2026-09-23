@@ -30,6 +30,16 @@ class ReportColumnsTest(unittest.TestCase):
         self.assertEqual(new_members['900057']['sponsor_id'], '900001')
         self.assertEqual(new_members['900057']['upline_id'], '900002')
 
+    def test_current_first_global_labels_map_to_existing_fields(self):
+        sheet = self.worksheet()
+        sheet.cell(1, 6).value = 'ตำแหน่งที่รับรายได้'
+        sheet.cell(1, 17).value = 'ควอลิไฟด์'
+
+        reports = process_file(sheet, '2026-09', {})
+
+        self.assertEqual(reports[0]['income_position'], 'SP')
+        self.assertTrue(reports[0]['is_qualified'])
+
     def test_missing_bv_header_rejected(self):
         sheet = self.worksheet()
         sheet.cell(1, 24).value = 'Unknown BV'
