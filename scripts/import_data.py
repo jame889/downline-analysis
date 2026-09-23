@@ -95,6 +95,14 @@ FIRST_GLOBAL_COLUMNS = [
     ("BV หักลบ", "ซ้าย"), ("BV หักลบ", "ขวา"),
 ]
 
+# First Global occasionally renames display headers without changing field semantics.
+# Normalize known aliases to the canonical schema so historical and current exports
+# remain compatible while missing/duplicate columns still fail closed.
+FIRST_GLOBAL_COLUMN_ALIASES = {
+    ("ตำแหน่งที่รับรายได้", ""): ("อันดับที่ต้องชำระเงิน", ""),
+    ("ควอลิไฟด์", ""): ("คลอรีเฟรช", ""),
+}
+
 
 def first_global_column_indices(ws) -> list[int]:
     """Match both header rows so reordered columns cannot silently shift BV or lineage."""
@@ -111,7 +119,8 @@ def first_global_column_indices(ws) -> list[int]:
             group = title
         elif not side:
             continue
-        key = (title or group, side)
+        raw_key = (title or group, side)
+        key = FIRST_GLOBAL_COLUMN_ALIASES.get(raw_key, raw_key)
         if key in columns:
             raise ValueError(f"Duplicate First Global column: {key!r}")
         columns[key] = index
