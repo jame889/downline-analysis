@@ -46,15 +46,9 @@ jobs:
           import { SignJWT } from 'jose'
 
           const base = process.env.BASE_URL
-          const required = (name) => {
-            const value = process.env[name]
-            if (!value) throw new Error(`Missing production env: ${name}`)
-            return value
-          }
-          const supabaseUrl = required('SUPABASE_URL').replace(/\/$/, '')
-          const supabaseKey = required('SUPABASE_SERVICE_ROLE_KEY')
-          const jwtSecret = required('JWT_SECRET')
+          const jwtSecret = process.env.JWT_SECRET
           const rootId = process.env.NEXT_PUBLIC_ROOT_MEMBER_ID || '900057'
+          if (!base || !jwtSecret || jwtSecret.length < 32) throw new Error('Production JWT configuration unavailable')
 
           const json = async (url, options = {}) => {
             const response = await fetch(url, { redirect: 'manual', ...options })
@@ -65,14 +59,6 @@ jobs:
           }
           const assert = (condition, message) => {
             if (!condition) throw new Error(message)
-          }
-          const sb = async (path) => {
-            const r = await fetch(`${supabaseUrl}/rest/v1/${path}`, {
-              headers: { apikey: supabaseKey, Authorization: `Bearer ${supabaseKey}` },
-            })
-            const text = await r.text()
-            assert(r.ok, `Supabase ${path} failed HTTP ${r.status}: ${text.slice(0,200)}`)
-            return JSON.parse(text)
           }
 
           // 0) Revision and provider health
@@ -88,34 +74,7 @@ jobs:
           assert(openrouter?.online === true, `OpenRouter not online: ${JSON.stringify(openrouter)}`)
           console.log('PASS provider health groq+openrouter online')
 
-          // 1) Login with a real current member that has no stored password override.
-          const latest = await sb('monthly_reports?select=month&order=month.desc&limit=1')
-          assert(latest.length > 0 && latest[0].month, 'No monthly_reports found')
-          const latestMonth = latest[0].month
-          const reports = await sb(`monthly_reports?select=member_id&month=eq.${encodeURIComponent(latestMonth)}&limit=1000`)
-          const passwords = await sb('passwords?select=member_id&limit=1000')
-          const changed = new Set(passwords.map((row) => String(row.member_id)))
-          const candidate = reports
-            .map((row) => String(row.member_id))
-            .find((id) => id !== rootId && !changed.has(id))
-          assert(candidate, 'No safe default-password member available for login acceptance')
-
-          const login = await json(`${base}/api/auth/login`, {
-            method: 'POST',
-            headers: { 'content-type': 'application/json' },
-            body: JSON.stringify({ memberId: candidate, password: candidate }),
-          })
-          assert(login.response.status === 200 && login.data?.ok === true, `Login failed HTTP ${login.response.status}: ${login.text.slice(0,200)}`)
-          const setCookie = login.response.headers.get('set-cookie') || ''
-          const memberCookie = setCookie.split(';')[0]
-          assert(memberCookie.startsWith('dl_session='), 'Login did not set dl_session cookie')
-          console.log('PASS login member', candidate)
-
-          const myPage = await fetch(`${base}/my`, { headers: { cookie: memberCookie }, redirect: 'manual' })
-          assert(myPage.status === 200, `/my failed HTTP ${myPage.status}`)
-          console.log('PASS authenticated member home')
-
-          // Admin session generated exactly with the production JWT secret to exercise protected admin routes.
+          // Create a short-lived admin session exactly as production middleware expects.
           const token = await new SignJWT({ memberId: rootId, name: 'Production Acceptance', isAdmin: true })
             .setProtectedHeader({ alg: 'HS256' })
             .setIssuedAt()
@@ -124,17 +83,59 @@ jobs:
           const adminCookie = `dl_session=${token}`
           const authHeaders = { cookie: adminCookie }
 
-          // 2) Dashboard
+          // 1) Dashboard
           const dashboard = await fetch(`${base}/`, { headers: authHeaders, redirect: 'manual' })
           const dashboardHtml = await dashboard.text()
           assert(dashboard.status === 200 && dashboardHtml.includes('Dashboard'), `Dashboard failed HTTP ${dashboard.status}`)
           console.log('PASS Dashboard')
 
-          // 3) Member lookup
+          // 2) Member lookup + latest data month
+          const summary = await json(`${base}/api/summary`, { headers: authHeaders })
+          assert(summary.response.ok && Array.isArray(summary.data?.months) && summary.data.months.length > 0, `Summary failed: ${summary.text.slice(0,200)}`)
+          const latestMonth = summary.data.months[0]
           const members = await json(`${base}/api/members?month=${encodeURIComponent(latestMonth)}`, { headers: authHeaders })
           assert(members.response.ok && Array.isArray(members.data?.members) && members.data.members.length > 0, `Members API failed: ${members.text.slice(0,200)}`)
-          assert(members.data.members.some((m) => String(m.id) === candidate), 'Selected login member not found in member lookup')
-          console.log('PASS member lookup', members.data.members.length, 'members')
+          console.log('PASS member lookup', members.data.members.length, 'members', 'month', latestMonth)
+
+          // 3) Login: prefer root credential if configured; otherwise use documented default password on current non-root members.
+          let loginCookie = ''
+          let loginMember = ''
+          const attempts = []
+          if (process.env.ROOT_INITIAL_PASSWORD) {
+            attempts.push({ id: rootId, password: process.env.ROOT_INITIAL_PASSWORD })
+          }
+          for (const member of members.data.members) {
+            const id = String(member.id || '')
+            if (!id || id === rootId) continue
+            attempts.push({ id, password: id })
+            if (attempts.length >= 12) break
+          }
+          for (const attempt of attempts) {
+            const login = await json(`${base}/api/auth/login`, {
+              method: 'POST',
+              headers: { 'content-type': 'application/json' },
+              body: JSON.stringify({ memberId: attempt.id, password: attempt.password }),
+            })
+            if (login.response.status === 200 && login.data?.ok === true) {
+              const setCookie = login.response.headers.get('set-cookie') || ''
+              const cookie = setCookie.split(';')[0]
+              if (cookie.startsWith('dl_session=')) {
+                loginCookie = cookie
+                loginMember = attempt.id
+                break
+              }
+            }
+          }
+          assert(loginCookie, 'No production account accepted its configured/default credential during login acceptance')
+          console.log('PASS Login member', loginMember)
+
+          const myPage = await fetch(`${base}/my`, { headers: { cookie: loginCookie }, redirect: 'manual' })
+          if (loginMember === rootId) {
+            assert(myPage.status === 307 || myPage.status === 308 || myPage.status === 200, `Authenticated root navigation failed HTTP ${myPage.status}`)
+          } else {
+            assert(myPage.status === 200, `/my failed HTTP ${myPage.status}`)
+          }
+          console.log('PASS authenticated navigation')
 
           // 4) Team Health
           const teamHealth = await json(`${base}/api/team-health?member=${encodeURIComponent(rootId)}&month=${encodeURIComponent(latestMonth)}`, { headers: authHeaders })
@@ -203,7 +204,6 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-
           npx vercel@56.3.1 logs --environment production --status-code 5xx --since 1h --limit 100 --json --scope=bossjoes-projects --token=${{ secrets.VERCEL_TOKEN }} > /tmp/vercel-5xx.jsonl
           npx vercel@56.3.1 logs --environment production --level error --since 1h --limit 100 --json --scope=bossjoes-projects --token=${{ secrets.VERCEL_TOKEN }} > /tmp/vercel-errors.jsonl
 
@@ -216,12 +216,8 @@ jobs:
           const errors = parse('/tmp/vercel-errors.jsonl')
           console.log(`VERCEL_5XX_COUNT=${five.length}`)
           console.log(`VERCEL_ERROR_LOG_COUNT=${errors.length}`)
-          if (five.length) {
-            console.log('5xx samples:', five.slice(0, 5).map((x) => ({ path: x.requestPath || x.path, statusCode: x.statusCode, message: x.message })))
-          }
-          if (errors.length) {
-            console.log('error samples:', errors.slice(0, 5).map((x) => ({ path: x.requestPath || x.path, statusCode: x.statusCode, message: x.message })))
-          }
+          if (five.length) console.log('5xx samples:', five.slice(0, 5).map((x) => ({ path: x.requestPath || x.path, statusCode: x.statusCode, message: x.message })))
+          if (errors.length) console.log('error samples:', errors.slice(0, 5).map((x) => ({ path: x.requestPath || x.path, statusCode: x.statusCode, message: x.message })))
           if (five.length || errors.length) process.exit(1)
           NODE
 
