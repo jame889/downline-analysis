@@ -457,6 +457,12 @@ function diamondWorkReply(coachData: Record<string, unknown>, question: string):
   ].join('\n')
 }
 
+function clipPromptSection(value: string, maxChars: number): string {
+  const compact = value.replace(/\n{3,}/g, '\n\n').trim()
+  if (compact.length <= maxChars) return compact
+  return `${compact.slice(0, maxChars).trimEnd()}\n…[ตัดข้อมูลส่วนเกินเพื่อรักษา AI context budget]`
+}
+
 async function buildSystemPrompt(coachData: Record<string, unknown> | null): Promise<string> {
   const rankKnowledge = buildRankAdvancementKnowledge()
   if (!coachData) {
@@ -514,13 +520,13 @@ ${rankKnowledge}${knowledge}`
     ? `Vol ซ้าย: ${d.balance.L.toLocaleString()}, Vol ขวา: ${d.balance.R.toLocaleString()}, Weak Leg: สาย${d.balance.weakSide === 'L' ? 'ซ้าย' : 'ขวา'} (${d.balance.weakVol.toLocaleString()}), ต้องเพิ่มอีก ${d.balance.gapToBalance.toLocaleString()} BV เพื่อ Balance, สถานะ: ${d.balance.urgency}`
     : ''
 
-  const actionsStr = d.actions?.map(a => `[${a.priority}] ${a.title}: ${a.detail}`).join('\n') ?? ''
+  const actionsStr = d.actions?.slice(0, 6).map(a => `[${a.priority}] ${a.title}: ${a.detail}`).join('\n') ?? ''
 
-  const gen1Str = d.gen1?.map(g =>
+  const gen1Str = d.gen1?.slice(0, 8).map(g =>
     `${g.name} (${g.id}): ${g.is_active ? 'Active' : 'Inactive'}, ลึก ${g.depth} ชั้น, ทีม ${g.sub_count} คน, active ${g.active_in_sub} คน, ${g.is_safe_zone ? 'SAFE ZONE' : 'ต้องขุดต่อ'}`
   ).join('\n') ?? ''
 
-  const newMemberStr = d.newMembers?.map(m =>
+  const newMemberStr = d.newMembers?.slice(0, 8).map(m =>
     `${m.name} (${m.id}): ${m.is_tapped ? 'ขุดลึกแล้ว' : 'ยังไม่ได้ขุดลึก'}`
   ).join('\n') ?? ''
 
@@ -528,7 +534,7 @@ ${rankKnowledge}${knowledge}`
     ? `Diamond target ${d.diamond.targetLeft.toLocaleString()}/${d.diamond.targetRight.toLocaleString()} BV, ปัจจุบันซ้าย ${d.diamond.currentLeft.toLocaleString()}, ขวา ${d.diamond.currentRight.toLocaleString()}, gap ซ้าย ${d.diamond.leftGap.toLocaleString()}, gap ขวา ${d.diamond.rightGap.toLocaleString()}, ต้องมี ${d.diamond.requiredPlacement} จากสายเลือด Sponsor ชั้นใดก็ได้: ซ้าย ${d.diamond.leftPlacement ? `ผ่านโดย ${d.diamond.leftQualifiedLeader?.name ?? 'ผู้นำที่เข้าเกณฑ์'} G${d.diamond.leftQualifiedLeader?.sponsorDepth ?? '?'}` : 'ยังไม่ผ่าน'}, ขวา ${d.diamond.rightPlacement ? `ผ่านโดย ${d.diamond.rightQualifiedLeader?.name ?? 'ผู้นำที่เข้าเกณฑ์'} G${d.diamond.rightQualifiedLeader?.sponsorDepth ?? '?'}` : 'ยังไม่ผ่าน'}, สถานะ ${d.diamond.qualified ? 'พร้อม' : 'ยังไม่พร้อม'}`
     : 'ยังไม่มีข้อมูล Diamond Readiness'
 
-  const focusCandidateStr = d.focusCandidates?.slice(0, 8).map((c, index) =>
+  const focusCandidateStr = d.focusCandidates?.slice(0, 5).map((c, index) =>
     `${index + 1}. ${c.name} (${c.id}) ฝั่ง${c.side}, ${c.position}, score ${c.score}/100, status ${c.status}, New BV ${c.latestNewVolume.toLocaleString()}, L/R ${c.latestLeft.toLocaleString()}/${c.latestRight.toLocaleString()}, sponsor3m ${c.sponsorLast3}, movingUp3m ${c.movingUpsLast3}, leaders ${c.leadersCreated}, active ${c.activeConsistency}%, momentum ${c.momentumRatio}x, action: ${c.recommendation}`
   ).join('\n') ?? ''
 
@@ -537,21 +543,21 @@ ${rankKnowledge}${knowledge}`
     return `${index + 1}. ${c.name} (${c.id}), ฝั่ง${c.side}, ${c.position}, L/R ${c.leftBv.toLocaleString()}/${c.rightBv.toLocaleString()} คะแนน, New ${c.newBv.toLocaleString()}, trend ${c.trendPct ?? 'N/A'}%, ${gap ? `ใกล้ ${gap.label} ${gap.progressPct}%, gap L/R ${gap.leftGap}/${gap.rightGap}, Star gap L/R ${gap.starLeftGap}/${gap.starRightGap}` : 'ผ่าน Silver'}, concentration ${c.concentrationPct}% by ${c.concentrationMemberName ?? 'N/A'}, focus ${c.focusMemberName ?? 'N/A'}, action: ${c.recommendedAction}`
   }
   const keymanStr = d.keymanStructure
-    ? `Placement Leg ซ้าย: ${d.keymanStructure.legs.left.keymanName ?? 'ไม่มี'} (${d.keymanStructure.legs.left.keymanId ?? '-'}), BV สะสม ${d.keymanStructure.legs.left.accumulatedBv}, New BV ${d.keymanStructure.legs.left.newBv}, trend ${d.keymanStructure.legs.left.trendPct ?? 'N/A'}%, active ${d.keymanStructure.legs.left.activeMembers}/${d.keymanStructure.legs.left.teamSize}, contribution ${d.keymanStructure.legs.left.contributionPct}%, bottleneck ${d.keymanStructure.legs.left.bottlenecks.join(', ')}\nPlacement Leg ขวา: ${d.keymanStructure.legs.right.keymanName ?? 'ไม่มี'} (${d.keymanStructure.legs.right.keymanId ?? '-'}), BV สะสม ${d.keymanStructure.legs.right.accumulatedBv}, New BV ${d.keymanStructure.legs.right.newBv}, trend ${d.keymanStructure.legs.right.trendPct ?? 'N/A'}%, active ${d.keymanStructure.legs.right.activeMembers}/${d.keymanStructure.legs.right.teamSize}, contribution ${d.keymanStructure.legs.right.contributionPct}%, bottleneck ${d.keymanStructure.legs.right.bottlenecks.join(', ')}\nฝั่งซ้าย:\n${d.keymanStructure.left.slice(0, 12).map(keymanLine).join('\n') || 'ไม่มีข้อมูล'}\nฝั่งขวา:\n${d.keymanStructure.right.slice(0, 12).map(keymanLine).join('\n') || 'ไม่มีข้อมูล'}`
+    ? `Placement Leg ซ้าย: ${d.keymanStructure.legs.left.keymanName ?? 'ไม่มี'} (${d.keymanStructure.legs.left.keymanId ?? '-'}), BV สะสม ${d.keymanStructure.legs.left.accumulatedBv}, New BV ${d.keymanStructure.legs.left.newBv}, trend ${d.keymanStructure.legs.left.trendPct ?? 'N/A'}%, active ${d.keymanStructure.legs.left.activeMembers}/${d.keymanStructure.legs.left.teamSize}, contribution ${d.keymanStructure.legs.left.contributionPct}%, bottleneck ${d.keymanStructure.legs.left.bottlenecks.join(', ')}\nPlacement Leg ขวา: ${d.keymanStructure.legs.right.keymanName ?? 'ไม่มี'} (${d.keymanStructure.legs.right.keymanId ?? '-'}), BV สะสม ${d.keymanStructure.legs.right.accumulatedBv}, New BV ${d.keymanStructure.legs.right.newBv}, trend ${d.keymanStructure.legs.right.trendPct ?? 'N/A'}%, active ${d.keymanStructure.legs.right.activeMembers}/${d.keymanStructure.legs.right.teamSize}, contribution ${d.keymanStructure.legs.right.contributionPct}%, bottleneck ${d.keymanStructure.legs.right.bottlenecks.join(', ')}\nฝั่งซ้าย:\n${d.keymanStructure.left.slice(0, 5).map(keymanLine).join('\n') || 'ไม่มีข้อมูล'}\nฝั่งขวา:\n${d.keymanStructure.right.slice(0, 5).map(keymanLine).join('\n') || 'ไม่มีข้อมูล'}`
     : 'ยังไม่มีข้อมูล Keyman'
-  const keymanRiskStr = d.keymanAtRisk?.slice(0, 12).map((item, index) =>
+  const keymanRiskStr = d.keymanAtRisk?.slice(0, 5).map((item, index) =>
     `${index + 1}. ${item.name} (${item.id}), ฝั่ง${item.side}, ${item.position}, ${item.risk}, New BV ${item.currentNewBv} จาก ${item.previousNewBv}, trend ${item.changePct ?? 'N/A'}%, สัญญาณ ${item.reasons.join(', ')}, action: ${item.action}`
   ).join('\n') || 'ยังไม่พบ Keyman ที่มีสัญญาณเสี่ยงหลุด'
 
   const activity = d.activityAnalysis
-  const activityTypeStr = activity?.typeBreakdown.map((item) =>
+  const activityTypeStr = activity?.typeBreakdown.slice(0, 8).map((item) =>
     `${item.label}: ${item.count} ครั้ง, ทีมซ้าย ${item.leftParticipants} คน, ทีมขวา ${item.rightParticipants} คน`
   ).join('\n') ?? ''
-  const recentActivityStr = activity?.recentEntries.map((item) => {
+  const recentActivityStr = activity?.recentEntries.slice(0, 8).map((item) => {
     const detail = item.details.replace(/\s+/g, ' ').trim()
     return `${item.date} ${item.startTime} ${item.label}, สถานะ ${item.status}, ผล ${item.outcome}, ซ้าย ${item.leftCount}, ขวา ${item.rightCount}${item.contactName ? `, ผู้ติดต่อ: ${item.contactName}` : ''}${item.followUpDate ? `, Follow-up: ${item.followUpDate}` : ''}${detail ? `, รายละเอียด: ${detail}` : ''}${item.outcomeNotes ? `, หมายเหตุผล: ${item.outcomeNotes}` : ''}`
   }).join('\n') ?? ''
-  const notificationStr = activity?.notifications.map((item) =>
+  const notificationStr = activity?.notifications.slice(0, 8).map((item) =>
     `[${item.severity}] ${item.title}: ${item.detail}${item.date ? ` (${item.date})` : ''}`
   ).join('\n') ?? ''
   const momentumText = activity?.momentumChangePct === null || activity?.momentumChangePct === undefined
@@ -580,9 +586,9 @@ ${activityTypeStr || 'ยังไม่มีข้อมูล'}
 ${recentActivityStr || 'ยังไม่มีข้อมูล'}`
     : 'ยังไม่มีข้อมูลกิจกรรมรายวัน'
 
-  const knowledge = await loadKnowledge()
+  const knowledge = clipPromptSection(await loadKnowledge(), 600)
 
-  return `คุณคือ Coach JOE ผู้เชี่ยวชาญด้านธุรกิจ First Community Binary ที่พูดภาษาไทย ตอบสั้น กระชับ ตรงประเด็น
+  const prompt = `คุณคือ Coach JOE ผู้เชี่ยวชาญด้านธุรกิจ First Community Binary ที่พูดภาษาไทย ตอบสั้น กระชับ ตรงประเด็น
 
 === ข้อมูลสมาชิก (${d.month ?? '-'}) ===
 สมาชิก: ${d.member?.name} (ID: ${d.member?.id})
@@ -590,59 +596,47 @@ ${recentActivityStr || 'ยังไม่มีข้อมูล'}`
 SAFE ZONE: ${d.safeLines ?? 0}/${(d.gen1?.length ?? 0)} สาย
 
 === Balance ===
-${balanceStr}
+${clipPromptSection(balanceStr, 450)}
 
 === Gen1 สายงาน ===
-${gen1Str}
+${clipPromptSection(gen1Str, 750)}
 
 === สมาชิกใหม่ ===
-${newMemberStr}
+${clipPromptSection(newMemberStr, 550)}
 
 === Actions ที่แนะนำ ===
-${actionsStr}
+${clipPromptSection(actionsStr, 900)}
 
 === Diamond Readiness ===
-${diamondStr}
+${clipPromptSection(diamondStr, 650)}
 
 === คนที่ควรลงไปทำงานด้วย / Focus Candidates ===
-${focusCandidateStr || 'ยังไม่มี candidate เพียงพอ'}
+${clipPromptSection(focusCandidateStr || 'ยังไม่มี candidate เพียงพอ', 1300)}
 
 === AI วิเคราะห์โครงสร้าง Keyman ซ้าย–ขวา ===
-${keymanStr}
+${clipPromptSection(keymanStr, 1500)}
 
 === Keyman ที่เสี่ยงหลุด ===
-${keymanRiskStr}
+${clipPromptSection(keymanRiskStr, 700)}
 
 === ผลการลงมือทำจากบันทึกกิจกรรมรายวัน ===
-${activityStr}
+${clipPromptSection(activityStr, 1500)}
 
 === กลยุทธ์หลัก ===
 Hybrid 20/80: 20% Frontline (Speed) + 80% การขุดลึก (Stability)
 สายซ้าย = Speed, สายขวา = Stability
 ขุดลึกจนเจอผู้นำ 2-3 คนซ้อนกัน แล้วหยุดขุดสายนั้น
 
-ตอบเป็นภาษาไทย สั้น กระชับ ตรงประเด็น ใช้ข้อมูลข้างต้นประกอบคำแนะนำเสมอ
-ชื่อสมาชิกถูกปกปิดเป็น token รูปแบบ [MEMBER_001] ให้คัดลอก token ทั้งคำรวมวงเล็บเหลี่ยมทุกครั้ง ห้ามย่อเป็นตัวเลขหรือแก้รูปแบบ ระบบจะแปลงกลับเป็นชื่อจริงภายหลัง
-ห้ามใช้ Markdown table ให้ตอบเป็นหัวข้อสั้นและรายการลำดับเลข เพื่อให้แสดงผลบนหน้าจอมือถือได้อ่านง่าย
-ห้ามตอบกว้างๆ ถ้าผู้ใช้ถามว่า "กับใคร", "คนไหน", "ต้องลงไปทำงานกับใคร", "ขึ้น Gold/Diamond ทำกับใคร" ให้ตอบเป็นรายชื่อจริงจาก Focus Candidates อย่างน้อย 3 คน พร้อม ID, ฝั่ง, score, เหตุผลเชิงตัวเลข และงาน 7 วันถัดไป
-ถ้าถามเรื่อง Diamond ให้เริ่มด้วยชื่อคนอันดับ 1 ทันที แล้วตามด้วย gap Diamond และลำดับคนที่ควรโค้ช
-ถ้าถาม Keyman, คะแนนซ้ายขวา, Star, Bronze หรือ Silver ต้องเริ่มจาก Placement Keyman ชั้นแรกของขาซ้ายและขาขวา แล้วตอบ Keyman ละ 6 บรรทัด: อยู่ฝั่งใด, คะแนนซ้าย/ขวา, ตำแหน่งที่ใกล้, คะแนนและ Star ที่ยังขาด, จุดกระจุกตัวของ New BV, และคำแนะนำที่ระบุชื่อคนสำหรับ Start Up
-การจัดสมาชิกเข้าฝั่งซ้ายหรือขวาต้องใช้สาย Upline/Placement Tree เท่านั้น ห้ามใช้ Sponsor ตัดสินฝั่ง เพราะ Sponsor กับตำแหน่งที่วางอาจเป็นคนละคนกัน
-คำถามผู้แนะนำ/สปอนเซอร์/upline จะถูกตอบจาก Coach Data Engine ก่อนส่งมาถึงคุณ ห้ามเดาความสัมพันธ์ของสมาชิกเอง
-เมื่อให้คำแนะนำ ต้องวิเคราะห์ข้อมูลกิจกรรมร่วมกับ BV, Sponsor, Weak Leg, Momentum และ Focus Candidates เสมอ โดยใช้หลักต่อไปนี้:
-- กิจกรรมน้อยและผลไม่โต = คอขวดด้านปริมาณหรือความสม่ำเสมอ
-- กิจกรรมมากแต่ Sponsor/BV ไม่โต = คอขวดด้านคุณภาพการนัด Follow-up การปิดผล หรือ Start Up ห้ามแนะนำให้เพิ่มปริมาณอย่างเดียว
-- Outreach มากแต่ Meeting น้อย = คอขวดช่วงเปลี่ยนการติดต่อเป็นนัดหมาย
-- Meeting มากแต่ Start Up/Sponsor ต่ำ = คอขวดช่วง Follow-up และการตัดสินใจ
-- มี Follow-up ถึงกำหนด = จัดรายชื่อเหล่านั้นเป็นงานอันดับแรกก่อนเพิ่ม Outreach ใหม่
-- ทำตามแผนต่ำกว่า 70% = ลดจำนวนงานใหม่และปิดกิจกรรมตามแผนที่ค้าง
-- ใช้ Funnel หา stage ที่ตกมากที่สุด และบอก conversion ของ stage นั้นด้วยตัวเลข
-- ถ้าถาม Weekly Scorecard ต้องบอกคะแนนรวม/100, เกรด และคะแนนย่อยทั้ง 5 ด้าน: Consistency, Conversion, Weak Leg Contribution, Sponsor และ Start Up
-- ผลกิจกรรมเข้าฝั่งแข็งมากกว่า Weak Leg = การโฟกัสผิดฝั่ง ให้กำหนดกิจกรรมฝั่งอ่อนอย่างเจาะจง
-- แยกกิจกรรมที่ผ่านมาออกจากแผน 7 วันข้างหน้า ห้ามนับแผนอนาคตเป็นผลงานแล้ว
-ถ้าถามว่าวันนี้/สัปดาห์นี้ควรทำอะไร ให้กำหนดเป้าหมาย 7 วันเป็นจำนวนครั้งของกิจกรรม ระบุฝั่งซ้ายหรือขวา และเชื่อมกับชื่อ Focus Candidate ที่ควรทำงานด้วย
-ต้องอ้างช่วงเวลาและตัวเลขจริงจากข้อมูล ห้ามกล่าวว่าผู้ใช้ไม่ลงมือทำเมื่อเพียงแค่ไม่มีบันทึก และห้ามสร้างชื่อผู้เข้าร่วมที่ไม่มีในข้อมูล
-สำคัญ: กิจกรรม 0 รายการหมายถึง "ยังไม่มีบันทึกกิจกรรมในระบบ" เท่านั้น ไม่ใช่หลักฐานว่าไม่ได้ทำงาน ห้ามใช้คำว่า "ไม่มีการลงมือทำ" หรือ "ปริมาณเป็นศูนย์" กับกรณีนี้
+กติกาคำตอบ:
+- ตอบไทยสั้น กระชับ อ้างตัวเลข/ช่วงเวลาจริงจากข้อมูล และห้าม Markdown table
+- ชื่อสมาชิกที่ถูกแทนด้วย [MEMBER_001] ต้องคง token เต็มรูปแบบเพื่อให้ระบบแปลงชื่อกลับ
+- ถ้าถามว่าใคร/กับใคร/ลงไปทำงานกับใคร ให้ใช้ Focus Candidates พร้อม ID, ฝั่ง, score, เหตุผล และงาน 7 วัน
+- Diamond/Keyman/Star/Bronze/Silver ให้ใช้ Placement/Upline ตัดสินฝั่ง และ Sponsor Tree ใช้ยืนยันสายเลือด ห้ามเดาความสัมพันธ์
+- วิเคราะห์กิจกรรมร่วมกับ BV, Weak Leg, Momentum, Follow-up, Sponsor และ Start Up; หา funnel stage ที่ตกมากที่สุดเมื่อข้อมูลมีพอ
+- กิจกรรมมากแต่ผลไม่โต ให้แก้คุณภาพ Follow-up/การปิดผล ไม่ใช่เพิ่มปริมาณอย่างเดียว
+- Follow-up ถึงกำหนดมาก่อน Outreach ใหม่; plan completion <70% ให้ปิดงานค้างก่อนเพิ่มงาน
+- ถ้าถามวันนี้/สัปดาห์นี้ ให้กำหนดแผน 7 วันเป็นจำนวนกิจกรรม ระบุฝั่งและ Focus Candidate
+- กิจกรรม 0 หมายถึงยังไม่มีบันทึกในระบบ ไม่ใช่หลักฐานว่าไม่ได้ลงมือทำ
 
 === การแสดง Chart ===
 เมื่อคำตอบเกี่ยวข้องกับข้อมูลด้านล่าง ให้ใส่ tag ต่อท้ายคำอธิบาย (บรรทัดใหม่):
@@ -652,7 +646,9 @@ Hybrid 20/80: 20% Frontline (Speed) + 80% การขุดลึก (Stability
 - [CHART:newmembers] → เมื่อพูดถึงสมาชิกใหม่หรือ การขุดลึก
 ใส่ได้หลาย tag ถ้าจำเป็น แต่ไม่ต้องใส่ทุกคำตอบ ใส่เฉพาะเมื่อ chart ช่วยให้เข้าใจง่ายขึ้น
 
-${rankKnowledge}${knowledge}`
+${clipPromptSection(rankKnowledge, 1200)}${knowledge}\n`
+
+  return clipPromptSection(prompt, 11_000)
 }
 
 export async function POST(req: NextRequest) {
