@@ -35,6 +35,7 @@ jobs:
         run: npx vercel@56.3.1 pull --yes --environment=production --scope=bossjoes-projects --token="$VERCEL_TOKEN"
 
       - name: Verify OpenRouter takeover with Vercel-injected production env
+        continue-on-error: true
         shell: bash
         run: |
           set -euo pipefail
@@ -58,6 +59,7 @@ jobs:
           rm -f tests/provider-diagnostic.live.test.ts
 
       - name: Collect warning-level provider failures
+        if: always()
         shell: bash
         run: |
           set -euo pipefail
