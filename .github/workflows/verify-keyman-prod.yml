@@ -1,0 +1,109 @@
+name: Verify Keyman Goal Query Production
+
+on:
+  push:
+    branches: [codex/verify-keyman-prod]
+    paths:
+      - .github/workflows/verify-keyman-prod.yml
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+      VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+      BASE_URL: https://downline-analyzer.vercel.app
+      EXPECTED_REVISION: fc00874cef826ed2976c24af135ba7adbf40e84a
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+      - name: Pull Production environment
+        run: npx vercel@56.3.1 pull --yes --environment=production --scope=bossjoes-projects --token=${{ secrets.VERCEL_TOKEN }}
+      - name: Verify live complete Star gap list
+        shell: bash
+        run: |
+          set -euo pipefail
+          set -a
+          source .vercel/.env.production.local
+          set +a
+          node --input-type=module <<'NODE'
+          import { SignJWT } from 'jose'
+
+          const base = process.env.BASE_URL
+          const rootId = process.env.NEXT_PUBLIC_ROOT_MEMBER_ID || '900057'
+          const jwtSecret = process.env.JWT_SECRET
+          if (!jwtSecret || jwtSecret.length < 32) throw new Error('JWT_SECRET unavailable')
+
+          const version = await fetch(base + '/api/version').then(r => r.json())
+          if (version.revision !== process.env.EXPECTED_REVISION) {
+            throw new Error(`Production revision mismatch: ${version.revision} != ${process.env.EXPECTED_REVISION}`)
+          }
+
+          const token = await new SignJWT({ memberId: rootId, name: 'Production Acceptance', isAdmin: true })
+            .setProtectedHeader({ alg: 'HS256' })
+            .setIssuedAt()
+            .setExpirationTime('15m')
+            .sign(new TextEncoder().encode(jwtSecret))
+          const cookie = `dl_session=${token}`
+
+          const coachRes = await fetch(base + '/api/coach', { headers: { cookie } })
+          if (!coachRes.ok) throw new Error(`/api/coach HTTP ${coachRes.status}`)
+          const coachData = await coachRes.json()
+
+          const ranks = { FA:0, ST:1, BR:2, SV:3, GD:4, PL:5, RB:6, DM:7, BD:8, RD:9, CR:10, CRA:11 }
+          const targets = [
+            { code:'ST', bv:1000, gapLimit:600 },
+            { code:'BR', bv:2000, gapLimit:1200 },
+            { code:'SV', bv:5000, gapLimit:3000 },
+            { code:'GD', bv:8000, gapLimit:4000 },
+          ]
+          const keymen = [
+            ...(coachData.keymanStructure?.left || []),
+            ...(coachData.keymanStructure?.right || []),
+            ...(coachData.keymanStructure?.unknown || []),
+          ]
+          const expected = keymen.flatMap(k => {
+            const rank = ranks[k.position] ?? ranks[k.highestPosition] ?? 0
+            const target = targets.find(t => rank < ranks[t.code])
+            if (!target || target.code !== 'ST') return []
+            const weakBv = Math.min(k.leftBv, k.rightBv)
+            const gap = Math.max(0, target.bv - weakBv)
+            return gap < 600 ? [{ id:String(k.id), name:k.name, weakBv, gap }] : []
+          }).sort((a,b) => a.gap-b.gap || b.weakBv-a.weakBv || a.id.localeCompare(b.id))
+
+          const chatRes = await fetch(base + '/api/chat', {
+            method:'POST',
+            headers:{ cookie, 'content-type':'application/json' },
+            body:JSON.stringify({
+              messages:[{ role:'user', content:'ขอรายชื่อ Star gap<600 bv ทั้งหมด 12 คน' }],
+              coachData,
+            }),
+          })
+          const raw = await chatRes.text()
+          if (!chatRes.ok) throw new Error(`/api/chat HTTP ${chatRes.status}: ${raw.slice(0,300)}`)
+          const first = raw.split(/\r?\n/).find(Boolean)
+          const payload = JSON.parse(first)
+          const answer = payload?.message?.content || ''
+
+          const heading = `Star · Gap < 600 BV (${expected.length} คน)`
+          if (!answer.includes(heading)) throw new Error(`Missing heading ${heading}\n${answer}`)
+          const missing = expected.filter(item => !answer.includes(`(${item.id})`))
+          if (missing.length) throw new Error(`Missing candidate IDs: ${missing.map(x=>x.id).join(', ')}\n${answer}`)
+          const numbered = answer.split(/\r?\n/).filter(line => /^\d+\./.test(line.trim()))
+          if (numbered.length !== expected.length) {
+            throw new Error(`Expected ${expected.length} listed rows, got ${numbered.length}\n${answer}`)
+          }
+
+          console.log(`LIVE_KEYMAN_GOAL_QUERY_PASS count=${expected.length}`)
+          console.log(expected.map((x,i)=>`${i+1}. ${x.name} (${x.id}) gap=${x.gap}`).join('\n'))
+          console.log('--- Coach reply ---')
+          console.log(answer)
+          NODE
