@@ -17,6 +17,8 @@ export const JARVIS_READ_SCOPES = [
 
 type JarvisReadScope = typeof JARVIS_READ_SCOPES[number]
 
+const ROOT_MEMBER_ID = process.env.NEXT_PUBLIC_ROOT_MEMBER_ID ?? '900057'
+
 interface LearningModuleRow {
   id: string
   title: string
@@ -125,6 +127,26 @@ export function summarizeActivityKpis(activities: DailyActivity[], today = bangk
   }).sort((a, b) => a.memberId.localeCompare(b.memberId))
 }
 
+function organizationSubtreeIds(rootId: string, members: Record<string, { id: string; upline_id: string | null }>) {
+  if (!members[rootId]) throw new Error(`Jarvis read root member is missing: ${rootId}`)
+  const children = new Map<string, string[]>()
+  for (const member of Object.values(members)) {
+    if (!member.upline_id) continue
+    const values = children.get(member.upline_id) ?? []
+    values.push(member.id)
+    children.set(member.upline_id, values)
+  }
+  const visible = new Set<string>()
+  const queue = [rootId]
+  while (queue.length) {
+    const id = queue.shift()!
+    if (visible.has(id)) continue
+    visible.add(id)
+    for (const childId of children.get(id) ?? []) queue.push(childId)
+  }
+  return visible
+}
+
 function reportSummary(report: MonthlyReport) {
   return {
     month: report.month,
@@ -174,8 +196,9 @@ export async function buildJarvisReadModel() {
     loadLearningReadModel(),
   ])
 
+  const visibleIds = organizationSubtreeIds(ROOT_MEMBER_ID, latest.members)
   const currentReports = new Map(latest.reports.map((report) => [report.member_id, report]))
-  const members = Object.values(latest.members).map((member) => {
+  const members = Object.values(latest.members).filter((member) => visibleIds.has(member.id)).map((member) => {
     const report = currentReports.get(member.id)
     return {
       id: member.id,
@@ -192,6 +215,7 @@ export async function buildJarvisReadModel() {
   const performanceHistory: Record<string, ReturnType<typeof reportSummary>[]> = {}
   for (const snapshot of series) {
     for (const report of snapshot.reports) {
+      if (!visibleIds.has(report.member_id)) continue
       const values = performanceHistory[report.member_id] ?? []
       values.push(reportSummary(report))
       performanceHistory[report.member_id] = values
@@ -213,8 +237,13 @@ export async function buildJarvisReadModel() {
     },
     members,
     performanceHistory,
-    activityKpis: summarizeActivityKpis(Object.values(activities)),
-    learning,
+    activityKpis: summarizeActivityKpis(Object.values(activities).filter((item) => visibleIds.has(item.memberId))),
+    learning: {
+      modules: learning.modules,
+      progress: learning.progress.filter((item) => visibleIds.has(item.member_id)),
+      assessments: learning.assessments.filter((item) => visibleIds.has(item.member_id)),
+      skillScores: learning.skillScores.filter((item) => visibleIds.has(item.member_id)),
+    },
   }
 }
 
