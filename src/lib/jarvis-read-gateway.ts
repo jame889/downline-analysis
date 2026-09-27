@@ -79,9 +79,17 @@ function offsetDate(date: string, days: number): string {
   return value.toISOString().slice(0, 10)
 }
 
-function activitySummary(activities: DailyActivity[], startDate: string, endDate: string) {
-  const rows = activities.filter((item) => item.date >= startDate && item.date <= endDate && item.status !== 'cancelled')
-  const completed = rows.filter((item) => item.status === 'completed')
+function resolvedStatus(activity: DailyActivity, today: string) {
+  return activity.status ?? (activity.date <= today ? 'completed' : 'planned')
+}
+
+function activitySummary(activities: DailyActivity[], startDate: string, endDate: string, today: string) {
+  const rows = activities.filter((item) =>
+    item.date >= startDate
+    && item.date <= endDate
+    && resolvedStatus(item, today) !== 'cancelled'
+  )
+  const completed = rows.filter((item) => resolvedStatus(item, today) === 'completed')
   const outcomes = completed.map((item) => item.outcome ?? 'none')
   return {
     total: rows.length,
@@ -104,14 +112,14 @@ export function summarizeActivityKpis(activities: DailyActivity[], today = bangk
   }
 
   return Array.from(byMember, ([memberId, values]) => {
-    const past = values.filter((item) => item.date <= today && item.status !== 'cancelled')
+    const past = values.filter((item) => item.date <= today && resolvedStatus(item, today) !== 'cancelled')
     const lastActivityDate = past.length
       ? past.reduce((latest, item) => item.date > latest ? item.date : latest, past[0].date)
       : null
     return {
       memberId,
-      recent7: activitySummary(values, offsetDate(today, -6), today),
-      recent30: activitySummary(values, offsetDate(today, -29), today),
+      recent7: activitySummary(values, offsetDate(today, -6), today, today),
+      recent30: activitySummary(values, offsetDate(today, -29), today, today),
       lastActivityDate,
     }
   }).sort((a, b) => a.memberId.localeCompare(b.memberId))
