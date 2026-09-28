@@ -1,0 +1,113 @@
+name: Production Browser E2E
+
+on:
+  push:
+    branches:
+      - codex/green-acceptance-20260928
+    paths:
+      - .github/workflows/production-browser-e2e.yml
+
+permissions:
+  contents: read
+
+jobs:
+  browser-e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+      VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+      VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+      BASE_URL: https://downline-analyzer.vercel.app
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+
+      - name: Install dependencies
+        run: |
+          npm ci
+          npm install --no-save playwright@1.55.0
+          npx playwright install --with-deps chromium
+
+      - name: Pull Production configuration
+        run: npx vercel@56.3.1 pull --yes --environment=production --scope=bossjoes-projects --token="$VERCEL_TOKEN"
+
+      - name: Browser E2E
+        shell: bash
+        run: |
+          set -euo pipefail
+          set -a
+          source .vercel/.env.production.local
+          set +a
+
+          node --input-type=module <<'NODE'
+          import { chromium } from 'playwright'
+          import { SignJWT } from 'jose'
+
+          const base=process.env.BASE_URL
+          const rootId=process.env.NEXT_PUBLIC_ROOT_MEMBER_ID || '900057'
+          const secret=process.env.JWT_SECRET
+          if(!secret || secret.length<32) throw new Error('JWT secret unavailable')
+
+          const token=await new SignJWT({memberId:rootId,name:'Browser Production Acceptance',isAdmin:true})
+            .setProtectedHeader({alg:'HS256'})
+            .setIssuedAt()
+            .setExpirationTime('15m')
+            .sign(new TextEncoder().encode(secret))
+
+          const browser=await chromium.launch({headless:true})
+          const context=await browser.newContext()
+          await context.addCookies([{
+            name:'dl_session',
+            value:token,
+            url:base,
+            httpOnly:true,
+            sameSite:'Lax',
+          }])
+          const page=await context.newPage()
+          const consoleErrors=[]
+          const pageErrors=[]
+          page.on('console',m=>{ if(m.type()==='error') consoleErrors.push(m.text()) })
+          page.on('pageerror',e=>pageErrors.push(String(e)))
+
+          async function visit(path, checks=[]){
+            const response=await page.goto(base+path,{waitUntil:'networkidle',timeout:45000})
+            if(!response || response.status()>=500) throw new Error(path+' HTTP '+(response?.status() ?? 'NO_RESPONSE'))
+            if(page.url().includes('/login')) throw new Error(path+' redirected to login')
+            const body=(await page.locator('body').innerText()).trim()
+            if(body.length<20) throw new Error(path+' rendered empty body')
+            for(const pattern of checks){
+              if(!pattern.test(body)) throw new Error(path+' missing expected UI: '+pattern)
+            }
+            console.log('PASS_BROWSER',path,'HTTP',response.status(),'URL',page.url())
+          }
+
+          await visit('/',[/Dashboard|ภาพรวม|Downline/i])
+          await visit('/team-health',[/Team|Health|ทีม/i])
+          await visit('/coach',[/Coach|JOE|โค้ช/i])
+
+          if(pageErrors.length) throw new Error('PAGE_ERRORS '+JSON.stringify(pageErrors.slice(0,5)))
+          const severe=consoleErrors.filter(x=>!/favicon|ResizeObserver|hydration/i.test(x))
+          if(severe.length) throw new Error('CONSOLE_ERRORS '+JSON.stringify(severe.slice(0,5)))
+
+          console.log('BROWSER_E2E_PASS')
+          await browser.close()
+          NODE
+
+      - name: Post-browser runtime gate
+        run: |
+          npx vercel@56.3.1 logs --environment production --status-code 5xx --since 10m --limit 100 --json --scope=bossjoes-projects --token="$VERCEL_TOKEN" > /tmp/5xx.jsonl
+          npx vercel@56.3.1 logs --environment production --level error --since 10m --limit 100 --json --scope=bossjoes-projects --token="$VERCEL_TOKEN" > /tmp/errors.jsonl
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs'
+          const parse=p=>fs.readFileSync(p,'utf8').split(/\r?\n/).filter(Boolean).flatMap(l=>{try{return[JSON.parse(l)]}catch{return[]}})
+          const five=parse('/tmp/5xx.jsonl'), errors=parse('/tmp/errors.jsonl')
+          console.log('POST_BROWSER_5XX_COUNT='+five.length)
+          console.log('POST_BROWSER_ERROR_COUNT='+errors.length)
+          if(five.length||errors.length) process.exit(1)
+          console.log('POST_BROWSER_RUNTIME_PASS')
+          NODE
