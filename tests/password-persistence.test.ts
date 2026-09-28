@@ -16,7 +16,7 @@ vi.mock('../src/lib/supabase', () => ({
     return []
   },
 }))
-import { checkPassword, createPasswordOverrideValue, passwordOverrideCookieName } from '../src/lib/auth'
+import { checkPassword, checkPasswordDetailed, createPasswordOverrideValue, passwordOverrideCookieName } from '../src/lib/auth'
 import { savePassword, verifyStoredPassword } from '../src/lib/password-store'
 beforeEach(() => { mocks.rows.clear(); mocks.cookies.clear(); mocks.unavailable=false; mocks.rejectWrite=false })
 describe('durable credentials', () => {
@@ -54,7 +54,7 @@ describe('durable credentials', () => {
     await expect(checkPassword('900197','old')).resolves.toBe(true)
     expect(mocks.rows.get('900197')).toMatch(/^scrypt\$/)
   })
-  it('accepts and migrates legacy scrypt hashes that used raw hex salt bytes', async () => {
+  it('reports legacy scrypt migration without blocking login on the database write', async () => {
     const password = 'legacy-compat-password'
     const salt = '00112233445566778899aabbccddeeff'
     const digest = scryptSync(password, Buffer.from(salt, 'hex'), 64, {
@@ -62,6 +62,13 @@ describe('durable credentials', () => {
     }).toString('hex')
     const legacy = `scrypt$131072$8$1$${salt}$${digest}`
     mocks.rows.set('900197', legacy)
+
+    await expect(checkPasswordDetailed('900197', password)).resolves.toEqual({
+      matches: true,
+      needsMigration: true,
+    })
+    expect(mocks.rows.get('900197')).toBe(legacy)
+
     await expect(checkPassword('900197', password)).resolves.toBe(true)
     expect(mocks.rows.get('900197')).toMatch(/^scrypt\$/)
     expect(mocks.rows.get('900197')).not.toBe(legacy)

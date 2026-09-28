@@ -20,6 +20,11 @@ export interface SessionPayload {
   isAdmin: boolean
 }
 
+export interface PasswordCheckResult {
+  matches: boolean
+  needsMigration: boolean
+}
+
 // ── JWT ────────────────────────────────────────────────────────────────────
 
 export async function createToken(payload: SessionPayload): Promise<string> {
@@ -86,34 +91,51 @@ async function passwordOverrideMatches(memberId: string, password: string): Prom
   return hash === expected
 }
 
-export async function checkPassword(memberId: string, password: string): Promise<boolean> {
-  if (typeof password !== 'string' || Buffer.byteLength(password, 'utf8') > 1024) return false
+export async function checkPasswordDetailed(memberId: string, password: string): Promise<PasswordCheckResult> {
+  if (typeof password !== 'string' || Buffer.byteLength(password, 'utf8') > 1024) {
+    return { matches: false, needsMigration: false }
+  }
+
   // Database errors must propagate: never fall back to an initial password on read failure.
   const stored = await getStoredPassword(memberId)
   if (stored !== null) {
     const verification = await verifyStoredPasswordDetailed(password, stored)
-    if (verification.matches && verification.needsRehash) await savePassword(memberId, password)
-    return verification.matches
+    return { matches: verification.matches, needsMigration: verification.matches && verification.needsRehash }
   }
+
   // One-time migration for users of the former browser-local password override.
   const legacyMatch = await passwordOverrideMatches(memberId, password)
   if (legacyMatch !== null) {
-    if (legacyMatch) await savePassword(memberId, password)
-    return legacyMatch
+    return { matches: legacyMatch, needsMigration: legacyMatch }
   }
+
   const initial = memberId === ROOT_MEMBER_ID ? ROOT_INITIAL_PASSWORD : memberId
   if (process.env.VERCEL && memberId === ROOT_MEMBER_ID && !process.env.ROOT_INITIAL_PASSWORD) {
     throw new Error('Root credential is not configured')
   }
-  return verifyStoredPassword(password, initial)
+  return { matches: await verifyStoredPassword(password, initial), needsMigration: false }
+}
+
+export async function checkPassword(memberId: string, password: string): Promise<boolean> {
+  const result = await checkPasswordDetailed(memberId, password)
+  if (result.matches && result.needsMigration) await savePassword(memberId, password)
+  return result.matches
+}
+
+export async function migrateVerifiedPassword(memberId: string, password: string): Promise<void> {
+  await savePassword(memberId, password)
+}
+
+export function getAuthMember(memberId: string): { name: string } | null {
+  const member = loadAuthMembers()[memberId]
+  if (!member) return null
+  return { name: member.name ?? memberId }
 }
 
 export function getMemberName(memberId: string): string {
-  const members = loadAuthMembers()
-  return members[memberId]?.name ?? memberId
+  return getAuthMember(memberId)?.name ?? memberId
 }
 
 export function memberExists(memberId: string): boolean {
-  const members = loadAuthMembers()
-  return memberId in members
+  return getAuthMember(memberId) !== null
 }

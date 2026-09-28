@@ -2,33 +2,68 @@
 import { useState, FormEvent } from 'react'
 import { useRouter } from 'next/navigation'
 
+const LOGIN_TIMEOUT_MS = 12_000
+
 export default function LoginPage() {
   const router = useRouter()
   const [memberId, setMemberId] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
+  const [status, setStatus] = useState('')
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault()
     setError('')
+    setStatus('กำลังตรวจสอบรหัสสมาชิกและรหัสผ่าน...')
     setLoading(true)
 
-    const res = await fetch('/api/auth/login', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ memberId: memberId.trim(), password }),
-    })
+    const controller = new AbortController()
+    const slowTimer = window.setTimeout(() => {
+      setStatus('กำลังตรวจสอบข้อมูลสมาชิก กรุณารอสักครู่...')
+    }, 3_000)
+    const verySlowTimer = window.setTimeout(() => {
+      setStatus('ระบบตอบสนองช้ากว่าปกติ แต่ยังพยายามเชื่อมต่ออยู่...')
+    }, 7_000)
+    const timeoutTimer = window.setTimeout(() => controller.abort(), LOGIN_TIMEOUT_MS)
+    let succeeded = false
 
-    const data = await res.json()
-    setLoading(false)
+    try {
+      const res = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ memberId: memberId.trim(), password }),
+        signal: controller.signal,
+      })
 
-    if (!res.ok) {
-      setError(data.error ?? 'เกิดข้อผิดพลาด')
-      return
+      const data = await res.json().catch(() => ({})) as {
+        error?: string
+        isAdmin?: boolean
+      }
+
+      if (!res.ok) {
+        setError(data.error ?? 'เข้าสู่ระบบไม่สำเร็จ กรุณาลองใหม่')
+        return
+      }
+
+      succeeded = true
+      setStatus('เข้าสู่ระบบสำเร็จ กำลังเปิด Dashboard...')
+      router.replace(data.isAdmin ? '/' : '/my')
+    } catch (err) {
+      if (err instanceof DOMException && err.name === 'AbortError') {
+        setError('ระบบใช้เวลาตอบสนองเกิน 12 วินาที กรุณากดเข้าสู่ระบบอีกครั้ง')
+      } else {
+        setError('เชื่อมต่อระบบเข้าสู่ระบบไม่ได้ กรุณาตรวจสอบอินเทอร์เน็ตแล้วลองใหม่')
+      }
+    } finally {
+      window.clearTimeout(slowTimer)
+      window.clearTimeout(verySlowTimer)
+      window.clearTimeout(timeoutTimer)
+      if (!succeeded) {
+        setLoading(false)
+        setStatus('')
+      }
     }
-
-    router.replace(data.isAdmin ? '/' : '/my')
   }
 
   return (
@@ -52,7 +87,9 @@ export default function LoginPage() {
               onChange={(e) => setMemberId(e.target.value)}
               placeholder="เช่น 900xxx"
               required
-              className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2.5 text-white text-sm placeholder-slate-500 focus:outline-none focus:border-brand-500"
+              disabled={loading}
+              autoComplete="username"
+              className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2.5 text-white text-sm placeholder-slate-500 focus:outline-none focus:border-brand-500 disabled:opacity-60"
             />
           </div>
 
@@ -64,20 +101,36 @@ export default function LoginPage() {
               onChange={(e) => setPassword(e.target.value)}
               placeholder="รหัสผ่านเริ่มต้น = รหัสสมาชิก"
               required
-              className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2.5 text-white text-sm placeholder-slate-500 focus:outline-none focus:border-brand-500"
+              disabled={loading}
+              autoComplete="current-password"
+              className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2.5 text-white text-sm placeholder-slate-500 focus:outline-none focus:border-brand-500 disabled:opacity-60"
             />
           </div>
 
           {error && (
-            <p className="text-red-400 text-sm bg-red-900/20 border border-red-800/50 rounded-lg px-3 py-2">
-              {error}
-            </p>
+            <div
+              role="alert"
+              className="text-red-300 text-sm bg-red-900/20 border border-red-800/50 rounded-lg px-3 py-2.5"
+            >
+              <p>{error}</p>
+              <p className="text-red-400/80 text-xs mt-1">ตรวจสอบรหัสแล้วกด “เข้าสู่ระบบ” อีกครั้งได้ทันที</p>
+            </div>
+          )}
+
+          {loading && status && (
+            <div
+              aria-live="polite"
+              className="text-sky-300 text-xs bg-sky-950/40 border border-sky-900/60 rounded-lg px-3 py-2"
+            >
+              {status}
+            </div>
           )}
 
           <button
             type="submit"
             disabled={loading}
-            className="w-full bg-brand-600 hover:bg-brand-500 disabled:opacity-50 text-white font-medium py-2.5 rounded-lg text-sm transition-colors"
+            aria-busy={loading}
+            className="w-full bg-brand-600 hover:bg-brand-500 disabled:opacity-50 disabled:cursor-wait text-white font-medium py-2.5 rounded-lg text-sm transition-colors"
           >
             {loading ? 'กำลังเข้าสู่ระบบ...' : 'เข้าสู่ระบบ'}
           </button>

@@ -1,7 +1,12 @@
-import { NextRequest, NextResponse } from 'next/server'
+import { after, NextRequest, NextResponse } from 'next/server'
 import {
-  checkPassword,
-  createToken, SESSION_COOKIE, ROOT_MEMBER_ID, passwordOverrideCookieName
+  checkPasswordDetailed,
+  createToken,
+  getAuthMember,
+  migrateVerifiedPassword,
+  SESSION_COOKIE,
+  ROOT_MEMBER_ID,
+  passwordOverrideCookieName,
 } from '@/lib/auth'
 import { getAllMembers } from '@/lib/db'
 import { recordLoginActivity } from '@/lib/login-activity'
@@ -18,9 +23,16 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'กรุณากรอกรหัสสมาชิกและรหัสผ่าน' }, { status: 400 })
   }
 
-  const member = (await getAllMembers())[memberId]
+  // Fast path: most members are bundled with the app, so avoid loading the
+  // full cloud member/report model during login. Cloud lookup remains as a fallback
+  // for members added after the latest deployment.
+  let member = getAuthMember(memberId)
   if (!member) {
-    return NextResponse.json({ error: 'ไม่พบรหัสสมาชิกนี้' }, { status: 401 })
+    const cloudMember = (await getAllMembers())[memberId]
+    if (!cloudMember) {
+      return NextResponse.json({ error: 'ไม่พบรหัสสมาชิกนี้' }, { status: 401 })
+    }
+    member = { name: cloudMember.name ?? memberId }
   }
 
   // Check if member is blocked
@@ -32,25 +44,39 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'บัญชีถูกระงับการใช้งาน' }, { status: 403 })
   }
 
-  if (!await checkPassword(memberId, password)) {
+  const passwordCheck = await checkPasswordDetailed(memberId, password)
+  if (!passwordCheck.matches) {
     return NextResponse.json({ error: 'รหัสผ่านไม่ถูกต้อง' }, { status: 401 })
   }
 
   const name = member.name
   const isAdmin = memberId === ROOT_MEMBER_ID
-
   const token = await createToken({ memberId, name, isAdmin })
 
-  try {
-    await recordLoginActivity({
-      memberId,
-      name,
-      timestamp: new Date().toISOString(),
-      ip: req.headers.get('x-forwarded-for') ?? req.headers.get('x-real-ip') ?? 'unknown',
-    })
-  } catch (error) {
-    console.warn('[auth/login] skipped activity log', error)
+  // Password migration and activity logging are durable but not required to
+  // complete the login response. Run them after the response so users do not
+  // wait on extra database writes or a rehash.
+  const loginActivity = {
+    memberId,
+    name,
+    timestamp: new Date().toISOString(),
+    ip: req.headers.get('x-forwarded-for') ?? req.headers.get('x-real-ip') ?? 'unknown',
   }
+  after(async () => {
+    const tasks: Promise<unknown>[] = [
+      recordLoginActivity(loginActivity).catch((error) => {
+        console.warn('[auth/login] skipped activity log', error)
+      }),
+    ]
+    if (passwordCheck.needsMigration) {
+      tasks.push(
+        migrateVerifiedPassword(memberId, password).catch((error) => {
+          console.warn('[auth/login] password migration deferred but failed', error)
+        })
+      )
+    }
+    await Promise.all(tasks)
+  })
 
   const res = NextResponse.json({ ok: true, isAdmin, name })
   res.cookies.set(SESSION_COOKIE, token, {
@@ -62,7 +88,11 @@ export async function POST(req: NextRequest) {
   })
   res.cookies.delete(passwordOverrideCookieName(memberId))
   return res
-  } catch {
-    return NextResponse.json({ error: 'ระบบเข้าสู่ระบบไม่พร้อมใช้งาน กรุณาลองใหม่' }, { status: 503 })
+  } catch (error) {
+    console.error('[auth/login] request failed', error)
+    return NextResponse.json(
+      { error: 'ระบบเข้าสู่ระบบไม่พร้อมใช้งาน กรุณาลองใหม่' },
+      { status: 503 }
+    )
   }
 }
