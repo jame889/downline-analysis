@@ -1,9 +1,7 @@
 name: Green Production Acceptance
 
 on:
-  push:
-    branches:
-      - codex/green-acceptance-20260928
+  workflow_dispatch:
 
 permissions:
   contents: read
