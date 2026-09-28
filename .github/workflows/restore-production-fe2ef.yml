@@ -1,0 +1,87 @@
+name: Restore Intended Production Revision
+
+on:
+  push:
+    branches:
+      - codex/green-acceptance-20260928
+    paths:
+      - .github/workflows/restore-production-fe2ef.yml
+
+permissions:
+  contents: read
+
+jobs:
+  restore:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+      VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+      VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+      SCOPE: bossjoes-projects
+      BASE_URL: https://downline-analyzer.vercel.app
+      EXPECTED_REVISION: fe2efbeb33a5d18700fc44f9c7a8729171789255
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fe2efbeb33a5d18700fc44f9c7a8729171789255
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+
+      - name: Install and verify
+        run: |
+          npm ci
+          npm test
+          npm run build
+
+      - name: Restore Groq model
+        run: npx vercel@56.3.1 env add GROQ_MODEL production --value qwen/qwen3.8-27b --yes --force --scope="$SCOPE" --token="$VERCEL_TOKEN"
+
+      - name: Pull Production configuration
+        run: npx vercel@56.3.1 pull --yes --environment=production --scope="$SCOPE" --token="$VERCEL_TOKEN"
+
+      - name: Build intended revision
+        run: npx vercel@56.3.1 build --prod --scope="$SCOPE" --token="$VERCEL_TOKEN"
+
+      - name: Deploy intended revision
+        run: npx vercel@56.3.1 deploy --prebuilt --prod --scope="$SCOPE" --token="$VERCEL_TOKEN"
+
+      - name: Verify revision and providers
+        run: |
+          python - <<'PY'
+          import json, time, urllib.request
+          base='https://downline-analyzer.vercel.app'
+          expected='fe2efbeb33a5d18700fc44f9c7a8729171789255'
+          last=None
+          for attempt in range(18):
+              with urllib.request.urlopen(base+'/api/version',timeout=30) as r:
+                  rev=json.load(r).get('revision')
+              with urllib.request.urlopen(base+'/api/chat',timeout=30) as r:
+                  last=json.load(r)
+              providers={p['provider']:p for p in last.get('providers',[])}
+              if rev==expected and last.get('provider')=='groq' and providers.get('groq',{}).get('online') is True and providers.get('openrouter',{}).get('online') is True:
+                  print('PRODUCTION_REVISION_RESTORE_PASS',rev)
+                  print('PROVIDERS_RESTORE_PASS groq=true openrouter=true')
+                  break
+              time.sleep(5)
+          else:
+              raise AssertionError(f'Restore verification failed revision={rev} health={last}')
+          PY
+
+      - name: Runtime error gate
+        run: |
+          npx vercel@56.3.1 logs --environment production --status-code 5xx --since 10m --limit 100 --json --scope="$SCOPE" --token="$VERCEL_TOKEN" > /tmp/5xx.jsonl
+          npx vercel@56.3.1 logs --environment production --level error --since 10m --limit 100 --json --scope="$SCOPE" --token="$VERCEL_TOKEN" > /tmp/errors.jsonl
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs'
+          const parse=p=>fs.readFileSync(p,'utf8').split(/\r?\n/).filter(Boolean).flatMap(l=>{try{return[JSON.parse(l)]}catch{return[]}})
+          const five=parse('/tmp/5xx.jsonl'), errors=parse('/tmp/errors.jsonl')
+          console.log('RESTORE_5XX_COUNT='+five.length)
+          console.log('RESTORE_ERROR_COUNT='+errors.length)
+          if(five.length||errors.length) process.exit(1)
+          console.log('RESTORE_RUNTIME_PASS')
+          NODE
