@@ -1,0 +1,142 @@
+name: Green Production Acceptance
+
+on:
+  push:
+    branches:
+      - codex/green-acceptance-20260928
+
+permissions:
+  contents: read
+
+concurrency:
+  group: vercel-production
+  cancel-in-progress: false
+
+jobs:
+  production-acceptance:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+      VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+      VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+      SCOPE: bossjoes-projects
+      BASE_URL: https://downline-analyzer.vercel.app
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+
+      - name: Install and verify
+        run: |
+          npm ci
+          npm test
+          npm run build
+
+      - name: Force Groq failure and deploy
+        run: |
+          npx vercel@56.3.1 env add GROQ_MODEL production --value jarvis-forced-failover-invalid-model --yes --force --scope="$SCOPE" --token="$VERCEL_TOKEN"
+          npx vercel@56.3.1 pull --yes --environment=production --scope="$SCOPE" --token="$VERCEL_TOKEN"
+          npx vercel@56.3.1 build --prod --scope="$SCOPE" --token="$VERCEL_TOKEN"
+          npx vercel@56.3.1 deploy --prebuilt --prod --scope="$SCOPE" --token="$VERCEL_TOKEN"
+
+      - name: Prove real OpenRouter takeover
+        run: |
+          python - <<'PY'
+          import json, time, urllib.request
+          url='https://downline-analyzer.vercel.app/api/chat'
+          last=None
+          for attempt in range(18):
+              with urllib.request.urlopen(url, timeout=30) as r:
+                  last=json.load(r)
+              providers={p['provider']:p for p in last.get('providers',[])}
+              groq=providers.get('groq',{})
+              op=providers.get('openrouter',{})
+              if last.get('provider')=='openrouter' and groq.get('online') is False and op.get('online') is True:
+                  print('OPENROUTER_REAL_FAILOVER_PASS')
+                  print(json.dumps({
+                    'active': last.get('provider'),
+                    'groq_online': groq.get('online'),
+                    'openrouter_online': op.get('online'),
+                    'openrouter_model': op.get('model'),
+                  }))
+                  break
+              time.sleep(5)
+          else:
+              raise AssertionError(f'OpenRouter takeover not observed: {last}')
+          PY
+
+      - name: Restore Groq production model
+        if: always()
+        run: |
+          npx vercel@56.3.1 env add GROQ_MODEL production --value qwen/qwen3.8-27b --yes --force --scope="$SCOPE" --token="$VERCEL_TOKEN"
+          npx vercel@56.3.1 pull --yes --environment=production --scope="$SCOPE" --token="$VERCEL_TOKEN"
+          npx vercel@56.3.1 build --prod --scope="$SCOPE" --token="$VERCEL_TOKEN"
+          npx vercel@56.3.1 deploy --prebuilt --prod --scope="$SCOPE" --token="$VERCEL_TOKEN"
+
+      - name: Verify Groq restored
+        if: always()
+        run: |
+          python - <<'PY'
+          import json, time, urllib.request
+          url='https://downline-analyzer.vercel.app/api/chat'
+          last=None
+          for attempt in range(18):
+              with urllib.request.urlopen(url, timeout=30) as r:
+                  last=json.load(r)
+              providers={p['provider']:p for p in last.get('providers',[])}
+              if last.get('provider')=='groq' and providers.get('groq',{}).get('online') is True and providers.get('openrouter',{}).get('online') is True:
+                  print('GROQ_RESTORE_PASS')
+                  print(json.dumps({'active':'groq','groq_online':True,'openrouter_online':True}))
+                  break
+              time.sleep(5)
+          else:
+              raise AssertionError(f'Groq restore not observed: {last}')
+          PY
+
+      - name: Production smoke
+        if: always()
+        run: |
+          python - <<'PY'
+          import urllib.request
+          for path in ['/', '/login', '/api/chat', '/api/version']:
+              r=urllib.request.urlopen('https://downline-analyzer.vercel.app'+path, timeout=30)
+              print(path, r.status)
+              if r.status >= 500:
+                  raise AssertionError(f'{path} returned {r.status}')
+          print('PRODUCTION_SMOKE_PASS')
+          PY
+
+      - name: Runtime error audit
+        if: always()
+        run: |
+          set +e
+          npx vercel@56.3.1 logs --environment production --status-code 5xx --since 10m --limit 100 --json --scope="$SCOPE" --token="$VERCEL_TOKEN" > /tmp/5xx.jsonl
+          S1=$?
+          npx vercel@56.3.1 logs --environment production --level error --since 10m --limit 100 --json --scope="$SCOPE" --token="$VERCEL_TOKEN" > /tmp/errors.jsonl
+          S2=$?
+          set -e
+          test "$S1" -eq 0
+          test "$S2" -eq 0
+          python - <<'PY'
+          import json
+          def rows(path):
+              out=[]
+              for line in open(path, encoding='utf-8'):
+                  line=line.strip()
+                  if not line: continue
+                  try: out.append(json.loads(line))
+                  except Exception: pass
+              return out
+          five=rows('/tmp/5xx.jsonl')
+          err=rows('/tmp/errors.jsonl')
+          print('VERCEL_5XX_COUNT='+str(len(five)))
+          print('VERCEL_ERROR_LOG_COUNT='+str(len(err)))
+          if five or err:
+              raise SystemExit(1)
+          print('RUNTIME_ERROR_AUDIT_PASS')
+          PY
