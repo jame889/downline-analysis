@@ -20,12 +20,12 @@ jobs:
       VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
       SCOPE: bossjoes-projects
       BASE_URL: https://downline-analyzer.vercel.app
-      EXPECTED_REVISION: 42441ede2b9912e706acf39ddc6df74a3a4a52e6
+      EXPECTED_REVISION: 11983c114de406d61fce9f66c43d9d3e180c68cb
 
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: 42441ede2b9912e706acf39ddc6df74a3a4a52e6
+          ref: 11983c114de406d61fce9f66c43d9d3e180c68cb
 
       - uses: actions/setup-node@v4
         with:
@@ -46,7 +46,7 @@ jobs:
 
       - name: Build intended revision
         env:
-          VERCEL_GIT_COMMIT_SHA: 42441ede2b9912e706acf39ddc6df74a3a4a52e6
+          VERCEL_GIT_COMMIT_SHA: 11983c114de406d61fce9f66c43d9d3e180c68cb
         run: npx vercel@56.3.1 build --prod --scope="$SCOPE" --token="$VERCEL_TOKEN"
 
       - name: Deploy intended revision
@@ -57,7 +57,7 @@ jobs:
           python - <<'PY'
           import json, time, urllib.request
           base='https://downline-analyzer.vercel.app'
-          expected='42441ede2b9912e706acf39ddc6df74a3a4a52e6'
+          expected='11983c114de406d61fce9f66c43d9d3e180c68cb'
           last=None
           for attempt in range(18):
               with urllib.request.urlopen(base+'/api/version',timeout=30) as r:
