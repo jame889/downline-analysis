@@ -1,6 +1,6 @@
 import { SignJWT, jwtVerify } from 'jose'
 import { cookies } from 'next/headers'
-import { getStoredPassword, savePassword, verifyStoredPassword } from './password-store'
+import { getStoredPassword, savePassword, verifyStoredPassword, verifyStoredPasswordDetailed } from './password-store'
 import fs from 'fs'
 import path from 'path'
 import crypto from 'crypto'
@@ -91,9 +91,9 @@ export async function checkPassword(memberId: string, password: string): Promise
   // Database errors must propagate: never fall back to an initial password on read failure.
   const stored = await getStoredPassword(memberId)
   if (stored !== null) {
-    const matches = await verifyStoredPassword(password, stored)
-    if (matches && !stored.startsWith('scrypt$')) await savePassword(memberId, password)
-    return matches
+    const verification = await verifyStoredPasswordDetailed(password, stored)
+    if (verification.matches && verification.needsRehash) await savePassword(memberId, password)
+    return verification.matches
   }
   // One-time migration for users of the former browser-local password override.
   const legacyMatch = await passwordOverrideMatches(memberId, password)

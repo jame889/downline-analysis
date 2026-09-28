@@ -1,3 +1,4 @@
+import { scryptSync } from 'crypto'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 vi.hoisted(() => { process.env.JWT_SECRET = 'local-regression-test-secret-32-characters'; process.env.ROOT_INITIAL_PASSWORD = 'test-root-initial' })
 const mocks = vi.hoisted(() => ({ rows: new Map<string,string>(), cookies: new Map<string,string>(), unavailable: false, rejectWrite: false }))
@@ -52,6 +53,19 @@ describe('durable credentials', () => {
     mocks.rows.set('900197','old')
     await expect(checkPassword('900197','old')).resolves.toBe(true)
     expect(mocks.rows.get('900197')).toMatch(/^scrypt\$/)
+  })
+  it('accepts and migrates legacy scrypt hashes that used raw hex salt bytes', async () => {
+    const password = 'legacy-compat-password'
+    const salt = '00112233445566778899aabbccddeeff'
+    const digest = scryptSync(password, Buffer.from(salt, 'hex'), 64, {
+      N: 131072, r: 8, p: 1, maxmem: 192 * 1024 * 1024,
+    }).toString('hex')
+    const legacy = `scrypt$131072$8$1$${salt}$${digest}`
+    mocks.rows.set('900197', legacy)
+    await expect(checkPassword('900197', password)).resolves.toBe(true)
+    expect(mocks.rows.get('900197')).toMatch(/^scrypt\$/)
+    expect(mocks.rows.get('900197')).not.toBe(legacy)
+    await expect(verifyStoredPassword(password, mocks.rows.get('900197')!)).resolves.toBe(true)
   })
   it('rejects malformed hashes without interpreting attacker supplied cost parameters', async () => {
     await expect(verifyStoredPassword('test-password','scrypt$999999999$8$1$salt$bad')).resolves.toBe(false)
