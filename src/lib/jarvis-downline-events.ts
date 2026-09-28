@@ -253,6 +253,7 @@ export async function pushDownlineEventsToJarvis(events: JarvisDownlineEvent[], 
   const body = JSON.stringify({ source: 'downline-analyzer', version: 1, events })
   const identity = downlineServerIdentity()
   const signature = signDownlineServerBody(body)
+  const bodySha256 = crypto.createHash('sha256').update(body).digest('hex')
 
   try {
     const response = await fetch(url, {
@@ -262,6 +263,7 @@ export async function pushDownlineEventsToJarvis(events: JarvisDownlineEvent[], 
         'x-jarvis-source': 'downline-analyzer',
         'x-jarvis-signature': signature,
         'x-jarvis-key-id': identity.keyId,
+        'x-jarvis-body-sha256': bodySha256,
       },
       body,
       signal: AbortSignal.timeout(timeoutMs),
