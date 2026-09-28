@@ -45,6 +45,8 @@ jobs:
         run: npx vercel@56.3.1 pull --yes --environment=production --scope="$SCOPE" --token="$VERCEL_TOKEN"
 
       - name: Build intended revision
+        env:
+          VERCEL_GIT_COMMIT_SHA: fe2efbeb33a5d18700fc44f9c7a8729171789255
         run: npx vercel@56.3.1 build --prod --scope="$SCOPE" --token="$VERCEL_TOKEN"
 
       - name: Deploy intended revision
