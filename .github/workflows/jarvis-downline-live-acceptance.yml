@@ -1,0 +1,69 @@
+name: Jarvis Downline Live Acceptance
+
+on:
+  push:
+    branches: [codex/green-acceptance-20260928]
+    paths: [.github/workflows/jarvis-downline-live-acceptance.yml]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: jarvis-downline-live-acceptance
+  cancel-in-progress: false
+
+jobs:
+  acceptance:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feature/jarvis-read-gateway-v2
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install report dependencies
+        run: python -m pip install openpyxl requests
+
+      - name: Run one-month live sync and assert Jarvis push
+        env:
+          FIRST_THAILAND_USER: ${{ secrets.FIRST_THAILAND_USER }}
+          FIRST_THAILAND_PASSWORD: ${{ secrets.FIRST_THAILAND_PASSWORD }}
+          BUSINESS_REPORT_SYNC_SECRET: ${{ secrets.BUSINESS_REPORT_SYNC_SECRET }}
+          BUSINESS_REPORT_SYNC_URL: https://downline-analyzer.vercel.app/api/admin/business-report-sync
+        run: |
+          set -euo pipefail
+          python scripts/sync_business_report.py --month 2026-09 --output-dir downloaded_reports | tee /tmp/downline-sync.jsonl
+          python - <<'PY'
+          import json
+          lines=[line for line in open('/tmp/downline-sync.jsonl',encoding='utf-8') if line.strip().startswith('{')]
+          assert lines, 'sync output JSON missing'
+          payload=json.loads(lines[-1])
+          prod=payload.get('production') or {}
+          print('LIVE_SYNC_RESULT', json.dumps({
+              'month': payload.get('month'),
+              'rows': payload.get('rows'),
+              'members': payload.get('members'),
+              'jarvisEventCount': prod.get('jarvisEventCount'),
+              'jarvisPushed': prod.get('jarvisPushed'),
+              'jarvisPushStatus': prod.get('jarvisPushStatus'),
+              'supabaseSynced': prod.get('supabaseSynced'),
+          }, ensure_ascii=False))
+          assert prod.get('supabaseSynced') is True, prod
+          assert prod.get('jarvisPushed') is True, prod
+          assert prod.get('jarvisPushStatus') == 202, prod
+          PY
+
+      - name: Verify production revision still pinned
+        run: |
+          python - <<'PY'
+          import json, urllib.request
+          with urllib.request.urlopen('https://downline-analyzer.vercel.app/api/version',timeout=30) as r:
+              revision=json.load(r).get('revision')
+          assert revision == '42441ede2b9912e706acf39ddc6df74a3a4a52e6', revision
+          print('PRODUCTION_REVISION_OK',revision)
+          PY
