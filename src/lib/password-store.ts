@@ -8,7 +8,7 @@ const FILE = path.join(process.cwd(), 'data', 'passwords.json')
 export function validPassword(value: unknown): value is string {
   return typeof value === 'string' && value.length >= 6 && Buffer.byteLength(value, 'utf8') <= 1024
 }
-function derive(password: string, salt: string): Promise<Buffer> {
+function derive(password: string, salt: string | Buffer): Promise<Buffer> {
   return new Promise((resolve, reject) => scrypt(password, salt, 64, { N, r: R, p: P, maxmem: 192 * 1024 * 1024 },
     (error, key) => error ? reject(error) : resolve(key)))
 }
@@ -17,17 +17,40 @@ export async function hashPassword(password: string): Promise<string> {
   const salt = randomBytes(16).toString('hex')
   return `scrypt$${N}$${R}$${P}$${salt}$${(await derive(password, salt)).toString('hex')}`
 }
-export async function verifyStoredPassword(password: string, stored: string): Promise<boolean> {
-  if (typeof password !== 'string' || Buffer.byteLength(password, 'utf8') > 1024) return false
+export interface PasswordVerificationResult {
+  matches: boolean
+  needsRehash: boolean
+}
+
+export async function verifyStoredPasswordDetailed(password: string, stored: string): Promise<PasswordVerificationResult> {
+  if (typeof password !== 'string' || Buffer.byteLength(password, 'utf8') > 1024) {
+    return { matches: false, needsRehash: false }
+  }
   if (!stored.startsWith('scrypt$')) {
     // Existing plaintext records are upgraded only after a successful login.
     const actual = Buffer.from(password), expected = Buffer.from(stored)
-    return actual.length === expected.length && timingSafeEqual(actual, expected)
+    const matches = actual.length === expected.length && timingSafeEqual(actual, expected)
+    return { matches, needsRehash: matches }
   }
   const parts = stored.split('$')
   if (parts.length !== 6 || parts[1] !== String(N) || parts[2] !== String(R) || parts[3] !== String(P)
-    || !/^[a-f0-9]{32}$/.test(parts[4]) || !/^[a-f0-9]{128}$/.test(parts[5])) return false
-  return timingSafeEqual(await derive(password, parts[4]), Buffer.from(parts[5], 'hex'))
+    || !/^[a-f0-9]{32}$/.test(parts[4]) || !/^[a-f0-9]{128}$/.test(parts[5])) {
+    return { matches: false, needsRehash: false }
+  }
+  const expected = Buffer.from(parts[5], 'hex')
+  const current = await derive(password, parts[4])
+  if (timingSafeEqual(current, expected)) return { matches: true, needsRehash: false }
+
+  // Compatibility with hashes created by an earlier reset script that decoded the
+  // hex salt to raw bytes before calling scrypt. A successful legacy verification
+  // is immediately rehashed by checkPassword() using the canonical UTF-8 salt path.
+  const legacy = await derive(password, Buffer.from(parts[4], 'hex'))
+  const matches = timingSafeEqual(legacy, expected)
+  return { matches, needsRehash: matches }
+}
+
+export async function verifyStoredPassword(password: string, stored: string): Promise<boolean> {
+  return (await verifyStoredPasswordDetailed(password, stored)).matches
 }
 function readLocal(): Record<string, string> {
   if (process.env.VERCEL) throw new Error('Durable password database is required')
